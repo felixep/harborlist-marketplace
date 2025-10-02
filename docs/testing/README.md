@@ -10,26 +10,64 @@ The HarborList testing strategy implements comprehensive quality assurance acros
 
 ### **Testing Pyramid Implementation**
 
-```
-                    🔺 E2E Tests (10%)
-                   /                 \
-                  /   User Journeys    \
-                 /   Cross-Browser      \
-                /    Critical Paths      \
-               /_________________________\
-              🔺 Integration Tests (20%)
-             /                           \
-            /     API Integration         \
-           /      Service Communication    \
-          /       Database Operations      \
-         /________________________________\
-        🔺 Unit Tests (70%)
-       /                                  \
-      /     Component Testing              \
-     /      Business Logic                 \
-    /       Utility Functions              \
-   /        Pure Functions                 \
-  /______________________________________ \
+```mermaid
+graph TB
+    subgraph "Testing Pyramid"
+        subgraph "E2E Tests (10%)"
+            E2E1[User Journeys]
+            E2E2[Cross-Browser Testing]
+            E2E3[Critical User Paths]
+            E2E4[End-to-End Workflows]
+        end
+        
+        subgraph "Integration Tests (20%)"
+            INT1[API Integration]
+            INT2[Service Communication]
+            INT3[Database Operations]
+            INT4[External Service Mocks]
+            INT5[Component Integration]
+        end
+        
+        subgraph "Unit Tests (70%)"
+            UNIT1[Component Testing]
+            UNIT2[Business Logic]
+            UNIT3[Utility Functions]
+            UNIT4[Pure Functions]
+            UNIT5[State Management]
+            UNIT6[Validation Logic]
+        end
+    end
+    
+    %% Relationships showing test pyramid structure
+    E2E1 -.-> INT1
+    E2E2 -.-> INT2
+    E2E3 -.-> INT3
+    E2E4 -.-> INT4
+    
+    INT1 -.-> UNIT1
+    INT2 -.-> UNIT2
+    INT3 -.-> UNIT3
+    INT4 -.-> UNIT4
+    INT5 -.-> UNIT5
+    
+    %% Styling to show pyramid levels
+    style E2E1 fill:#ffcdd2,stroke:#d32f2f,stroke-width:2px
+    style E2E2 fill:#ffcdd2,stroke:#d32f2f,stroke-width:2px
+    style E2E3 fill:#ffcdd2,stroke:#d32f2f,stroke-width:2px
+    style E2E4 fill:#ffcdd2,stroke:#d32f2f,stroke-width:2px
+    
+    style INT1 fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    style INT2 fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    style INT3 fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    style INT4 fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    style INT5 fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    
+    style UNIT1 fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
+    style UNIT2 fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
+    style UNIT3 fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
+    style UNIT4 fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
+    style UNIT5 fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
+    style UNIT6 fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
 ```
 
 ### **Testing Levels & Ownership**
