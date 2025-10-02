@@ -124,21 +124,20 @@ const CONFIG = {
 ```bash
 🌐 Frontend Performance Results
 
-📊 Page Load Times (Average over 5 iterations):
-   ┌─────────────────┬──────────┬──────────┬──────────┬─────────┐
-   │ Page            │ Load Time│ TTFB     │ Status   │ Target  │
-   ├─────────────────┼──────────┼──────────┼──────────┼─────────┤
-   │ Homepage (/)    │ 1,247ms  │ 234ms    │ ✅ PASS  │ <3000ms │
-   │ Search          │ 1,156ms  │ 189ms    │ ✅ PASS  │ <3000ms │
-   │ About           │ 891ms    │ 145ms    │ ✅ PASS  │ <3000ms │
-   │ Contact         │ 1,034ms  │ 167ms    │ ✅ PASS  │ <3000ms │
-   └─────────────────┴──────────┴──────────┴──────────┴─────────┘
+#### 📊 Page Load Times (Average over 5 iterations)
 
-📈 Performance Summary:
-   Average Load Time: 1,082ms
-   Best Performance: About page (891ms)
-   Slowest Page: Homepage (1,247ms)
-   Overall Grade: A (All pages under 3s target)
+| Page | Load Time | TTFB | Status | Target |
+|------|-----------|------|--------|--------|
+| Homepage (/) | 1,247ms | 234ms | ✅ PASS | <3000ms |
+| Search | 1,156ms | 189ms | ✅ PASS | <3000ms |
+| About | 891ms | 145ms | ✅ PASS | <3000ms |
+| Contact | 1,034ms | 167ms | ✅ PASS | <3000ms |
+
+#### 📈 Performance Summary
+- **Average Load Time**: 1,082ms
+- **Best Performance**: About page (891ms)
+- **Slowest Page**: Homepage (1,247ms)
+- **Overall Grade**: A (All pages under 3s target)
 ```
 
 #### 2. API Performance

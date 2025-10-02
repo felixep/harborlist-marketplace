@@ -10,36 +10,71 @@ The HarborList security framework implements a comprehensive, defense-in-depth s
 
 ### **Defense in Depth Model**
 
-```
-🌐 Edge Layer (Cloudflare)
-├── DDoS Protection
-├── Web Application Firewall (WAF)
-├── Rate Limiting
-└── Geographic Blocking
+### **Defense in Depth Security Model**
 
-🚪 API Gateway Layer
-├── Authentication Validation
-├── Request Rate Limiting
-├── Input Sanitization
-└── API Key Management
-
-⚡ Application Layer (Lambda)
-├── Business Logic Security
-├── Authorization Checks
-├── Data Validation
-└── Audit Logging
-
-🗄️ Data Layer (DynamoDB)
-├── Encryption at Rest
-├── Access Control Lists
-├── Backup Encryption
-└── Network Isolation
-
-🔐 Identity Layer
-├── Multi-Factor Authentication
-├── Role-Based Access Control
-├── Session Management
-└── Token Security
+```mermaid
+graph TB
+    subgraph "🌐 Edge Layer - Cloudflare"
+        EdgeDDoS[DDoS Protection<br/>• Volumetric Attack Mitigation<br/>• Rate-based Protection<br/>• Behavioral Analysis]
+        EdgeWAF[Web Application Firewall<br/>• OWASP Rule Set<br/>• Custom Security Rules<br/>• Bot Management]
+        EdgeRate[Rate Limiting<br/>• Per-IP Limits<br/>• API Endpoint Limits<br/>• Adaptive Thresholds]
+        EdgeGeo[Geographic Blocking<br/>• Country-based Filtering<br/>• Threat Intelligence<br/>• Custom Allow/Block Lists]
+    end
+    
+    subgraph "🚪 API Gateway Layer"
+        APIAuth[Authentication Validation<br/>• JWT Token Verification<br/>• API Key Validation<br/>• Request Signing]
+        APIRate[Request Rate Limiting<br/>• Usage Plans<br/>• Throttling Policies<br/>• Burst Capacity]
+        APISanitize[Input Sanitization<br/>• Schema Validation<br/>• XSS Prevention<br/>• SQL Injection Protection]
+        APIKey[API Key Management<br/>• Key Rotation<br/>• Usage Tracking<br/>• Access Control]
+    end
+    
+    subgraph "⚡ Application Layer - Lambda"
+        AppLogic[Business Logic Security<br/>• Input Validation<br/>• Business Rule Enforcement<br/>• Error Handling]
+        AppAuth[Authorization Checks<br/>• RBAC Implementation<br/>• Permission Validation<br/>• Resource Access Control]
+        AppValidation[Data Validation<br/>• Type Checking<br/>• Range Validation<br/>• Format Verification]
+        AppAudit[Audit Logging<br/>• Action Tracking<br/>• User Activity Logs<br/>• Security Events]
+    end
+    
+    subgraph "🗄️ Data Layer - DynamoDB"
+        DataEncrypt[Encryption at Rest<br/>• AWS KMS Integration<br/>• Customer Managed Keys<br/>• Automatic Encryption]
+        DataACL[Access Control Lists<br/>• IAM Policies<br/>• Resource-based Policies<br/>• Least Privilege Access]
+        DataBackup[Backup Encryption<br/>• Point-in-time Recovery<br/>• Encrypted Backups<br/>• Cross-region Replication]
+        DataNetwork[Network Isolation<br/>• VPC Endpoints<br/>• Private Subnets<br/>• Security Groups]
+    end
+    
+    subgraph "🔐 Identity Layer"
+        IdMFA[Multi-Factor Authentication<br/>• TOTP Support<br/>• SMS Backup<br/>• Recovery Codes]
+        IdRBAC[Role-Based Access Control<br/>• Granular Permissions<br/>• Role Hierarchy<br/>• Dynamic Authorization]
+        IdSession[Session Management<br/>• Secure Session Storage<br/>• Session Timeout<br/>• Concurrent Session Limits]
+        IdToken[Token Security<br/>• JWT Best Practices<br/>• Token Rotation<br/>• Secure Storage]
+    end
+    
+    %% Flow connections
+    EdgeDDoS --> APIAuth
+    EdgeWAF --> APIAuth
+    EdgeRate --> APIRate
+    EdgeGeo --> APIAuth
+    
+    APIAuth --> AppLogic
+    APIRate --> AppAuth
+    APISanitize --> AppValidation
+    APIKey --> AppAuth
+    
+    AppLogic --> DataEncrypt
+    AppAuth --> DataACL
+    AppValidation --> DataEncrypt
+    AppAudit --> DataBackup
+    
+    IdMFA --> APIAuth
+    IdRBAC --> AppAuth
+    IdSession --> AppAuth
+    IdToken --> APIAuth
+    
+    style EdgeDDoS fill:#ff9800,stroke:#e65100,stroke-width:2px
+    style APIAuth fill:#2196f3,stroke:#0d47a1,stroke-width:2px
+    style AppLogic fill:#4caf50,stroke:#1b5e20,stroke-width:2px
+    style DataEncrypt fill:#9c27b0,stroke:#4a148c,stroke-width:2px
+    style IdMFA fill:#f44336,stroke:#b71c1c,stroke-width:2px
 ```
 
 ### **Threat Model**

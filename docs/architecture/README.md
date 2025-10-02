@@ -549,107 +549,141 @@ graph TB
     style ReactOpt fill:#e8f5e8
     style LambdaConcurrency fill:#fff3e0
     style RealUserMonitoring fill:#f3e5f5
+### **Complete System Architecture Overview**
+
+```mermaid
+graph TB
+    subgraph "Frontend Layer"
+        UI[React 18 SPA<br/>• Modern Hooks<br/>• TypeScript<br/>• PWA Support]
+        Admin[Admin Dashboard<br/>• User Management<br/>• Analytics<br/>• Content Moderation]
+    end
+    
+    subgraph "CDN & Security Layer"
+        CF[Cloudflare CDN<br/>• 200+ Edge Locations<br/>• DDoS Protection<br/>• WAF & Bot Management]
+        Security[Security Features<br/>• Rate Limiting<br/>• IP Filtering<br/>• Geographic Blocking]
+    end
+    
+    subgraph "AWS Infrastructure"
+        subgraph "API Layer"
+            APIGW[API Gateway<br/>• Request Routing<br/>• Authentication<br/>• Rate Limiting<br/>• CORS & Validation]
+        end
+        
+        subgraph "Application Services"
+            Auth[🔐 Auth Service<br/>• Login/Register<br/>• JWT Management<br/>• MFA Support<br/>• Session Management]
+            
+            Listing[🚢 Listing Service<br/>• CRUD Operations<br/>• Search & Filter<br/>• Media Integration<br/>• Validation]
+            
+            Admin2[👤 Admin Service<br/>• User Management<br/>• Content Review<br/>• Analytics Dashboard<br/>• System Config]
+            
+            Media[📸 Media Service<br/>• Image Upload<br/>• Processing<br/>• CDN Integration<br/>• Optimization]
+            
+            Email[📧 Email Service<br/>• Notifications<br/>• Welcome Emails<br/>• System Alerts<br/>• Templates]
+            
+            Stats[📊 Stats Service<br/>• Platform Metrics<br/>• User Analytics<br/>• Performance Tracking<br/>• Business Intelligence]
+        end
+        
+        subgraph "Data Layer"
+            DDB[DynamoDB<br/>• Core Tables<br/>• Global Secondary Indexes<br/>• Auto-scaling<br/>• Point-in-time Recovery]
+            
+            S3[S3 Storage<br/>• Media Files<br/>• Static Hosting<br/>• Backup & Archive<br/>• Lifecycle Management]
+        end
+        
+        subgraph "Monitoring & Security"
+            CW[CloudWatch<br/>• Application Metrics<br/>• Infrastructure Logs<br/>• Custom Dashboards<br/>• Alarm Management]
+            
+            Secrets[Secrets Manager<br/>• JWT Secrets<br/>• API Keys<br/>• Database Credentials<br/>• Encryption Keys]
+        end
+    end
+    
+    %% User Flow
+    Users[Users] --> CF
+    CF --> Security
+    Security --> UI
+    Security --> Admin
+    
+    %% API Flow
+    UI --> APIGW
+    Admin --> APIGW
+    
+    %% Service Routing
+    APIGW --> Auth
+    APIGW --> Listing
+    APIGW --> Admin2
+    APIGW --> Media
+    APIGW --> Email
+    APIGW --> Stats
+    
+    %% Data Access
+    Auth --> DDB
+    Listing --> DDB
+    Admin2 --> DDB
+    Stats --> DDB
+    
+    Media --> S3
+    
+    %% Security & Monitoring
+    Auth --> Secrets
+    Auth --> CW
+    Listing --> CW
+    Admin2 --> CW
+    Media --> CW
+    Email --> CW
+    Stats --> CW
+    
+    %% Styling
+    style UI fill:#e1f5fe,stroke:#01579b,stroke-width:2px
+    style Admin fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+    style CF fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    style Auth fill:#ffebee,stroke:#c62828,stroke-width:2px
+    style Listing fill:#e8f5e8,stroke:#2e7d32,stroke-width:2px
+    style Admin2 fill:#f3e5f5,stroke:#6a1b9a,stroke-width:2px
+    style Media fill:#fff8e1,stroke:#f57f17,stroke-width:2px
+    style Email fill:#e0f2f1,stroke:#00695c,stroke-width:2px
+    style Stats fill:#fce4ec,stroke:#ad1457,stroke-width:2px
+    style DDB fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
+    style S3 fill:#fff8e1,stroke:#f9a825,stroke-width:2px
+    style CW fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
+    style Secrets fill:#fce4ec,stroke:#c2185b,stroke-width:2px
 ```
-│  │                                                                       │   │
-│  └───────────────────────────────────────────────────────────────────────┘   │
-└───────────────────────────────────────────────────────────────────────────────┘
-                                      │
-                                   HTTPS │
-                                      ▼
-┌─── API Gateway Layer ─────────────────────────────────────────────────────────┐
-│                                                                               │
-│  ┌─── AWS API Gateway ──────────────────────────────────────────────────┐    │
-│  │                                                                       │    │
-│  │  • Request Routing         • CORS Configuration                      │    │
-│  │  • Request/Response        • Request Validation                      │    │
-│  │    Transformation          • Throttling & Quotas                     │    │
-│  │  • Authentication          • Request/Response Caching                │    │
-│  │    Integration             • Monitoring & Logging                    │    │
-│  │                                                                       │    │
-│  └───────────────────────────────────────────────────────────────────────┘    │
-└───────────────────────────────────────────────────────────────────────────────┘
-                                      │
-                            Lambda Invocation │
-                                      ▼
-┌─── Application Services Layer ────────────────────────────────────────────────┐
-│                                                                               │
-│  ┌─ Auth Service ──┐  ┌─ Listing Service ─┐  ┌─ Admin Service ──┐           │
-│  │                 │  │                   │  │                  │           │
-│  │ • User Login    │  │ • CRUD Operations │  │ • User Mgmt      │           │
-│  │ • Registration  │  │ • Search & Filter │  │ • Content Review │           │
-│  │ • JWT Tokens    │  │ • Media Upload    │  │ • Analytics      │           │
-│  │ • MFA Support   │  │ • Validation      │  │ • Audit Logs     │           │
-│  │ • Session Mgmt  │  │                   │  │ • System Config  │           │
-│  │                 │  │                   │  │                  │           │
-│  └─────────────────┘  └───────────────────┘  └──────────────────┘           │
-│                                                                               │
-│  ┌─ Media Service ──┐  ┌─ Email Service ──┐  ┌─ Stats Service ──┐           │
-│  │                  │  │                  │  │                  │           │
-│  │ • Image Upload   │  │ • Notifications  │  │ • Platform Stats │           │
-│  │ • Processing     │  │ • Welcome Emails │  │ • User Analytics │           │
-│  │ • Optimization   │  │ • System Alerts  │  │ • Performance    │           │
-│  │ • CDN Integration│  │ • Templates      │  │   Metrics        │           │
-│  │                  │  │                  │  │ • Reporting      │           │
-│  │                  │  │                  │  │                  │           │
-│  └──────────────────┘  └──────────────────┘  └──────────────────┘           │
-│                                                                               │
-│                     Node.js 18 + TypeScript Lambda Functions                 │
-└───────────────────────────────────────────────────────────────────────────────┘
-                                      │
-                              DynamoDB API │
-                                      ▼
-┌─── Data Layer ────────────────────────────────────────────────────────────────┐
-│                                                                               │
-│  ┌─── Amazon DynamoDB ──────────────────────────────────────────────────┐    │
-│  │                                                                       │    │
-│  │  ┌─ Core Tables ──────────────────────────────────────────────────┐  │    │
-│  │  │                                                                 │  │    │
-│  │  │ • boat-listings      • boat-users        • boat-reviews       │  │    │
-│  │  │ • boat-sessions      • boat-audit-logs   • boat-admin-users   │  │    │
-│  │  │ • boat-login-attempts • boat-admin-sessions                    │  │    │
-│  │  │                                                                 │  │    │
-│  │  └─────────────────────────────────────────────────────────────────┘  │    │
-│  │                                                                       │    │
-│  │  ┌─ Global Secondary Indexes (GSI) ───────────────────────────────┐  │    │
-│  │  │                                                                 │  │    │
-│  │  │ • UserEmailIndex     • ListingStatusIndex                      │  │    │
-│  │  │ • SessionDeviceIndex • AuditLogResourceIndex                   │  │    │
-│  │  │ • AdminRoleIndex     • TimestampIndex                          │  │    │
-│  │  │                                                                 │  │    │
-│  │  └─────────────────────────────────────────────────────────────────┘  │    │
-│  │                                                                       │    │
-│  └───────────────────────────────────────────────────────────────────────┘    │
-│                                                                               │
-│  ┌─── Amazon S3 ─────────────────────────────────────────────────────────┐   │
-│  │                                                                       │   │
-│  │ • Media Storage          • Static Website Hosting                    │   │
-│  │ • Image Processing       • Backup & Archive                          │   │
-│  │ • CDN Integration        • Lifecycle Management                      │   │
-│  │                                                                       │   │
-│  └───────────────────────────────────────────────────────────────────────┘   │
-└───────────────────────────────────────────────────────────────────────────────┘
-                                      │
-                           CloudWatch API │
-                                      ▼
-┌─── Monitoring & Observability Layer ──────────────────────────────────────────┐
-│                                                                               │
-│  ┌─── AWS CloudWatch ───────────────────────────────────────────────────┐    │
-│  │                                                                       │    │
-│  │ • Application Metrics    • Custom Dashboards                         │    │
-│  │ • Infrastructure Logs    • Alarm Management                          │    │
-│  │ • Performance Tracking   • SNS Notifications                         │    │
-│  │ • Error Monitoring       • Cost Tracking                             │    │
-│  │                                                                       │    │
-│  └───────────────────────────────────────────────────────────────────────┘    │
-│                                                                               │
-│  ┌─── AWS Secrets Manager ──────────────────────────────────────────────┐    │
-│  │                                                                       │    │
-│  │ • JWT Secrets            • API Keys                                   │    │
-│  │ • Database Credentials   • Third-party Tokens                        │    │
-│  │ • Encryption Keys        • Configuration Secrets                     │    │
-│  │                                                                       │    │
-│  └───────────────────────────────────────────────────────────────────────┘    │
-└───────────────────────────────────────────────────────────────────────────────┘
+
+### **Database Architecture & Table Relationships**
+
+```mermaid
+graph LR
+    subgraph "Core Tables"
+        Users[boat-users<br/>• User profiles<br/>• Authentication data<br/>• Preferences]
+        Listings[boat-listings<br/>• Boat details<br/>• Pricing & availability<br/>• Media references]
+        Reviews[boat-reviews<br/>• User feedback<br/>• Ratings<br/>• Comments]
+        Sessions[boat-sessions<br/>• Active sessions<br/>• Device tracking<br/>• Expiration]
+        AuditLogs[boat-audit-logs<br/>• System actions<br/>• User activities<br/>• Admin operations]
+        AdminUsers[boat-admin-users<br/>• Admin accounts<br/>• Permissions<br/>• Role assignments]
+        LoginAttempts[boat-login-attempts<br/>• Security tracking<br/>• Failed attempts<br/>• IP monitoring]
+    end
+    
+    subgraph "Global Secondary Indexes"
+        UserEmail[UserEmailIndex<br/>• Fast user lookup<br/>• Email verification]
+        ListingStatus[ListingStatusIndex<br/>• Active listings<br/>• Status filtering]
+        SessionDevice[SessionDeviceIndex<br/>• Device management<br/>• Multi-session tracking]
+        AuditResource[AuditLogResourceIndex<br/>• Resource-based queries<br/>• Compliance reporting]
+        AdminRole[AdminRoleIndex<br/>• Role-based access<br/>• Permission queries]
+        Timestamp[TimestampIndex<br/>• Time-based queries<br/>• Analytics support]
+    end
+    
+    %% Relationships
+    Users -.-> UserEmail
+    Listings -.-> ListingStatus
+    Sessions -.-> SessionDevice
+    AuditLogs -.-> AuditResource
+    AdminUsers -.-> AdminRole
+    AuditLogs -.-> Timestamp
+    
+    style Users fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
+    style Listings fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
+    style Reviews fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    style Sessions fill:#fce4ec,stroke:#c2185b,stroke-width:2px
+    style AuditLogs fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    style AdminUsers fill:#ffebee,stroke:#d32f2f,stroke-width:2px
+    style LoginAttempts fill:#e0f2f1,stroke:#00796b,stroke-width:2px
 ```
 
 ---
@@ -746,47 +780,53 @@ sequenceDiagram
 
 ### **Multi-Layer Security Model**
 
-```
-┌─── External Threats ─────────────────────────────────────────────────┐
-│                                                                      │
-│ ┌─── Cloudflare Security Layer ─────────────────────────────────┐    │
-│ │                                                               │    │
-│ │ • DDoS Protection        • Bot Management                     │    │
-│ │ • WAF Rules             • Geographic Blocking                 │    │
-│ │ • Rate Limiting         • SSL/TLS Termination                 │    │
-│ │                                                               │    │
-│ └───────────────────────────────────────────────────────────────┘    │
-│                                 │                                    │
-│                            HTTPS │                                    │
-│                                 ▼                                    │
-│ ┌─── API Gateway Security ──────────────────────────────────────┐    │
-│ │                                                               │    │
-│ │ • Request Validation    • CORS Configuration                  │    │
-│ │ • Input Sanitization    • Request Size Limits                │    │
-│ │ • Authentication        • Response Headers                    │    │
-│ │                                                               │    │
-│ └───────────────────────────────────────────────────────────────┘    │
-│                                 │                                    │
-│                        Lambda │                                      │
-│                                 ▼                                    │
-│ ┌─── Application Security ──────────────────────────────────────┐    │
-│ │                                                               │    │
-│ │ • JWT Verification      • Role-Based Access Control (RBAC)    │    │
-│ │ • Input Validation      • SQL Injection Prevention           │    │
-│ │ • XSS Protection        • Business Logic Security            │    │
-│ │                                                               │    │
-│ └───────────────────────────────────────────────────────────────┘    │
-│                                 │                                    │
-│                          Data │                                      │
-│                                 ▼                                    │
-│ ┌─── Data Security ─────────────────────────────────────────────┐    │
-│ │                                                               │    │
-│ │ • Encryption at Rest    • IAM Policies                       │    │
-│ │ • Encryption in Transit • Least Privilege Access             │    │
-│ │ • Audit Logging         • Data Classification                │    │
-│ │                                                               │    │
-│ └───────────────────────────────────────────────────────────────┘    │
-└──────────────────────────────────────────────────────────────────────┘
+### **Multi-Layer Security Architecture**
+
+```mermaid
+graph TB
+    subgraph "External Threats"
+        Threats[🚨 Security Threats<br/>• DDoS Attacks<br/>• Bot Traffic<br/>• Malicious Requests<br/>• Geographic Attacks]
+    end
+    
+    subgraph "Cloudflare Security Layer"
+        CF_Security[🛡️ Cloudflare Protection<br/>• DDoS Protection<br/>• WAF Rules<br/>• Bot Management<br/>• Geographic Blocking<br/>• Rate Limiting<br/>• SSL/TLS Termination]
+    end
+    
+    subgraph "API Gateway Security"
+        API_Security[🔒 API Gateway<br/>• Request Validation<br/>• Input Sanitization<br/>• CORS Configuration<br/>• Request Size Limits<br/>• Authentication<br/>• Response Headers]
+    end
+    
+    subgraph "Application Security"
+        App_Security[⚡ Lambda Security<br/>• JWT Verification<br/>• Role-Based Access Control<br/>• Input Validation<br/>• SQL Injection Prevention<br/>• XSS Protection<br/>• Business Logic Security]
+    end
+    
+    subgraph "Data Security"
+        Data_Security[🗄️ Data Protection<br/>• Encryption at Rest<br/>• Encryption in Transit<br/>• IAM Policies<br/>• Least Privilege Access<br/>• Audit Logging<br/>• Data Classification]
+    end
+    
+    subgraph "Monitoring & Response"
+        Security_Monitoring[📊 Security Monitoring<br/>• Real-time Alerts<br/>• Threat Detection<br/>• Incident Response<br/>• Compliance Reporting<br/>• Security Metrics]
+    end
+    
+    %% Flow
+    Threats --> CF_Security
+    CF_Security --> API_Security
+    API_Security --> App_Security
+    App_Security --> Data_Security
+    Data_Security --> Security_Monitoring
+    
+    %% Feedback loops
+    Security_Monitoring -.-> CF_Security
+    Security_Monitoring -.-> API_Security
+    Security_Monitoring -.-> App_Security
+    
+    %% Styling
+    style Threats fill:#ffcdd2,stroke:#d32f2f,stroke-width:3px
+    style CF_Security fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
+    style API_Security fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
+    style App_Security fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    style Data_Security fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    style Security_Monitoring fill:#e0f2f1,stroke:#00796b,stroke-width:2px
 ```
 
 ### **Authentication & Authorization Matrix**
@@ -845,38 +885,74 @@ sequenceDiagram
 
 ### **Environment Strategy**
 
+### **Multi-Environment Strategy**
+
+```mermaid
+graph TD
+    subgraph "Development Environment"
+        Dev[🔧 Development<br/>• Minimal Resources<br/>• Debug Logging<br/>• Relaxed Security<br/>• Mock Integrations<br/>• Synthetic Data]
+    end
+    
+    subgraph "Staging Environment"
+        Staging[🧪 Staging<br/>• Production-like Config<br/>• Full Security Testing<br/>• Performance Testing<br/>• Integration Testing<br/>• Load Simulation]
+    end
+    
+    subgraph "Production Environment"
+        Prod[🚀 Production<br/>• High Availability<br/>• Disaster Recovery<br/>• Production Monitoring<br/>• Auto-scaling<br/>• Compliance Procedures]
+    end
+    
+    subgraph "CI/CD Pipeline"
+        Pipeline[⚙️ Automated Pipeline<br/>• Code Quality Checks<br/>• Security Scanning<br/>• Automated Testing<br/>• Deployment Automation<br/>• Rollback Capabilities]
+    end
+    
+    Dev -->|Promotion| Staging
+    Staging -->|Promotion| Prod
+    Pipeline -.->|Manages| Dev
+    Pipeline -.->|Manages| Staging
+    Pipeline -.->|Manages| Prod
+    
+    style Dev fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
+    style Staging fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    style Prod fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
+    style Pipeline fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
 ```
-┌─── Development Environment ─────────────────────────────────┐
-│                                                             │
-│ • Minimal resources for cost efficiency                     │
-│ • Debug logging and detailed monitoring                     │
-│ • Relaxed security for development convenience              │
-│ • Synthetic test data and mock integrations                 │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
-                                │
-                     Promotion │
-                                ▼
-┌─── Staging Environment ─────────────────────────────────────┐
-│                                                             │
-│ • Production-like configuration and data volume             │
-│ • Full security implementation and testing                  │
-│ • Performance testing and load simulation                   │
-│ • Integration testing with external services                │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
-                                │
-                     Promotion │
-                                ▼
-┌─── Production Environment ──────────────────────────────────┐
-│                                                             │
-│ • High availability and disaster recovery                   │
-│ • Production monitoring and alerting                        │
-│ • Backup and compliance procedures                          │
-│ • Performance optimization and auto-scaling                 │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
-```
+
+---
+
+## 📋 **Architecture Summary**
+
+### **Key Architecture Benefits**
+
+✅ **Scalability**: Serverless architecture with automatic scaling  
+✅ **Security**: Multi-layer security with comprehensive protection  
+✅ **Performance**: Global CDN with edge caching and optimization  
+✅ **Reliability**: High availability with disaster recovery  
+✅ **Cost Efficiency**: Pay-per-use model with resource optimization  
+✅ **Maintainability**: Microservices with clear separation of concerns  
+✅ **Observability**: Comprehensive monitoring and logging  
+✅ **Compliance**: Built-in audit trails and security controls  
+
+### **Technology Stack Summary**
+
+| Layer | Technologies | Purpose |
+|-------|-------------|---------|
+| **Frontend** | React 18, TypeScript, PWA | Modern user interface |
+| **CDN** | Cloudflare | Global content delivery & security |
+| **API** | AWS API Gateway | Request routing & authentication |
+| **Compute** | AWS Lambda (Node.js 18) | Serverless application logic |
+| **Database** | DynamoDB | NoSQL data storage |
+| **Storage** | S3 | Media files & static assets |
+| **Security** | AWS Secrets Manager, IAM | Credential & access management |
+| **Monitoring** | CloudWatch, X-Ray | Observability & performance |
+| **Deployment** | AWS CDK, GitHub Actions | Infrastructure as code & CI/CD |
+
+### **Next Steps**
+
+1. **Review** the detailed architecture documents in each specialized section
+2. **Implement** following the microservices patterns outlined
+3. **Monitor** using the observability patterns described
+4. **Scale** using the performance optimization strategies
+5. **Secure** following the multi-layer security model
 
 ---
 

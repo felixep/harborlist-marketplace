@@ -17,15 +17,66 @@ The HarborList tools integrate seamlessly with the platform's architecture:
 ## 📍 **Tools Location**
 
 All tools are located in the project's `tools/` directory:
-```
-tools/
-├── deployment/      # Deployment and verification scripts
-├── monitoring/      # Health checks and performance monitoring  
-├── cost-management/ # Cost analysis and billing management
-├── performance/     # Load testing and performance benchmarks
-├── cloudflare/      # CDN and tunnel management
-├── utilities/       # General maintenance and validation tools
-└── security/        # Security testing and compliance tools
+### **DevOps Tools Organization**
+
+```mermaid
+graph TB
+    subgraph "HarborList DevOps Tools"
+        ToolsRoot[tools/<br/>🛠️ DevOps Automation Suite<br/>25+ Specialized Scripts]
+        
+        subgraph "Core Tool Categories"
+            Deployment[deployment/<br/>🚀 Deployment & Verification<br/>• Infrastructure Deployment<br/>• Environment Validation<br/>• Rollback Procedures<br/>• CDK Integration]
+            
+            Monitoring[monitoring/<br/>📊 Health & Performance Monitoring<br/>• System Health Checks<br/>• Performance Tracking<br/>• Alert Management<br/>• Status Reporting]
+            
+            CostMgmt[cost-management/<br/>💰 Cost Analysis & Billing<br/>• Billing Monitoring<br/>• Cost Analysis Reports<br/>• Budget Alerts<br/>• Resource Optimization]
+            
+            Performance[performance/<br/>⚡ Load Testing & Benchmarks<br/>• API Performance Tests<br/>• Load Testing Scripts<br/>• DNS Performance<br/>• Comprehensive Testing]
+            
+            Cloudflare[cloudflare/<br/>🌐 CDN & Tunnel Management<br/>• Tunnel Configuration<br/>• Cache Management<br/>• DNS Operations<br/>• Security Rules]
+            
+            Utilities[utilities/<br/>🔧 Maintenance & Validation<br/>• Infrastructure Validation<br/>• Database Maintenance<br/>• General Utilities<br/>• Admin Tools]
+            
+            Security[security/<br/>🔒 Security Testing & Compliance<br/>• Security Validation<br/>• Compliance Checks<br/>• Vulnerability Scanning<br/>• Audit Tools]
+        end
+        
+        subgraph "Integration Points"
+            AWS[AWS Services<br/>• CloudWatch<br/>• DynamoDB<br/>• Lambda<br/>• S3]
+            
+            CloudflareAPI[Cloudflare API<br/>• DNS Management<br/>• Cache Control<br/>• Security Rules<br/>• Analytics]
+            
+            CICD[CI/CD Pipeline<br/>• GitHub Actions<br/>• Automated Testing<br/>• Deployment Automation<br/>• Quality Gates]
+        end
+    end
+    
+    ToolsRoot --> Deployment
+    ToolsRoot --> Monitoring
+    ToolsRoot --> CostMgmt
+    ToolsRoot --> Performance
+    ToolsRoot --> Cloudflare
+    ToolsRoot --> Utilities
+    ToolsRoot --> Security
+    
+    Deployment --> AWS
+    Monitoring --> AWS
+    CostMgmt --> AWS
+    Performance --> AWS
+    Cloudflare --> CloudflareAPI
+    Utilities --> AWS
+    Security --> AWS
+    
+    Deployment --> CICD
+    Monitoring --> CICD
+    Performance --> CICD
+    
+    style ToolsRoot fill:#e3f2fd,stroke:#1565c0,stroke-width:3px
+    style Deployment fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
+    style Monitoring fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    style CostMgmt fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    style Performance fill:#ffebee,stroke:#d32f2f,stroke-width:2px
+    style Cloudflare fill:#e0f2f1,stroke:#00796b,stroke-width:2px
+    style Utilities fill:#fce4ec,stroke:#ad1457,stroke-width:2px
+    style Security fill:#e8eaf6,stroke:#3f51b5,stroke-width:2px
 ```
 
 The HarborList infrastructure includes **25+ specialized scripts** that automate various aspects of platform management, from deployment and monitoring to cost optimization and performance testing.

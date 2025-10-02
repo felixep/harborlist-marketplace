@@ -42,40 +42,42 @@ export class BoatListingStack extends cdk.Stack {
 
 The platform supports three environments with different resource configurations:
 
-```
-┌─── Development Environment ────────────────────────────────┐
-│                                                            │
-│ • Minimal resource allocation for cost efficiency          │
-│ • Debug logging enabled with detailed error messages      │
-│ • Relaxed security policies for development convenience    │
-│ • Mock data and simplified integrations                    │
-│ • Domain: dev.harborlist.com                              │
-│                                                            │
-└────────────────────────────────────────────────────────────┘
-                               │
-                    Promotion │
-                               ▼
-┌─── Staging Environment ────────────────────────────────────┐
-│                                                            │
-│ • Production-like resource configuration                   │
-│ • Full security implementation and validation              │
-│ • Performance testing and load simulation                  │
-│ • Integration testing with external services               │
-│ • Domain: staging.harborlist.com                          │
-│                                                            │
-└────────────────────────────────────────────────────────────┘
-                               │
-                    Promotion │
-                               ▼
-┌─── Production Environment ─────────────────────────────────┐
-│                                                            │
-│ • High availability and disaster recovery                  │
-│ • Production monitoring and 24/7 alerting                 │
-│ • Automated backup and compliance procedures               │
-│ • Performance optimization and auto-scaling                │
-│ • Domain: harborlist.com                                  │
-│                                                            │
-└────────────────────────────────────────────────────────────┘
+### **Environment Promotion Strategy**
+
+```mermaid
+graph TD
+    subgraph "Development Environment"
+        Dev[🔧 Development<br/>dev.harborlist.com<br/><br/>• Minimal resource allocation<br/>• Debug logging enabled<br/>• Relaxed security policies<br/>• Mock data & integrations<br/>• Cost-optimized configuration]
+    end
+    
+    subgraph "Staging Environment"
+        Staging[🧪 Staging<br/>staging.harborlist.com<br/><br/>• Production-like configuration<br/>• Full security implementation<br/>• Performance & load testing<br/>• External service integration<br/>• Validation & QA testing]
+    end
+    
+    subgraph "Production Environment"
+        Prod[🚀 Production<br/>harborlist.com<br/><br/>• High availability & DR<br/>• 24/7 monitoring & alerting<br/>• Automated backup procedures<br/>• Performance optimization<br/>• Auto-scaling enabled]
+    end
+    
+    subgraph "Promotion Gates"
+        DevGate[Development Gate<br/>✅ Unit Tests Pass<br/>✅ Code Quality Checks<br/>✅ Security Scan<br/>✅ Feature Complete]
+        
+        StagingGate[Staging Gate<br/>✅ Integration Tests Pass<br/>✅ Performance Benchmarks<br/>✅ Security Validation<br/>✅ UAT Approval]
+    end
+    
+    Dev -->|Code Review & CI/CD| DevGate
+    DevGate -->|Automated Promotion| Staging
+    Staging -->|Manual Validation| StagingGate
+    StagingGate -->|Approved Release| Prod
+    
+    %% Rollback paths
+    Staging -.->|Rollback if Issues| Dev
+    Prod -.->|Emergency Rollback| Staging
+    
+    style Dev fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
+    style Staging fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    style Prod fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
+    style DevGate fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    style StagingGate fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
 ```
 
 ---

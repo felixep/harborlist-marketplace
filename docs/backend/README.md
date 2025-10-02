@@ -12,33 +12,86 @@ The HarborList backend is a microservices-based architecture built with Node.js 
 
 ### **Actual Service Structure**
 
-```bash
-# Current backend/src/ directory structure
-backend/src/
-├── admin-service/          # Administrative operations (RBAC, analytics)
-│   ├── index.ts           # Main Lambda handler with routing
-│   ├── versioning.ts      # API versioning support
-│   └── *.test.ts         # Comprehensive test suite
-├── auth-service/          # JWT authentication & session management
-│   └── index.ts          # Authentication handlers & MFA
-├── listing/               # Boat listing CRUD operations
-│   └── index.ts          # Listing management with ownership validation
-├── listing-service/       # Enhanced listing operations
-│   └── auth.ts           # Authentication utilities for listings
-├── search/                # Advanced search & filtering
-│   └── index.ts          # DynamoDB-based search (no OpenSearch yet)
-├── media/                 # S3 media upload & processing
-│   └── index.ts          # Presigned URL generation & Sharp processing
-├── email/                 # SES email notifications
-│   └── index.ts          # Template-based email service
-├── stats-service/         # Platform analytics & metrics
-│   └── index.ts          # Real-time statistics aggregation
-├── shared/                # Common utilities & middleware
-│   ├── database.ts       # DynamoDB client & utilities
-│   ├── utils.ts          # Response formatting & validation
-│   └── middleware.ts     # Auth, rate limiting, audit logging
-└── types/                 # TypeScript type definitions
-    └── common.ts         # Shared interfaces & enums
+### **Backend Microservices Architecture**
+
+```mermaid
+graph TB
+    subgraph "Backend Services - backend/src/"
+        BackendRoot[backend/src/<br/>🔧 Node.js 18 + TypeScript<br/>Microservices Architecture]
+        
+        subgraph "Core Services"
+            AdminService[admin-service/<br/>👤 Administrative Operations<br/>• RBAC Implementation<br/>• Analytics Dashboard<br/>• User Management<br/>• Audit Logging]
+            
+            AuthService[auth-service/<br/>🔐 Authentication & Security<br/>• JWT Token Management<br/>• MFA Support<br/>• Session Management<br/>• Password Security]
+            
+            ListingService[listing/<br/>🚢 Boat Listing Management<br/>• CRUD Operations<br/>• Ownership Validation<br/>• Status Management<br/>• Business Rules]
+            
+            ListingEnhanced[listing-service/<br/>🚢 Enhanced Listing Operations<br/>• Authentication Utilities<br/>• Advanced Validation<br/>• Extended Features]
+        end
+        
+        subgraph "Specialized Services"
+            SearchService[search/<br/>🔍 Search & Filtering<br/>• DynamoDB-based Search<br/>• Advanced Filtering<br/>• Geospatial Queries<br/>• Performance Optimization]
+            
+            MediaService[media/<br/>📸 Media Management<br/>• S3 Integration<br/>• Image Processing (Sharp)<br/>• Presigned URLs<br/>• CDN Integration]
+            
+            EmailService[email/<br/>📧 Email Communications<br/>• SES Integration<br/>• Template Management<br/>• Notification System<br/>• Delivery Tracking]
+            
+            StatsService[stats-service/<br/>📊 Analytics & Metrics<br/>• Real-time Statistics<br/>• Business Intelligence<br/>• Performance Metrics<br/>• Reporting]
+        end
+        
+        subgraph "Shared Infrastructure"
+            SharedUtils[shared/<br/>🔄 Common Utilities<br/>• database.ts - DynamoDB Client<br/>• utils.ts - Response Formatting<br/>• middleware.ts - Auth & Logging]
+            
+            TypeDefs[types/<br/>📝 TypeScript Definitions<br/>• common.ts - Shared Interfaces<br/>• API Types & Enums<br/>• Database Schemas<br/>• Response Models]
+        end
+        
+        subgraph "Service Implementation Details"
+            AdminImpl[Admin Service Files<br/>• index.ts - Main Handler<br/>• versioning.ts - API Versions<br/>• *.test.ts - Test Suite]
+            
+            AuthImpl[Auth Service Files<br/>• index.ts - Auth Handlers<br/>• JWT Management<br/>• MFA Implementation]
+            
+            ListingImpl[Listing Service Files<br/>• index.ts - CRUD Operations<br/>• Validation Logic<br/>• Business Rules]
+        end
+    end
+    
+    BackendRoot --> AdminService
+    BackendRoot --> AuthService
+    BackendRoot --> ListingService
+    BackendRoot --> ListingEnhanced
+    BackendRoot --> SearchService
+    BackendRoot --> MediaService
+    BackendRoot --> EmailService
+    BackendRoot --> StatsService
+    BackendRoot --> SharedUtils
+    BackendRoot --> TypeDefs
+    
+    AdminService --> AdminImpl
+    AuthService --> AuthImpl
+    ListingService --> ListingImpl
+    
+    %% Dependencies
+    AdminService -.-> SharedUtils
+    AuthService -.-> SharedUtils
+    ListingService -.-> SharedUtils
+    SearchService -.-> SharedUtils
+    MediaService -.-> SharedUtils
+    EmailService -.-> SharedUtils
+    StatsService -.-> SharedUtils
+    
+    AdminService -.-> TypeDefs
+    AuthService -.-> TypeDefs
+    ListingService -.-> TypeDefs
+    
+    style BackendRoot fill:#e3f2fd,stroke:#1565c0,stroke-width:3px
+    style AdminService fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    style AuthService fill:#ffebee,stroke:#d32f2f,stroke-width:2px
+    style ListingService fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
+    style SearchService fill:#e0f2f1,stroke:#00796b,stroke-width:2px
+    style MediaService fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    style EmailService fill:#fce4ec,stroke:#ad1457,stroke-width:2px
+    style StatsService fill:#e8eaf6,stroke:#3f51b5,stroke-width:2px
+    style SharedUtils fill:#f1f8e9,stroke:#689f38,stroke-width:2px
+    style TypeDefs fill:#fafafa,stroke:#616161,stroke-width:2px
 ```
 
 ### **Lambda Functions & Deployment**

@@ -2,6 +2,19 @@
 
 A comprehensive boat marketplace platform built as a modern, serverless web application. HarborList connects boat buyers and sellers through a robust, scalable platform with separate interfaces for public users and platform administrators.
 
+## 📖 Quick Navigation
+
+| Documentation | Description |
+|---------------|-------------|
+| **[🏗️ Architecture](./docs/architecture/README.md)** | Complete system architecture with professional diagrams |
+| **[🔧 Backend Services](./docs/backend/README.md)** | Microservices documentation and API specifications |
+| **[⚛️ Frontend App](./docs/frontend/README.md)** | React application architecture and components |
+| **[🔧 Operations](./docs/operations/README.md)** | Infrastructure management and deployment procedures |
+| **[🛡️ Security](./docs/security/README.md)** | Security framework and compliance documentation |
+| **[🛠️ DevOps Tools](./docs/tools/README.md)** | 25+ automation scripts and operational tools |
+
+> 💡 **New to the project?** Start with the [Architecture Documentation](./docs/architecture/README.md) for a comprehensive overview, then explore the specific areas relevant to your role.
+
 ## 🏗️ Architecture Overview
 
 ### Three-Tier Architecture
@@ -65,6 +78,8 @@ A comprehensive boat marketplace platform built as a modern, serverless web appl
 - AWS CLI configured
 - AWS CDK CLI installed
 
+> 📚 **Detailed Setup**: For comprehensive setup instructions, see the [Operations Guide](./docs/operations/README.md) and [Deployment Documentation](./docs/deployment/README.md).
+
 ### Quick Start
 
 1. **Clone the repository**
@@ -99,6 +114,8 @@ A comprehensive boat marketplace platform built as a modern, serverless web appl
    # Backend testing (in backend/)
    npm run test
    ```
+
+> 🛠️ **DevOps Tools**: Explore our [25+ automation scripts](./docs/tools/README.md) for deployment, monitoring, and maintenance tasks.
 
 ## 🔧 Development Commands
 
@@ -244,9 +261,78 @@ harborlist-marketplace/
 │   ├── cloudflare/      # Cloudflare tunnel management
 │   ├── utilities/       # General utilities
 │   └── security/        # Security and validation
-├── docs/                 # Project documentation
+├── docs/                 # Comprehensive project documentation
+│   ├── architecture/     # System architecture and design
+│   ├── backend/          # Backend services documentation
+│   ├── frontend/         # Frontend application documentation
+│   ├── operations/       # Operations and infrastructure guide
+│   ├── security/         # Security framework and compliance
+│   ├── tools/            # DevOps tools documentation
+│   ├── monitoring/       # Monitoring and observability
+│   ├── deployment/       # Deployment procedures
+│   ├── performance/      # Performance optimization
+│   └── troubleshooting/  # Troubleshooting guides
 └── certs/               # SSL certificates
 ```
+
+## 📚 Comprehensive Documentation
+
+This README provides a quick overview. For detailed information, explore our comprehensive documentation:
+
+### 🏗️ **[Architecture Documentation](./docs/architecture/README.md)**
+Complete system architecture with professional diagrams covering:
+- **System Overview**: Multi-layer architecture with Mermaid diagrams
+- **Microservices Design**: Service boundaries and communication patterns
+- **Database Architecture**: DynamoDB schema and relationships
+- **Security Architecture**: Multi-layer defense-in-depth model
+- **Performance Architecture**: Scalability and optimization patterns
+- **Data Flow Patterns**: Request lifecycle and authentication flows
+
+### 🔧 **[Backend Services Documentation](./docs/backend/README.md)**
+Detailed backend microservices documentation:
+- **Service Architecture**: Lambda functions and API structure
+- **Authentication System**: JWT, MFA, and session management
+- **Database Design**: DynamoDB tables and access patterns
+- **API Specifications**: Endpoint documentation and examples
+- **Testing Strategy**: Unit tests and integration testing
+
+### ⚛️ **[Frontend Application Documentation](./docs/frontend/README.md)**
+Modern React application architecture:
+- **Component Architecture**: Reusable UI components and patterns
+- **State Management**: TanStack Query and React Context
+- **Routing Strategy**: React Router and lazy loading
+- **Performance Optimization**: Bundle splitting and caching
+- **Testing Approach**: Unit, integration, and E2E testing
+
+### 🔧 **[Operations & Infrastructure Guide](./docs/operations/README.md)**
+Complete operational procedures and infrastructure management:
+- **AWS Infrastructure**: CDK deployment and resource management
+- **Environment Management**: Dev, staging, and production workflows
+- **Monitoring Setup**: CloudWatch dashboards and alerting
+- **Cost Management**: Budget monitoring and optimization
+- **Incident Response**: On-call procedures and troubleshooting
+
+### 🛡️ **[Security Framework Documentation](./docs/security/README.md)**
+Comprehensive security implementation:
+- **Defense-in-Depth Model**: Multi-layer security architecture
+- **Authentication Standards**: JWT, MFA, and session security
+- **Authorization Matrix**: Role-based access control (RBAC)
+- **Data Protection**: Encryption and compliance standards
+- **Security Monitoring**: Threat detection and incident response
+
+### 🛠️ **[DevOps Tools Documentation](./docs/tools/README.md)**
+25+ specialized automation scripts and tools:
+- **[Deployment Tools](./docs/tools/deployment-scripts.md)**: Infrastructure deployment and verification
+- **[Monitoring Tools](./docs/tools/monitoring-scripts.md)**: Health checks and performance tracking
+- **[Cost Management Tools](./docs/tools/cost-management-scripts.md)**: Billing analysis and optimization
+- **[Performance Tools](./docs/tools/performance-scripts.md)**: Load testing and benchmarking
+- **[Cloudflare Tools](./docs/tools/cloudflare-scripts.md)**: CDN and tunnel management
+- **[Security Tools](./docs/tools/security-scripts.md)**: Validation and compliance checking
+
+### 📊 **Additional Documentation**
+- **[Performance & Monitoring](./docs/performance/README.md)**: Optimization strategies and metrics
+- **[Deployment Procedures](./docs/deployment/README.md)**: Step-by-step deployment guides
+- **[Troubleshooting Guide](./docs/troubleshooting/README.md)**: Common issues and solutions
 
 ## 🚀 Deployment Infrastructure
 
@@ -277,6 +363,16 @@ The `tools/` directory contains categorized operational scripts:
 - Multi-environment deployment pipeline
 - Security and audit logging systems
 - Performance testing and validation
+- **Professional documentation** with Mermaid diagrams and comprehensive guides
+
+### 📊 Documentation Metrics
+- **8 major documentation sections** with detailed guides
+- **25+ DevOps automation scripts** with full documentation
+- **Professional architecture diagrams** using Mermaid
+- **Complete API documentation** and examples
+- **Step-by-step operational procedures**
+
+> 📚 **Documentation Quality**: All ASCII diagrams have been replaced with professional Mermaid diagrams for better readability and maintainability.
 
 ## 🤝 Contributing
 
@@ -290,10 +386,23 @@ The `tools/` directory contains categorized operational scripts:
 
 This project is private and proprietary.
 
-## 🆘 Support
+## 🆘 Support & Resources
 
-For support and questions, please contact the HarborList development team.
+### 📚 Documentation Resources
+- **Architecture Questions**: See [Architecture Documentation](./docs/architecture/README.md)
+- **Deployment Issues**: Check [Operations Guide](./docs/operations/README.md)
+- **Development Setup**: Review [Backend](./docs/backend/README.md) and [Frontend](./docs/frontend/README.md) docs
+- **Security Concerns**: Consult [Security Framework](./docs/security/README.md)
+- **Operational Tasks**: Use [DevOps Tools](./docs/tools/README.md)
+
+### 🔧 Troubleshooting
+1. Check the [Troubleshooting Guide](./docs/troubleshooting/README.md)
+2. Review relevant documentation sections
+3. Use the automated diagnostic tools in `tools/`
+4. Contact the HarborList development team
 
 ---
 
 **HarborList Marketplace** - Connecting boat enthusiasts worldwide through a modern, secure, and scalable platform.
+
+> 💡 **Tip**: This README provides an overview. For detailed information on any aspect of the system, explore the comprehensive documentation in the [`docs/`](./docs/) directory.

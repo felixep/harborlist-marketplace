@@ -10,29 +10,83 @@ The HarborList frontend is a modern React 18 application built with TypeScript, 
 
 ### **Application Structure**
 
-```
-frontend/
-├── src/
-│   ├── components/          # Reusable UI components
-│   │   ├── admin/          # Admin portal specific components
-│   │   ├── auth/           # Authentication components
-│   │   ├── common/         # Shared UI components
-│   │   ├── layout/         # Layout and navigation
-│   │   ├── listing/        # Boat listing components
-│   │   └── search/         # Search and filter components
-│   ├── pages/              # Route-level page components
-│   │   ├── admin/          # Admin dashboard pages
-│   │   └── *.tsx           # Public marketplace pages
-│   ├── hooks/              # Custom React hooks
-│   ├── services/           # API client services
-│   ├── contexts/           # React Context providers
-│   ├── types/              # TypeScript type definitions
-│   ├── utils/              # Utility functions
-│   ├── styles/             # Global styles and themes
-│   └── test/               # Test utilities and setup
-├── cypress/                # End-to-end testing
-├── public/                 # Static assets
-└── dist/                   # Build output
+### **Frontend Application Structure**
+
+```mermaid
+graph TB
+    subgraph "Frontend Application"
+        Root[frontend/]
+        
+        subgraph "Source Code - src/"
+            Components[components/<br/>📦 Reusable UI Components]
+            Pages[pages/<br/>📄 Route-level Components]
+            Hooks[hooks/<br/>🎣 Custom React Hooks]
+            Services[services/<br/>🔌 API Client Services]
+            Contexts[contexts/<br/>🌐 React Context Providers]
+            Types[types/<br/>📝 TypeScript Definitions]
+            Utils[utils/<br/>🛠️ Utility Functions]
+            Styles[styles/<br/>🎨 Global Styles & Themes]
+            Test[test/<br/>🧪 Test Utilities & Setup]
+        end
+        
+        subgraph "Component Categories"
+            AdminComp[admin/<br/>👤 Admin Portal Components<br/>• User Management<br/>• Analytics Dashboards<br/>• Content Moderation]
+            
+            AuthComp[auth/<br/>🔐 Authentication Components<br/>• Login Forms<br/>• Registration<br/>• MFA Setup]
+            
+            CommonComp[common/<br/>🔄 Shared UI Components<br/>• Buttons, Inputs<br/>• Modals, Alerts<br/>• Loading States]
+            
+            LayoutComp[layout/<br/>🏗️ Layout & Navigation<br/>• Header, Footer<br/>• Sidebar Navigation<br/>• Responsive Layout]
+            
+            ListingComp[listing/<br/>🚢 Boat Listing Components<br/>• Listing Cards<br/>• Detail Views<br/>• Creation Forms]
+            
+            SearchComp[search/<br/>🔍 Search & Filter Components<br/>• Search Bar<br/>• Filter Panels<br/>• Results Display]
+        end
+        
+        subgraph "Page Structure"
+            AdminPages[admin/<br/>📊 Admin Dashboard Pages<br/>• Analytics Overview<br/>• User Management<br/>• System Configuration]
+            
+            PublicPages[*.tsx<br/>🌐 Public Marketplace Pages<br/>• Homepage<br/>• Listing Details<br/>• Search Results]
+        end
+        
+        subgraph "Build & Testing"
+            Cypress[cypress/<br/>🧪 End-to-End Testing<br/>• User Journey Tests<br/>• Integration Tests<br/>• Visual Regression]
+            
+            Public[public/<br/>📁 Static Assets<br/>• Images, Icons<br/>• Manifest Files<br/>• Favicon]
+            
+            Dist[dist/<br/>📦 Build Output<br/>• Optimized Bundles<br/>• Static Assets<br/>• Production Ready]
+        end
+    end
+    
+    Root --> Components
+    Root --> Pages
+    Root --> Hooks
+    Root --> Services
+    Root --> Contexts
+    Root --> Types
+    Root --> Utils
+    Root --> Styles
+    Root --> Test
+    Root --> Cypress
+    Root --> Public
+    Root --> Dist
+    
+    Components --> AdminComp
+    Components --> AuthComp
+    Components --> CommonComp
+    Components --> LayoutComp
+    Components --> ListingComp
+    Components --> SearchComp
+    
+    Pages --> AdminPages
+    Pages --> PublicPages
+    
+    style Components fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
+    style Pages fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
+    style Services fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    style AdminComp fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    style AuthComp fill:#ffebee,stroke:#d32f2f,stroke-width:2px
+    style ListingComp fill:#e0f2f1,stroke:#00796b,stroke-width:2px
 ```
 
 ### **Technology Stack**
