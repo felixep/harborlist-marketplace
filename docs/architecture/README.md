@@ -145,39 +145,39 @@ graph TB
 ```mermaid
 graph LR
     subgraph "Client Applications"
-        Web[Web App<br/>React 18]
-        Mobile[Mobile App<br/>React Native]
-        Admin[Admin Portal<br/>React Dashboard]
+        Web[Web App<br>React 18]
+        Mobile[Mobile App<br>React Native]
+        Admin[Admin Portal<br>React Dashboard]
     end
     
     subgraph "API Gateway Layer"
-        Gateway[API Gateway<br/>REST API]
-        AuthZ[JWT Authorization<br/>Lambda Authorizer]
-        RateLimit[Rate Limiting<br/>Usage Plans]
+        Gateway[API Gateway<br>REST API]
+        AuthZ[JWT Authorization<br>Lambda Authorizer]
+        RateLimit[Rate Limiting<br>Usage Plans]
     end
     
     subgraph "Core Services"
-        Auth[🔐 Auth Service<br/>- Login/Register<br/>- JWT Management<br/>- MFA Support]
+        Auth[🔐 Auth Service<br>- Login/Register<br>- JWT Management<br>- MFA Support]
         
-        Listing[🚢 Listing Service<br/>- CRUD Operations<br/>- Ownership Validation<br/>- Status Management]
+        Listing[🚢 Listing Service<br>- CRUD Operations<br>- Ownership Validation<br>- Status Management]
         
-        Search[🔍 Search Service<br/>- Advanced Filtering<br/>- Geospatial Query<br/>- Faceted Search]
+        Search[🔍 Search Service<br>- Advanced Filtering<br>- Geospatial Query<br>- Faceted Search]
         
-        Admin[👤 Admin Service<br/>- User Management<br/>- Content Moderation<br/>- Analytics Dashboard]
+        Admin[👤 Admin Service<br>- User Management<br>- Content Moderation<br>- Analytics Dashboard]
         
-        Media[📸 Media Service<br/>- Image Upload<br/>- Image Processing<br/>- CDN Integration]
+        Media[📸 Media Service<br>- Image Upload<br>- Image Processing<br>- CDN Integration]
         
-        Email[📧 Email Service<br/>- Notifications<br/>- Templates<br/>- Delivery Tracking]
+        Email[📧 Email Service<br>- Notifications<br>- Templates<br>- Delivery Tracking]
         
-        Stats[📊 Stats Service<br/>- Real-time Analytics<br/>- Business Intelligence<br/>- Performance Metrics]
+        Stats[📊 Stats Service<br>- Real-time Analytics<br>- Business Intelligence<br>- Performance Metrics]
     end
     
     subgraph "Data & Storage"
-        Users[Users Table<br/>DynamoDB]
-        Listings[Listings Table<br/>DynamoDB]
-        AuditLogs[Audit Logs<br/>DynamoDB]
-        Sessions[Admin Sessions<br/>DynamoDB]
-        MediaBucket[Media Files<br/>S3 Bucket]
+        Users[Users Table<br>DynamoDB]
+        Listings[Listings Table<br>DynamoDB]
+        AuditLogs[Audit Logs<br>DynamoDB]
+        Sessions[Admin Sessions<br>DynamoDB]
+        MediaBucket[Media Files<br>S3 Bucket]
     end
     
     Web --> Gateway
@@ -507,27 +507,27 @@ graph TB
 ```mermaid
 graph TB
     subgraph "Global Performance Layer"
-        CloudFlare[Cloudflare Global CDN<br/>200+ Edge Locations]
-        EdgeCache[Edge Caching<br/>Static & Dynamic Content]
-        Compression[Brotli/Gzip Compression<br/>Image Optimization]
+        CloudFlare[Cloudflare Global CDN<br>200+ Edge Locations]
+        EdgeCache[Edge Caching<br>Static & Dynamic Content]
+        Compression[Brotli/Gzip Compression<br>Image Optimization]
     end
     
     subgraph "Application Performance"
-        ReactOpt[React Optimizations<br/>- Code Splitting<br/>- Lazy Loading<br/>- Bundle Analysis]
-        APICache[API Response Caching<br/>- In-Memory Cache<br/>- CDN Cache Headers<br/>- ETags]
-        DatabaseOpt[Database Optimizations<br/>- GSI Design<br/>- Hot Partition Prevention<br/>- Adaptive Capacity]
+        ReactOpt[React Optimizations<br>- Code Splitting<br>- Lazy Loading<br>- Bundle Analysis]
+        APICache[API Response Caching<br>- In-Memory Cache<br>- CDN Cache Headers<br>- ETags]
+        DatabaseOpt[Database Optimizations<br>- GSI Design<br>- Hot Partition Prevention<br>- Adaptive Capacity]
     end
     
     subgraph "Auto-Scaling Infrastructure"
-        LambdaConcurrency[Lambda Concurrency<br/>- Provisioned Concurrency<br/>- Auto-scaling<br/>- Cold Start Optimization]
-        DynamoScaling[DynamoDB Auto-scaling<br/>- Read/Write Capacity<br/>- On-Demand Billing<br/>- DAX Caching]
-        S3Performance[S3 Performance<br/>- Multi-part Upload<br/>- Transfer Acceleration<br/>- Request Rate Optimization]
+        LambdaConcurrency[Lambda Concurrency<br>- Provisioned Concurrency<br>- Auto-scaling<br>- Cold Start Optimization]
+        DynamoScaling[DynamoDB Auto-scaling<br>- Read/Write Capacity<br>- On-Demand Billing<br>- DAX Caching]
+        S3Performance[S3 Performance<br>- Multi-part Upload<br>- Transfer Acceleration<br>- Request Rate Optimization]
     end
     
     subgraph "Performance Monitoring"
-        RealUserMonitoring[Real User Monitoring<br/>- Core Web Vitals<br/>- Performance Budgets<br/>- User Experience Metrics]
-        ApplicationPerf[Application Performance<br/>- Lambda Duration<br/>- API Response Times<br/>- Error Rates]
-        InfrastructurePerf[Infrastructure Performance<br/>- Database Latency<br/>- Storage Throughput<br/>- Network Performance]
+        RealUserMonitoring[Real User Monitoring<br>- Core Web Vitals<br>- Performance Budgets<br>- User Experience Metrics]
+        ApplicationPerf[Application Performance<br>- Lambda Duration<br>- API Response Times<br>- Error Rates]
+        InfrastructurePerf[Infrastructure Performance<br>- Database Latency<br>- Storage Throughput<br>- Network Performance]
     end
     
     CloudFlare --> ReactOpt
@@ -549,49 +549,51 @@ graph TB
     style ReactOpt fill:#e8f5e8
     style LambdaConcurrency fill:#fff3e0
     style RealUserMonitoring fill:#f3e5f5
+```
+
 ### **Complete System Architecture Overview**
 
 ```mermaid
 graph TB
     subgraph "Frontend Layer"
-        UI[React 18 SPA<br/>• Modern Hooks<br/>• TypeScript<br/>• PWA Support]
-        Admin[Admin Dashboard<br/>• User Management<br/>• Analytics<br/>• Content Moderation]
+        UI[React 18 SPA<br>• Modern Hooks<br>• TypeScript<br>• PWA Support]
+        Admin[Admin Dashboard<br>• User Management<br>• Analytics<br>• Content Moderation]
     end
     
     subgraph "CDN & Security Layer"
-        CF[Cloudflare CDN<br/>• 200+ Edge Locations<br/>• DDoS Protection<br/>• WAF & Bot Management]
-        Security[Security Features<br/>• Rate Limiting<br/>• IP Filtering<br/>• Geographic Blocking]
+        CF[Cloudflare CDN<br>• 200+ Edge Locations<br>• DDoS Protection<br>• WAF & Bot Management]
+        Security[Security Features<br>• Rate Limiting<br>• IP Filtering<br>• Geographic Blocking]
     end
     
     subgraph "AWS Infrastructure"
         subgraph "API Layer"
-            APIGW[API Gateway<br/>• Request Routing<br/>• Authentication<br/>• Rate Limiting<br/>• CORS & Validation]
+            APIGW[API Gateway<br>• Request Routing<br>• Authentication<br>• Rate Limiting<br>• CORS & Validation]
         end
         
         subgraph "Application Services"
-            Auth[🔐 Auth Service<br/>• Login/Register<br/>• JWT Management<br/>• MFA Support<br/>• Session Management]
+            Auth[🔐 Auth Service<br>• Login/Register<br>• JWT Management<br>• MFA Support<br>• Session Management]
             
-            Listing[🚢 Listing Service<br/>• CRUD Operations<br/>• Search & Filter<br/>• Media Integration<br/>• Validation]
+            Listing[🚢 Listing Service<br>• CRUD Operations<br>• Search & Filter<br>• Media Integration<br>• Validation]
             
-            Admin2[👤 Admin Service<br/>• User Management<br/>• Content Review<br/>• Analytics Dashboard<br/>• System Config]
+            Admin2[👤 Admin Service<br>• User Management<br>• Content Review<br>• Analytics Dashboard<br>• System Config]
             
-            Media[📸 Media Service<br/>• Image Upload<br/>• Processing<br/>• CDN Integration<br/>• Optimization]
+            Media[📸 Media Service<br>• Image Upload<br>• Processing<br>• CDN Integration<br>• Optimization]
             
-            Email[📧 Email Service<br/>• Notifications<br/>• Welcome Emails<br/>• System Alerts<br/>• Templates]
+            Email[📧 Email Service<br>• Notifications<br>• Welcome Emails<br>• System Alerts<br>• Templates]
             
-            Stats[📊 Stats Service<br/>• Platform Metrics<br/>• User Analytics<br/>• Performance Tracking<br/>• Business Intelligence]
+            Stats[📊 Stats Service<br>• Platform Metrics<br>• User Analytics<br>• Performance Tracking<br>• Business Intelligence]
         end
         
         subgraph "Data Layer"
-            DDB[DynamoDB<br/>• Core Tables<br/>• Global Secondary Indexes<br/>• Auto-scaling<br/>• Point-in-time Recovery]
+            DDB[DynamoDB<br>• Core Tables<br>• Global Secondary Indexes<br>• Auto-scaling<br>• Point-in-time Recovery]
             
-            S3[S3 Storage<br/>• Media Files<br/>• Static Hosting<br/>• Backup & Archive<br/>• Lifecycle Management]
+            S3[S3 Storage<br>• Media Files<br>• Static Hosting<br>• Backup & Archive<br>• Lifecycle Management]
         end
         
         subgraph "Monitoring & Security"
-            CW[CloudWatch<br/>• Application Metrics<br/>• Infrastructure Logs<br/>• Custom Dashboards<br/>• Alarm Management]
+            CW[CloudWatch<br>• Application Metrics<br>• Infrastructure Logs<br>• Custom Dashboards<br>• Alarm Management]
             
-            Secrets[Secrets Manager<br/>• JWT Secrets<br/>• API Keys<br/>• Database Credentials<br/>• Encryption Keys]
+            Secrets[Secrets Manager<br>• JWT Secrets<br>• API Keys<br>• Database Credentials<br>• Encryption Keys]
         end
     end
     
@@ -651,22 +653,22 @@ graph TB
 ```mermaid
 graph LR
     subgraph "Core Tables"
-        Users[boat-users<br/>• User profiles<br/>• Authentication data<br/>• Preferences]
-        Listings[boat-listings<br/>• Boat details<br/>• Pricing & availability<br/>• Media references]
-        Reviews[boat-reviews<br/>• User feedback<br/>• Ratings<br/>• Comments]
-        Sessions[boat-sessions<br/>• Active sessions<br/>• Device tracking<br/>• Expiration]
-        AuditLogs[boat-audit-logs<br/>• System actions<br/>• User activities<br/>• Admin operations]
-        AdminUsers[boat-admin-users<br/>• Admin accounts<br/>• Permissions<br/>• Role assignments]
-        LoginAttempts[boat-login-attempts<br/>• Security tracking<br/>• Failed attempts<br/>• IP monitoring]
+        Users[boat-users<br>• User profiles<br>• Authentication data<br>• Preferences]
+        Listings[boat-listings<br>• Boat details<br>• Pricing & availability<br>• Media references]
+        Reviews[boat-reviews<br>• User feedback<br>• Ratings<br>• Comments]
+        Sessions[boat-sessions<br>• Active sessions<br>• Device tracking<br>• Expiration]
+        AuditLogs[boat-audit-logs<br>• System actions<br>• User activities<br>• Admin operations]
+        AdminUsers[boat-admin-users<br>• Admin accounts<br>• Permissions<br>• Role assignments]
+        LoginAttempts[boat-login-attempts<br>• Security tracking<br>• Failed attempts<br>• IP monitoring]
     end
     
     subgraph "Global Secondary Indexes"
-        UserEmail[UserEmailIndex<br/>• Fast user lookup<br/>• Email verification]
-        ListingStatus[ListingStatusIndex<br/>• Active listings<br/>• Status filtering]
-        SessionDevice[SessionDeviceIndex<br/>• Device management<br/>• Multi-session tracking]
-        AuditResource[AuditLogResourceIndex<br/>• Resource-based queries<br/>• Compliance reporting]
-        AdminRole[AdminRoleIndex<br/>• Role-based access<br/>• Permission queries]
-        Timestamp[TimestampIndex<br/>• Time-based queries<br/>• Analytics support]
+        UserEmail[UserEmailIndex<br>• Fast user lookup<br>• Email verification]
+        ListingStatus[ListingStatusIndex<br>• Active listings<br>• Status filtering]
+        SessionDevice[SessionDeviceIndex<br>• Device management<br>• Multi-session tracking]
+        AuditResource[AuditLogResourceIndex<br>• Resource-based queries<br>• Compliance reporting]
+        AdminRole[AdminRoleIndex<br>• Role-based access<br>• Permission queries]
+        Timestamp[TimestampIndex<br>• Time-based queries<br>• Analytics support]
     end
     
     %% Relationships
@@ -785,27 +787,27 @@ sequenceDiagram
 ```mermaid
 graph TB
     subgraph "External Threats"
-        Threats[🚨 Security Threats<br/>• DDoS Attacks<br/>• Bot Traffic<br/>• Malicious Requests<br/>• Geographic Attacks]
+        Threats[🚨 Security Threats<br>• DDoS Attacks<br>• Bot Traffic<br>• Malicious Requests<br>• Geographic Attacks]
     end
     
     subgraph "Cloudflare Security Layer"
-        CF_Security[🛡️ Cloudflare Protection<br/>• DDoS Protection<br/>• WAF Rules<br/>• Bot Management<br/>• Geographic Blocking<br/>• Rate Limiting<br/>• SSL/TLS Termination]
+        CF_Security[🛡️ Cloudflare Protection<br>• DDoS Protection<br>• WAF Rules<br>• Bot Management<br>• Geographic Blocking<br>• Rate Limiting<br>• SSL/TLS Termination]
     end
     
     subgraph "API Gateway Security"
-        API_Security[🔒 API Gateway<br/>• Request Validation<br/>• Input Sanitization<br/>• CORS Configuration<br/>• Request Size Limits<br/>• Authentication<br/>• Response Headers]
+        API_Security[🔒 API Gateway<br>• Request Validation<br>• Input Sanitization<br>• CORS Configuration<br>• Request Size Limits<br>• Authentication<br>• Response Headers]
     end
     
     subgraph "Application Security"
-        App_Security[⚡ Lambda Security<br/>• JWT Verification<br/>• Role-Based Access Control<br/>• Input Validation<br/>• SQL Injection Prevention<br/>• XSS Protection<br/>• Business Logic Security]
+        App_Security[⚡ Lambda Security<br>• JWT Verification<br>• Role-Based Access Control<br>• Input Validation<br>• SQL Injection Prevention<br>• XSS Protection<br>• Business Logic Security]
     end
     
     subgraph "Data Security"
-        Data_Security[🗄️ Data Protection<br/>• Encryption at Rest<br/>• Encryption in Transit<br/>• IAM Policies<br/>• Least Privilege Access<br/>• Audit Logging<br/>• Data Classification]
+        Data_Security[🗄️ Data Protection<br>• Encryption at Rest<br>• Encryption in Transit<br>• IAM Policies<br>• Least Privilege Access<br>• Audit Logging<br>• Data Classification]
     end
     
     subgraph "Monitoring & Response"
-        Security_Monitoring[📊 Security Monitoring<br/>• Real-time Alerts<br/>• Threat Detection<br/>• Incident Response<br/>• Compliance Reporting<br/>• Security Metrics]
+        Security_Monitoring[📊 Security Monitoring<br>• Real-time Alerts<br>• Threat Detection<br>• Incident Response<br>• Compliance Reporting<br>• Security Metrics]
     end
     
     %% Flow
@@ -890,19 +892,19 @@ graph TB
 ```mermaid
 graph TD
     subgraph "Development Environment"
-        Dev[🔧 Development<br/>• Minimal Resources<br/>• Debug Logging<br/>• Relaxed Security<br/>• Mock Integrations<br/>• Synthetic Data]
+        Dev[🔧 Development<br>• Minimal Resources<br>• Debug Logging<br>• Relaxed Security<br>• Mock Integrations<br>• Synthetic Data]
     end
     
     subgraph "Staging Environment"
-        Staging[🧪 Staging<br/>• Production-like Config<br/>• Full Security Testing<br/>• Performance Testing<br/>• Integration Testing<br/>• Load Simulation]
+        Staging[🧪 Staging<br>• Production-like Config<br>• Full Security Testing<br>• Performance Testing<br>• Integration Testing<br>• Load Simulation]
     end
     
     subgraph "Production Environment"
-        Prod[🚀 Production<br/>• High Availability<br/>• Disaster Recovery<br/>• Production Monitoring<br/>• Auto-scaling<br/>• Compliance Procedures]
+        Prod[🚀 Production<br>• High Availability<br>• Disaster Recovery<br>• Production Monitoring<br>• Auto-scaling<br>• Compliance Procedures]
     end
     
     subgraph "CI/CD Pipeline"
-        Pipeline[⚙️ Automated Pipeline<br/>• Code Quality Checks<br/>• Security Scanning<br/>• Automated Testing<br/>• Deployment Automation<br/>• Rollback Capabilities]
+        Pipeline[⚙️ Automated Pipeline<br>• Code Quality Checks<br>• Security Scanning<br>• Automated Testing<br>• Deployment Automation<br>• Rollback Capabilities]
     end
     
     Dev -->|"Promotion"| Staging
