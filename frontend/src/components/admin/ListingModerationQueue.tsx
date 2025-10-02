@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { FlaggedListing, ContentFlag } from '../../types/admin';
+import { FlaggedListing, ContentFlag } from '@harborlist/shared-types';
 
 interface ListingModerationQueueProps {
   listings: FlaggedListing[];

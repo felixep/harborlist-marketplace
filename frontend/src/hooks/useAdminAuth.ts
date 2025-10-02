@@ -10,7 +10,7 @@
  */
 
 import { useContext } from 'react';
-import { AdminUser, UserRole, AdminPermission } from '../../../backend/src/types/common';
+import { AdminUser, UserRole, AdminPermission } from '@harborlist/shared-types';
 import { AdminAuthContext } from '../components/admin/AdminAuthProvider';
 
 /**

@@ -2,7 +2,7 @@ import React from 'react';
 import { useDashboardMetrics } from '../../hooks/useDashboardMetrics';
 import MetricCard from '../../components/admin/MetricCard';
 import ChartContainer from '../../components/admin/ChartContainer';
-import { MetricCardData, SystemAlert } from '../../types/admin';
+import { MetricCardData, SystemAlert } from '@harborlist/shared-types';
 
 const AdminDashboard: React.FC = () => {
   const { metrics, chartData, alerts, loading, error, refetch } = useDashboardMetrics();

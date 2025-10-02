@@ -1,7 +1,7 @@
 import { renderHook, waitFor } from '@testing-library/react';
 import { useAnalytics, useUserAnalytics, useListingAnalytics, useEngagementAnalytics, useGeographicAnalytics } from '../useAnalytics';
 import { adminApi } from '../../services/adminApi';
-import { DateRange } from '../../types/admin';
+import { DateRange } from '@harborlist/shared-types';
 
 // Mock the adminApi
 jest.mock('../../services/adminApi', () => ({

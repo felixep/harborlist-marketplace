@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ListingConfiguration, ListingCategory, PricingTier, SettingsUpdateRequest, PlatformSettings } from '../../../types/admin';
+import { ListingConfiguration, ListingCategory, PricingTier, SettingsUpdateRequest, PlatformSettings } from '@harborlist/shared-types';
 import ConfirmationDialog from '../ConfirmationDialog';
 
 interface ListingConfigurationPanelProps {

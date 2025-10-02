@@ -1,7 +1,7 @@
 import React from 'react';
-import { EngagementMetrics } from '../../types/admin';
+import { EngagementMetrics } from '@harborlist/shared-types';
 import AnalyticsChart from './AnalyticsChart';
-import { ChartData } from '../../types/admin';
+import { ChartData } from '@harborlist/shared-types';
 
 interface EngagementAnalyticsProps {
   data: EngagementMetrics;

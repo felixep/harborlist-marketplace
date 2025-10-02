@@ -4,7 +4,7 @@ import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { BrowserRouter } from 'react-router-dom';
 import AuditLogs from '../AuditLogs';
 import { useAuditLogs } from '../../../hooks/useAuditLogs';
-import { AuditLog } from '../../../types/admin';
+import { AuditLog } from '@harborlist/shared-types';
 
 // Mock the useAuditLogs hook
 vi.mock('../../../hooks/useAuditLogs');

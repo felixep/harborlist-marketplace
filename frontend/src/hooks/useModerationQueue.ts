@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { adminApi } from '../services/adminApi';
-import { FlaggedListing, ModerationDecision, ModerationStats } from '../types/admin';
+import { FlaggedListing, ModerationDecision, ModerationStats } from '@harborlist/shared-types';
 
 interface UseModerationQueueReturn {
   listings: FlaggedListing[];

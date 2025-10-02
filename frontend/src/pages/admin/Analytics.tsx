@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useAnalytics } from '../../hooks/useAnalytics';
-import { DateRange, ChartData } from '../../types/admin';
+import { DateRange, ChartData } from '@harborlist/shared-types';
 import DateRangeSelector from '../../components/admin/DateRangeSelector';
 import AnalyticsChart from '../../components/admin/AnalyticsChart';
 import DataExport from '../../components/admin/DataExport';

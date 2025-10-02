@@ -1,3 +1,221 @@
+export interface Location {
+  city: string;
+  state: string;
+  zipCode?: string;
+  coordinates?: {
+    lat: number;
+    lon: number;
+  };
+}
+
+export interface BoatDetails {
+  type: string;
+  manufacturer?: string;
+  model?: string;
+  year: number;
+  length: number;
+  beam?: number;
+  draft?: number;
+  engine?: string;
+  hours?: number;
+  condition: 'Excellent' | 'Good' | 'Fair' | 'Needs Work';
+}
+
+export interface Listing {
+  listingId: string;
+  ownerId: string;
+  title: string;
+  description: string;
+  price: number;
+  location: Location;
+  boatDetails: BoatDetails;
+  features: string[];
+  images: string[];
+  videos?: string[];
+  thumbnails: string[];
+  status: 'active' | 'inactive' | 'sold' | 'pending_moderation' | 'flagged' | 'rejected';
+  views?: number;
+  rating?: ListingRating;
+  createdAt: number;
+  updatedAt: number;
+  moderationStatus?: 'approved' | 'pending' | 'flagged' | 'rejected';
+  flagCount?: number;
+  lastModerated?: number;
+}
+
+export interface Review {
+  reviewId: string;
+  userId: string;
+  userName: string;
+  rating: number; // 1-5 stars
+  comment?: string;
+  createdAt: number;
+  verified?: boolean; // if the user actually contacted/viewed the boat
+}
+
+export interface ListingRating {
+  averageRating: number;
+  totalReviews: number;
+  ratingBreakdown: {
+    5: number;
+    4: number;
+    3: number;
+    2: number;
+    1: number;
+  };
+  reviews: Review[];
+}
+
+export interface SearchFilters {
+  query?: string;
+  priceRange?: {
+    min?: number;
+    max?: number;
+  };
+  location?: {
+    state?: string;
+    radius?: number;
+    coordinates?: {
+      lat: number;
+      lon: number;
+    };
+  };
+  boatType?: string[];
+  yearRange?: {
+    min?: number;
+    max?: number;
+  };
+  lengthRange?: {
+    min?: number;
+    max?: number;
+  };
+  features?: string[];
+  sort?: {
+    field: string;
+    order: string;
+  };
+}
+
+export interface SearchResult {
+  results: Listing[];
+  total: number;
+  facets?: {
+    boatTypes: Array<{ value: string; count: number }>;
+    priceRanges: Array<{ range: string; count: number }>;
+    locations: Array<{ state: string; count: number }>;
+  };
+}
+
+// User and Authentication Types
+export enum UserRole {
+  USER = 'user',
+  ADMIN = 'admin',
+  SUPER_ADMIN = 'super_admin',
+  MODERATOR = 'moderator',
+  SUPPORT = 'support'
+}
+
+export enum UserStatus {
+  ACTIVE = 'active',
+  SUSPENDED = 'suspended',
+  BANNED = 'banned',
+  PENDING_VERIFICATION = 'pending_verification'
+}
+
+export enum AdminPermission {
+  USER_MANAGEMENT = 'user_management',
+  CONTENT_MODERATION = 'content_moderation',
+  FINANCIAL_ACCESS = 'financial_access',
+  SYSTEM_CONFIG = 'system_config',
+  ANALYTICS_VIEW = 'analytics_view',
+  AUDIT_LOG_VIEW = 'audit_log_view'
+}
+
+export interface User {
+  id: string;
+  email: string;
+  name: string;
+  phone?: string;
+  location?: string;
+  role: UserRole;
+  status: UserStatus;
+  permissions?: AdminPermission[];
+  emailVerified: boolean;
+  phoneVerified: boolean;
+  mfaEnabled: boolean;
+  mfaSecret?: string;
+  password?: string;
+  lastLogin?: string;
+  loginAttempts: number;
+  lockedUntil?: string;
+  passwordResetToken?: string;
+  passwordResetExpires?: string;
+  emailVerificationToken?: string;
+  emailVerificationExpires?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminUser extends User {
+  role: UserRole.ADMIN | UserRole.SUPER_ADMIN | UserRole.MODERATOR | UserRole.SUPPORT;
+  permissions: AdminPermission[];
+  ipWhitelist?: string[];
+  sessionTimeout: number; // in minutes
+}
+
+export interface AuthSession {
+  sessionId: string;
+  userId: string;
+  deviceId: string;
+  ipAddress: string;
+  userAgent: string;
+  issuedAt: string;
+  expiresAt: string;
+  lastActivity: string;
+  isActive: boolean;
+}
+
+export interface LoginAttempt {
+  id: string;
+  email: string;
+  ipAddress: string;
+  userAgent: string;
+  success: boolean;
+  timestamp: string;
+  failureReason?: string;
+}
+
+export interface AuditLog {
+  id: string;
+  userId: string;
+  userEmail: string;
+  action: string;
+  resource: string;
+  resourceId?: string;
+  details: Record<string, any>;
+  ipAddress: string;
+  userAgent: string;
+  timestamp: string;
+  sessionId: string;
+}
+
+export interface ApiResponse<T = any> {
+  statusCode: number;
+  headers: Record<string, string>;
+  body: string;
+  data?: T;
+}
+
+export interface ErrorResponse {
+  error: {
+    code: string;
+    message: string;
+    details?: any[];
+    requestId: string;
+  };
+}
+
+// Admin and Analytics Types
 export interface PlatformMetrics {
   totalUsers: number;
   activeListings: number;
@@ -52,7 +270,6 @@ export interface SystemAlert {
   acknowledged: boolean;
 }
 
-// Content Moderation Types
 export interface ContentFlag {
   id: string;
   type: 'inappropriate' | 'spam' | 'fraud' | 'duplicate' | 'other';
@@ -97,7 +314,6 @@ export interface ModerationStats {
   averageReviewTime: number;
 }
 
-// Analytics Types
 export interface DateRange {
   startDate: string;
   endDate: string;
@@ -208,14 +424,6 @@ export interface GeoDistributionData {
   listingCount: number;
 }
 
-export interface ExportOptions {
-  format: 'csv' | 'pdf';
-  dateRange: DateRange;
-  metrics: string[];
-  includeCharts: boolean;
-}
-
-// Platform Settings Types
 export interface PlatformSettings {
   general: GeneralSettings;
   features: FeatureFlags;
@@ -309,6 +517,59 @@ export interface NotificationTemplate {
   active: boolean;
 }
 
+export interface SupportTicket {
+  id: string;
+  ticketNumber: string;
+  subject: string;
+  description: string;
+  status: 'open' | 'in_progress' | 'waiting_response' | 'resolved' | 'closed';
+  priority: 'low' | 'medium' | 'high' | 'urgent';
+  category: 'technical' | 'billing' | 'account' | 'listing' | 'general';
+  userId: string;
+  userName: string;
+  userEmail: string;
+  assignedTo?: string;
+  assignedToName?: string;
+  createdAt: string;
+  updatedAt: string;
+  resolvedAt?: string;
+  closedAt?: string;
+  tags: string[];
+  attachments: TicketAttachment[];
+  responses: TicketResponse[];
+  escalated: boolean;
+  escalatedAt?: string;
+  escalatedBy?: string;
+  escalationReason?: string;
+  satisfactionRating?: number;
+  satisfactionFeedback?: string;
+}
+
+export interface TicketResponse {
+  id: string;
+  ticketId: string;
+  message: string;
+  isInternal: boolean;
+  authorId: string;
+  authorName: string;
+  authorType: 'admin' | 'user';
+  createdAt: string;
+  attachments: TicketAttachment[];
+  readBy: string[];
+  readAt?: string;
+}
+
+export interface TicketAttachment {
+  id: string;
+  filename: string;
+  originalName: string;
+  mimeType: string;
+  size: number;
+  uploadedBy: string;
+  uploadedAt: string;
+  url: string;
+}
+
 export interface SettingsUpdateRequest {
   section: keyof PlatformSettings;
   data: any;
@@ -326,6 +587,108 @@ export interface SettingsAuditLog {
   reason: string;
   timestamp: string;
   ipAddress: string;
+}
+
+export interface AuditLogStats {
+  totalActions: number;
+  uniqueUsers: number;
+  actionBreakdown: Record<string, number>;
+  resourceBreakdown: Record<string, number>;
+  hourlyActivity: Record<string, number>;
+  topUsers: Array<{
+    userId: string;
+    email: string;
+    count: number;
+  }>;
+  timeRange: string;
+  startDate: string;
+  endDate: string;
+}
+
+export interface TicketFilters {
+  status?: string[];
+  priority?: string[];
+  category?: string[];
+  assignedTo?: string[];
+  dateRange?: DateRange;
+  search?: string;
+  tags?: string[];
+}
+
+export interface SupportStats {
+  totalTickets: number;
+  openTickets: number;
+  inProgressTickets: number;
+  resolvedToday: number;
+  averageResponseTime: number;
+  averageResolutionTime: number;
+  satisfactionScore: number;
+  ticketsByPriority: {
+    low: number;
+    medium: number;
+    high: number;
+    urgent: number;
+  };
+  ticketsByCategory: {
+    technical: number;
+    billing: number;
+    account: number;
+    listing: number;
+    general: number;
+  };
+  ticketsByStatus: {
+    open: number;
+    in_progress: number;
+    waiting_response: number;
+    resolved: number;
+    closed: number;
+  };
+}
+
+export interface PlatformAnnouncement {
+  id: string;
+  title: string;
+  content: string;
+  type: 'info' | 'warning' | 'maintenance' | 'feature' | 'promotion';
+  status: 'draft' | 'scheduled' | 'published' | 'archived';
+  targetAudience: 'all' | 'sellers' | 'buyers' | 'premium' | 'specific';
+  targetUserIds?: string[];
+  scheduledAt?: string;
+  publishedAt?: string;
+  expiresAt?: string;
+  createdBy: string;
+  createdByName: string;
+  createdAt: string;
+  updatedAt: string;
+  priority: 'low' | 'medium' | 'high';
+  channels: AnnouncementChannel[];
+  readBy: string[];
+  clickCount: number;
+  impressionCount: number;
+  tags: string[];
+}
+
+export interface AnnouncementChannel {
+  type: 'email' | 'in_app' | 'push' | 'sms';
+  enabled: boolean;
+  template?: string;
+  subject?: string;
+}
+
+export interface AnnouncementStats {
+  totalAnnouncements: number;
+  activeAnnouncements: number;
+  scheduledAnnouncements: number;
+  totalImpressions: number;
+  totalClicks: number;
+  averageClickRate: number;
+  announcementsByType: {
+    info: number;
+    warning: number;
+    maintenance: number;
+    feature: number;
+    promotion: number;
+  };
 }
 
 // Financial Management Types
@@ -422,246 +785,9 @@ export interface FinancialReport {
   status: 'generating' | 'completed' | 'failed';
 }
 
-// Support and Communication Types
-export interface SupportTicket {
-  id: string;
-  ticketNumber: string;
-  subject: string;
-  description: string;
-  status: 'open' | 'in_progress' | 'waiting_response' | 'resolved' | 'closed';
-  priority: 'low' | 'medium' | 'high' | 'urgent';
-  category: 'technical' | 'billing' | 'account' | 'listing' | 'general';
-  userId: string;
-  userName: string;
-  userEmail: string;
-  assignedTo?: string;
-  assignedToName?: string;
-  createdAt: string;
-  updatedAt: string;
-  resolvedAt?: string;
-  closedAt?: string;
-  tags: string[];
-  attachments: TicketAttachment[];
-  responses: TicketResponse[];
-  escalated: boolean;
-  escalatedAt?: string;
-  escalatedBy?: string;
-  escalationReason?: string;
-  satisfactionRating?: number;
-  satisfactionFeedback?: string;
-}
-
-export interface TicketResponse {
-  id: string;
-  ticketId: string;
-  message: string;
-  isInternal: boolean;
-  authorId: string;
-  authorName: string;
-  authorType: 'admin' | 'user';
-  createdAt: string;
-  attachments: TicketAttachment[];
-  readBy: string[];
-  readAt?: string;
-}
-
-export interface TicketAttachment {
-  id: string;
-  filename: string;
-  originalName: string;
-  mimeType: string;
-  size: number;
-  uploadedBy: string;
-  uploadedAt: string;
-  url: string;
-}
-
-export interface SupportStats {
-  totalTickets: number;
-  openTickets: number;
-  inProgressTickets: number;
-  resolvedToday: number;
-  averageResponseTime: number;
-  averageResolutionTime: number;
-  satisfactionScore: number;
-  ticketsByPriority: {
-    low: number;
-    medium: number;
-    high: number;
-    urgent: number;
-  };
-  ticketsByCategory: {
-    technical: number;
-    billing: number;
-    account: number;
-    listing: number;
-    general: number;
-  };
-  ticketsByStatus: {
-    open: number;
-    in_progress: number;
-    waiting_response: number;
-    resolved: number;
-    closed: number;
-  };
-}
-
-export interface TicketFilters {
-  status?: string[];
-  priority?: string[];
-  category?: string[];
-  assignedTo?: string[];
-  dateRange?: DateRange;
-  search?: string;
-  tags?: string[];
-}
-
-export interface TicketAssignment {
-  ticketId: string;
-  assignedTo: string;
-  assignedBy: string;
-  assignedAt: string;
-  reason?: string;
-}
-
-export interface PlatformAnnouncement {
-  id: string;
-  title: string;
-  content: string;
-  type: 'info' | 'warning' | 'maintenance' | 'feature' | 'promotion';
-  status: 'draft' | 'scheduled' | 'published' | 'archived';
-  targetAudience: 'all' | 'sellers' | 'buyers' | 'premium' | 'specific';
-  targetUserIds?: string[];
-  scheduledAt?: string;
-  publishedAt?: string;
-  expiresAt?: string;
-  createdBy: string;
-  createdByName: string;
-  createdAt: string;
-  updatedAt: string;
-  priority: 'low' | 'medium' | 'high';
-  channels: AnnouncementChannel[];
-  readBy: string[];
-  clickCount: number;
-  impressionCount: number;
-  tags: string[];
-}
-
-export interface AnnouncementChannel {
-  type: 'email' | 'in_app' | 'push' | 'sms';
-  enabled: boolean;
-  template?: string;
-  subject?: string;
-}
-
-export interface AnnouncementStats {
-  totalAnnouncements: number;
-  activeAnnouncements: number;
-  scheduledAnnouncements: number;
-  totalImpressions: number;
-  totalClicks: number;
-  averageClickRate: number;
-  announcementsByType: {
-    info: number;
-    warning: number;
-    maintenance: number;
-    feature: number;
-    promotion: number;
-  };
-}
-
-export interface SupportTemplate {
-  id: string;
-  name: string;
-  subject: string;
-  content: string;
-  category: string;
-  variables: string[];
-  isActive: boolean;
-  createdBy: string;
-  createdAt: string;
-  updatedAt: string;
-  usageCount: number;
-}
-
-export interface AdminUser {
-  id: string;
-  email: string;
-  name: string;
-  role: 'super_admin' | 'admin' | 'moderator' | 'support';
-  isActive: boolean;
-  lastLogin?: string;
-  createdAt: string;
-}
-
-export interface AdminLoginResponse {
-  user: AdminUser;
-  tokens: {
-    accessToken: string;
-    refreshToken: string;
-  };
-  data?: {
-    user: AdminUser;
-    tokens: {
-      accessToken: string;
-      refreshToken: string;
-    };
-  };
-}
-
-// Audit Log Types
-export interface AuditLog {
-  id: string;
-  userId: string;
-  userEmail: string;
-  action: string;
-  resource: string;
-  resourceId?: string;
-  details: Record<string, any>;
-  ipAddress: string;
-  userAgent: string;
-  timestamp: string;
-  sessionId: string;
-}
-
-export interface AuditLogStats {
-  totalActions: number;
-  uniqueUsers: number;
-  actionBreakdown: Record<string, number>;
-  resourceBreakdown: Record<string, number>;
-  hourlyActivity: Record<string, number>;
-  topUsers: Array<{
-    userId: string;
-    email: string;
-    count: number;
-  }>;
-  timeRange: string;
-  startDate: string;
-  endDate: string;
-}
-
-export interface AuditLogFilters {
-  userId?: string;
-  action?: string;
-  resource?: string;
-  startDate?: string;
-  endDate?: string;
-  search?: string;
-  sortBy?: string;
-  sortOrder?: 'asc' | 'desc';
-}
-
-export interface AuditLogExportRequest {
-  format: 'csv' | 'json';
-  startDate: string;
-  endDate: string;
-  userId?: string;
-  action?: string;
-  resource?: string;
-}
-
-export interface AuditLogExportResponse {
-  data: string;
-  filename: string;
-  recordCount: number;
+export interface ExportOptions {
+  format: 'csv' | 'pdf';
+  dateRange: DateRange;
+  metrics: string[];
+  includeCharts: boolean;
 }

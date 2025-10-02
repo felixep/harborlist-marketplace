@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { TicketFilters, SupportStats } from '../../../types/admin';
+import { TicketFilters, SupportStats } from '@harborlist/shared-types';
 
 interface SupportFiltersProps {
   filters: TicketFilters;

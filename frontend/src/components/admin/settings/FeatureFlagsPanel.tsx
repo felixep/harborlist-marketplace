@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FeatureFlags, SettingsUpdateRequest, PlatformSettings } from '../../../types/admin';
+import { FeatureFlags, SettingsUpdateRequest, PlatformSettings } from '@harborlist/shared-types';
 import ConfirmationDialog from '../ConfirmationDialog';
 
 interface FeatureFlagsPanelProps {

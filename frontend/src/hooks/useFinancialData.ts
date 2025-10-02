@@ -6,7 +6,7 @@ import {
   RefundRequest,
   PayoutSchedule,
   FinancialReport 
-} from '../types/admin';
+} from '@harborlist/shared-types';
 
 interface UseFinancialDataReturn {
   // Data

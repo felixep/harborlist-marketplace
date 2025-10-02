@@ -41,14 +41,25 @@ import { Listing } from '../types/common';
 /**
  * DynamoDB client configuration with regional settings
  */
-const client = new DynamoDBClient({ region: process.env.AWS_REGION });
+const clientConfig = { 
+  region: process.env.AWS_REGION || 'us-east-1',
+  ...(process.env.DYNAMODB_ENDPOINT && {
+    endpoint: process.env.DYNAMODB_ENDPOINT,
+    credentials: {
+      accessKeyId: 'test',
+      secretAccessKey: 'test',
+    },
+  }),
+};
+
+const client = new DynamoDBClient(clientConfig);
 const docClient = DynamoDBDocumentClient.from(client);
 
 /**
  * Environment-based table name configuration
  */
 const LISTINGS_TABLE = process.env.LISTINGS_TABLE!;
-const USERS_TABLE = process.env.USERS_TABLE!;
+const USERS_TABLE = process.env.USERS_TABLE!
 
 /**
  * Database service class providing comprehensive DynamoDB operations
@@ -248,13 +259,6 @@ export class DatabaseService {
   async getListings(limit: number = 20, lastKey?: any): Promise<{ listings: Listing[]; lastKey?: any }> {
     const result = await docClient.send(new ScanCommand({
       TableName: LISTINGS_TABLE,
-      FilterExpression: '#status = :status',
-      ExpressionAttributeNames: {
-        '#status': 'status',
-      },
-      ExpressionAttributeValues: {
-        ':status': 'active',
-      },
       Limit: limit,
       ExclusiveStartKey: lastKey,
     }));

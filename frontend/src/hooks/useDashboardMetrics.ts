@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { adminApi } from '../services/adminApi';
-import { PlatformMetrics, DashboardChartData, SystemAlert } from '../types/admin';
+import { PlatformMetrics, DashboardChartData, SystemAlert } from '@harborlist/shared-types';
 
 interface UseDashboardMetricsReturn {
   metrics: PlatformMetrics | null;

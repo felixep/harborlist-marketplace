@@ -8,6 +8,7 @@ Our HarborList architecture documentation is organized into specialized sections
 
 #### **🏗️ Core Architecture**
 - **[System Overview](#system-architecture-overview)** - High-level system design and component relationships
+- **[📄 Shared Types Architecture](./shared-types.md)** - NPM workspaces, TypeScript definitions, and cross-service type safety
 - **[Microservices Deep Dive](#microservices-architecture-deep-dive)** - Detailed service architecture and interactions
 - **[Data Flow Patterns](#data-flow-architecture)** - End-to-end data movement and processing
 - **[Database Design](#database-architecture--design)** - DynamoDB schema and relationships

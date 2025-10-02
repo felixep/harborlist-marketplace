@@ -10,7 +10,7 @@
  */
 
 import { useState } from 'react';
-import { SearchFilters as SearchFiltersType } from '../../types/listing';
+import { SearchFilters as SearchFiltersType } from '@harborlist/shared-types';
 
 /**
  * Props interface for the SearchFilters component

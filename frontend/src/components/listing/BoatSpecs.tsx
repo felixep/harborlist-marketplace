@@ -1,4 +1,4 @@
-import { BoatDetails } from '../../types/listing';
+import { BoatDetails } from '@harborlist/shared-types';
 
 interface BoatSpecsProps {
   boatDetails: BoatDetails;

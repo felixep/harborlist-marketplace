@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { contactOwner } from '../../services/listings';
-import { Listing } from '../../types/listing';
+import { Listing } from '@harborlist/shared-types';
 
 interface ContactFormProps {
   listing: Listing;

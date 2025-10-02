@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import { adminApi } from '../services/adminApi';
-import { AuditLog, AuditLogStats } from '../types/admin';
+import { AuditLog, AuditLogStats } from '@harborlist/shared-types';
 
 interface UseAuditLogsParams {
   page: number;

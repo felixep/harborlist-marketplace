@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ContentPolicies, SettingsUpdateRequest, PlatformSettings } from '../../../types/admin';
+import { ContentPolicies, SettingsUpdateRequest, PlatformSettings } from '@harborlist/shared-types';
 import ConfirmationDialog from '../ConfirmationDialog';
 
 interface ContentPoliciesPanelProps {

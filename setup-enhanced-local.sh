@@ -11,7 +11,8 @@ echo "🔥 Now with Traefik (Cloudflare simulation)!"
 echo ""
 
 # Configuration
-COMPOSE_FILE="docker-compose.traefik.yml"
+COMPOSE_FILE="docker-compose.local.yml"
+PROFILE="enhanced"
 HOSTS_FILE="/etc/hosts"
 
 # Function to add hosts entries
@@ -111,9 +112,9 @@ start_services() {
     echo "🚀 Starting enhanced services with Traefik..."
     
     if command -v docker-compose &> /dev/null; then
-        docker-compose -f "$COMPOSE_FILE" up -d
+        docker-compose --profile "$PROFILE" -f "$COMPOSE_FILE" up -d
     else
-        docker compose -f "$COMPOSE_FILE" up -d
+        docker compose --profile "$PROFILE" -f "$COMPOSE_FILE" up -d
     fi
     
     echo "✅ Services started"

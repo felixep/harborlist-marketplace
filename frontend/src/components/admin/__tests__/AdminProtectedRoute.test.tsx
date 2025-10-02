@@ -3,7 +3,7 @@ import { render, screen } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import AdminProtectedRoute from '../AdminProtectedRoute';
 import { AdminAuthContext } from '../AdminAuthProvider';
-import { UserRole, AdminPermission, UserStatus } from '../../../../../backend/src/types/common';
+import { UserRole, AdminPermission, UserStatus } from '../../../types/common';
 
 const mockAdminUser = {
   id: '1',

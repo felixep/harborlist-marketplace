@@ -56,7 +56,7 @@ import {
   SupportDashboard,
   AuditLogs
 } from './pages/admin';
-import { AdminPermission } from '../../backend/src/types/common';
+import { AdminPermission } from '@harborlist/shared-types';
 
 /**
  * React Query client configuration for server state management

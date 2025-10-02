@@ -10,7 +10,7 @@
  */
 
 import React, { createContext, useState, useEffect, useCallback, useRef } from 'react';
-import { AdminUser, AdminPermission, UserRole, UserStatus } from '../../../../backend/src/types/common';
+import { AdminUser, AdminPermission, UserRole, UserStatus } from '@harborlist/shared-types';
 import { adminApi } from '../../services/adminApi';
 
 /**

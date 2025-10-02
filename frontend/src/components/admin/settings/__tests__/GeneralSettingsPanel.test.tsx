@@ -1,7 +1,7 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import GeneralSettingsPanel from '../GeneralSettingsPanel';
-import { GeneralSettings } from '../../../../types/admin';
+import { GeneralSettings } from '@harborlist/shared-types';
 
 // Mock the ConfirmationDialog component
 jest.mock('../../ConfirmationDialog', () => {

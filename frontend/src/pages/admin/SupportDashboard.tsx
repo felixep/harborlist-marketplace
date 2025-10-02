@@ -5,7 +5,7 @@ import {
   TicketFilters,
   PlatformAnnouncement,
   AnnouncementStats 
-} from '../../types/admin';
+} from '@harborlist/shared-types';
 import { adminApi } from '../../services/adminApi';
 import MetricCard from '../../components/admin/MetricCard';
 import { TicketTable } from '../../components/admin/support/TicketTable';

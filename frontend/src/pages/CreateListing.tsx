@@ -3,7 +3,7 @@ import { useMutation } from '@tanstack/react-query';
 import { useAuth } from '../components/auth/AuthProvider';
 import { createListing } from '../services/listings';
 import ListingForm from '../components/listing/ListingForm';
-import { Listing } from '../types/listing';
+import { Listing } from '@harborlist/shared-types';
 
 export default function CreateListing() {
   const navigate = useNavigate();

@@ -1,4 +1,4 @@
-import { AnalyticsMetrics, DateRange, ExportOptions } from '../types/admin';
+import { AnalyticsMetrics, DateRange, ExportOptions } from '@harborlist/shared-types';
 
 export class DataExportService {
   /**

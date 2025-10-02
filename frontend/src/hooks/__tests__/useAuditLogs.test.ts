@@ -1,7 +1,7 @@
 import { renderHook, act } from '@testing-library/react';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { useAuditLogs } from '../useAuditLogs';
-import { AuditLog } from '../../types/admin';
+import { AuditLog } from '@harborlist/shared-types';
 
 // Mock the adminApi
 const mockGet = vi.fn();

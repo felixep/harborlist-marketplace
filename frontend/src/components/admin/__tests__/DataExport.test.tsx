@@ -3,7 +3,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import DataExport from '../DataExport';
 import { DataExportService } from '../../../utils/dataExport';
-import { AnalyticsMetrics, DateRange } from '../../../types/admin';
+import { AnalyticsMetrics, DateRange } from '@harborlist/shared-types';
 
 // Mock the DataExportService
 jest.mock('../../../utils/dataExport', () => ({

@@ -2,7 +2,7 @@ import React from 'react';
 import { render, screen } from '@testing-library/react';
 import { describe, it, expect } from 'vitest';
 import MetricCard from '../MetricCard';
-import { MetricCardData } from '../../../types/admin';
+import { MetricCardData } from '@harborlist/shared-types';
 
 describe('MetricCard', () => {
   const mockData: MetricCardData = {

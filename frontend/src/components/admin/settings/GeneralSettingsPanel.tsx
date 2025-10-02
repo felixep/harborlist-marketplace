@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { GeneralSettings, SettingsUpdateRequest, PlatformSettings } from '../../../types/admin';
+import { GeneralSettings, SettingsUpdateRequest, PlatformSettings } from '@harborlist/shared-types';
 import ConfirmationDialog from '../ConfirmationDialog';
 
 interface GeneralSettingsPanelProps {

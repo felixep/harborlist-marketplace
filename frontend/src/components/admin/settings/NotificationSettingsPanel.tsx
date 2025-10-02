@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { NotificationSettings, NotificationTemplate, SettingsUpdateRequest, PlatformSettings } from '../../../types/admin';
+import { NotificationSettings, NotificationTemplate, SettingsUpdateRequest, PlatformSettings } from '@harborlist/shared-types';
 import ConfirmationDialog from '../ConfirmationDialog';
 
 interface NotificationSettingsPanelProps {

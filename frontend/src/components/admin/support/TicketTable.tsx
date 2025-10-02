@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { SupportTicket, AdminUser } from '../../../types/admin';
+import { SupportTicket, AdminUser } from '@harborlist/shared-types';
 
 interface TicketTableProps {
   tickets: SupportTicket[];

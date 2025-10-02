@@ -11,7 +11,7 @@
 
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Listing } from '../../types/listing';
+import { Listing } from '@harborlist/shared-types';
 
 /**
  * Props interface for the ListingCard component

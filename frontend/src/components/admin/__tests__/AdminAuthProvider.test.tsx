@@ -3,7 +3,7 @@ import { render, screen, act, waitFor } from '@testing-library/react';
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { AdminAuthProvider } from '../AdminAuthProvider';
 import { useAdminAuth } from '../../../hooks/useAdminAuth';
-import { UserRole, UserStatus, AdminPermission } from '../../../../../backend/src/types/common';
+import { UserRole, UserStatus, AdminPermission } from '../../../types/common';
 
 // Mock fetch globally
 global.fetch = vi.fn();

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { usePlatformSettings } from '../../hooks/usePlatformSettings';
-import { PlatformSettings as PlatformSettingsType } from '../../types/admin';
+import { PlatformSettings as PlatformSettingsType } from '@harborlist/shared-types';
 import GeneralSettingsPanel from '../../components/admin/settings/GeneralSettingsPanel';
 import FeatureFlagsPanel from '../../components/admin/settings/FeatureFlagsPanel';
 import ContentPoliciesPanel from '../../components/admin/settings/ContentPoliciesPanel';

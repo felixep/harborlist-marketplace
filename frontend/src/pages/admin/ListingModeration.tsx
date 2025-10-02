@@ -4,7 +4,7 @@ import ListingDetailView from '../../components/admin/ListingDetailView';
 import ModerationNotifications from '../../components/admin/ModerationNotifications';
 import { useModerationQueue } from '../../hooks/useModerationQueue';
 import { useNotifications } from '../../hooks/useNotifications';
-import { FlaggedListing, ModerationDecision } from '../../types/admin';
+import { FlaggedListing, ModerationDecision } from '@harborlist/shared-types';
 
 const ListingModeration: React.FC = () => {
   const [selectedListing, setSelectedListing] = useState<FlaggedListing | null>(null);

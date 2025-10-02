@@ -2,7 +2,7 @@ import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { TicketDetailModal } from '../TicketDetailModal';
-import { SupportTicket } from '../../../../types/admin';
+import { SupportTicket } from '@harborlist/shared-types';
 
 const mockTicket: SupportTicket = {
   id: 'ticket-1',

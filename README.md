@@ -44,12 +44,18 @@ A comprehensive boat marketplace platform built as a modern, serverless web appl
 - **Architecture**: Microservices using AWS Lambda
 - **Services**:
   - `auth-service` - User authentication & JWT management
-  - `listing-service` - Boat listing CRUD operations
+  - `listing` - Boat listing CRUD operations
   - `admin-service` - Administrative functions & dashboard
   - `search` - Search functionality with filters
   - `media` - Image upload and processing
   - `email` - Notification services
   - `stats-service` - Analytics and reporting
+
+### Shared Types (`packages/shared-types/`)
+- **Package**: `@harborlist/shared-types` npm workspace package
+- **Purpose**: Centralized TypeScript definitions across all services
+- **Features**: Runtime enums, TypeScript interfaces, API response types
+- **Build**: Automatic compilation with TypeScript declarations
 
 ### Infrastructure (`infrastructure/`)
 - **IaC**: AWS CDK with TypeScript
@@ -94,16 +100,16 @@ A comprehensive boat marketplace platform built as a modern, serverless web appl
    cd harborlist-marketplace
    ```
 
-2. **Install dependencies**
+2. **Install dependencies (NPM Workspaces)**
    ```bash
-   # Frontend
-   cd frontend && npm install
-
-   # Backend
-   cd ../backend && npm install
-
-   # Infrastructure
-   cd ../infrastructure && npm install
+   # Install all workspace dependencies from root
+   npm install
+   
+   # This automatically installs dependencies for:
+   # - Root workspace
+   # - frontend/ workspace  
+   # - backend/ workspace
+   # - packages/shared-types/ workspace
    ```
 
 3. **Deploy infrastructure**

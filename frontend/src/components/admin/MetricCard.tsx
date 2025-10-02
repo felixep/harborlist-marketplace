@@ -1,5 +1,5 @@
 import React from 'react';
-import { MetricCardData } from '../../types/admin';
+import { MetricCardData } from '@harborlist/shared-types';
 
 interface MetricCardProps {
   data: MetricCardData;

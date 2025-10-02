@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { PlatformAnnouncement, AnnouncementStats } from '../../../types/admin';
+import { PlatformAnnouncement, AnnouncementStats } from '@harborlist/shared-types';
 
 interface AnnouncementPanelProps {
   announcements: PlatformAnnouncement[];

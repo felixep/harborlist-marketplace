@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import ListingCard from '../components/listing/ListingCard';
 import SearchFilters from '../components/search/SearchFilters';
-import { SearchFilters as SearchFiltersType, Listing } from '../types/listing';
+import { SearchFilters as SearchFiltersType, Listing } from '@harborlist/shared-types';
 import { searchListings, getListings } from '../services/listings';
 import { getPlatformStats, calculateListingQualityScore } from '../services/ratings';
 

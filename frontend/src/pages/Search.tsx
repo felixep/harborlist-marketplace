@@ -5,7 +5,7 @@ import Layout from '../components/layout/Layout';
 import PageHeader from '../components/layout/PageHeader';
 import ListingCard from '../components/listing/ListingCard';
 import SearchFilters from '../components/search/SearchFilters';
-import { SearchFilters as SearchFiltersType } from '../types/listing';
+import { SearchFilters as SearchFiltersType } from '@harborlist/shared-types';
 import { searchListings } from '../services/listings';
 
 export default function Search() {

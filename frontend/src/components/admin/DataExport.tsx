@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { AnalyticsMetrics, DateRange } from '../../types/admin';
+import { AnalyticsMetrics, DateRange } from '@harborlist/shared-types';
 import { DataExportService } from '../../utils/dataExport';
 
 interface DataExportProps {

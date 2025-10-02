@@ -3,7 +3,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import '@testing-library/jest-dom';
 import ListingModerationQueue from '../ListingModerationQueue';
-import { FlaggedListing } from '../../../types/admin';
+import { FlaggedListing } from '@harborlist/shared-types';
 
 const mockListings: FlaggedListing[] = [
   {

@@ -12,7 +12,7 @@
 import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAdminAuth } from '../../hooks/useAdminAuth';
-import { AdminPermission, UserRole } from '../../../../backend/src/types/common';
+import { AdminPermission, UserRole } from '@harborlist/shared-types';
 
 /**
  * Props interface for the AdminProtectedRoute component

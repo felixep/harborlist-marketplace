@@ -10,7 +10,7 @@
  */
 
 import { useState } from 'react';
-import { Listing, BoatDetails, Location } from '../../types/listing';
+import { Listing, BoatDetails, Location } from '@harborlist/shared-types';
 import MediaUpload from './MediaUpload';
 
 /**

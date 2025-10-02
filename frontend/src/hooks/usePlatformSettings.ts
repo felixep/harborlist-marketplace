@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { adminApi } from '../services/adminApi';
-import { PlatformSettings, SettingsUpdateRequest, SettingsAuditLog } from '../types/admin';
+import { PlatformSettings, SettingsUpdateRequest, SettingsAuditLog } from '@harborlist/shared-types';
 
 interface UsePlatformSettingsReturn {
   settings: PlatformSettings | null;

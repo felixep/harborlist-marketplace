@@ -1,4 +1,6 @@
-version: '3.8'
+# HarborList Local Development Environment
+# Single Docker Compose file with profiles for basic and enhanced setups
+# Usage: docker-compose --profile basic up  OR  docker-compose --profile enhanced up
 
 # HarborList Local Development Environment
 # Usage:
@@ -28,7 +30,7 @@ services:
     ports:
       - "80:80"
       - "443:443"
-      - "8080:8080"  # Traefik dashboard
+      - "8088:8080"  # Traefik dashboard (moved to avoid conflicts)
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./traefik-config:/etc/traefik/dynamic:ro
@@ -40,7 +42,7 @@ services:
       # HTTP to HTTPS redirect  
       - "traefik.http.routers.dashboard-http.rule=Host(`traefik.local.harborlist.com`)"
       - "traefik.http.routers.dashboard-http.entrypoints=web"
-      - "traefik.http.routers.dashboard-http.middlewares=https-redirect"
+      - "traefik.http.routers.dashboard-http.middlewares=https-redirect@file"
       # HTTPS router
       - "traefik.http.routers.dashboard-https.rule=Host(`traefik.local.harborlist.com`)"
       - "traefik.http.routers.dashboard-https.entrypoints=websecure"
@@ -51,13 +53,15 @@ services:
   frontend:
     profiles: ["basic", "enhanced"]
     build:
-      context: ./frontend
-      dockerfile: Dockerfile.dev
+      context: .
+      dockerfile: ./frontend/Dockerfile.dev
     ports:
       - "3000:3000"
     volumes:
-      - ./frontend:/app
-      - /app/node_modules
+      - .:/workspace
+      - /workspace/node_modules
+      - /workspace/frontend/node_modules
+      - /workspace/packages/shared-types/node_modules
     environment:
       - VITE_API_URL=https://local-api.harborlist.com/api
       - VITE_ENVIRONMENT=local
@@ -71,24 +75,29 @@ services:
       # HTTP to HTTPS redirect
       - "traefik.http.routers.frontend-http.rule=Host(`local.harborlist.com`)"
       - "traefik.http.routers.frontend-http.entrypoints=web"
-      - "traefik.http.routers.frontend-http.middlewares=https-redirect"
+      - "traefik.http.routers.frontend-http.middlewares=https-redirect@file"
       # HTTPS router
       - "traefik.http.routers.frontend-https.rule=Host(`local.harborlist.com`)"
       - "traefik.http.routers.frontend-https.entrypoints=websecure"
       - "traefik.http.routers.frontend-https.tls=true"
+      - "traefik.http.routers.frontend-https.service=frontend"
+      - "traefik.http.services.frontend.loadbalancer.server.port=3000"
+      - "traefik.http.services.frontend.loadbalancer.server.scheme=http"
       - "traefik.http.services.frontend.loadbalancer.server.port=3000"
 
   # Backend API server (Express wrapper for Lambda functions)
   backend:
     profiles: ["basic", "enhanced"]
     build:
-      context: ./backend
-      dockerfile: Dockerfile.dev
+      context: .
+      dockerfile: ./backend/Dockerfile.dev
     ports:
       - "3001:3001"
     volumes:
-      - ./backend:/app
-      - /app/node_modules
+      - .:/workspace
+      - /workspace/node_modules
+      - /workspace/backend/node_modules
+      - /workspace/packages/shared-types/node_modules
     environment:
       - NODE_ENV=development
       - DYNAMODB_ENDPOINT=http://dynamodb-local:8000
@@ -101,6 +110,12 @@ services:
       - CORS_ORIGINS=https://local.harborlist.com,http://localhost:3000
       - API_BASE_URL=https://local-api.harborlist.com
       - FRONTEND_URL=https://local.harborlist.com
+      - LISTINGS_TABLE=boat-listings
+      - USERS_TABLE=boat-users
+      - REVIEWS_TABLE=boat-reviews
+      - SESSIONS_TABLE=boat-sessions
+      - LOGIN_ATTEMPTS_TABLE=boat-login-attempts
+      - AUDIT_LOGS_TABLE=boat-audit-logs
     depends_on:
       - dynamodb-local
       - localstack
@@ -111,12 +126,14 @@ services:
       # HTTP to HTTPS redirect
       - "traefik.http.routers.backend-http.rule=Host(`local-api.harborlist.com`)"
       - "traefik.http.routers.backend-http.entrypoints=web"
-      - "traefik.http.routers.backend-http.middlewares=https-redirect"
+      - "traefik.http.routers.backend-http.middlewares=https-redirect@file"
       # HTTPS router
       - "traefik.http.routers.backend-https.rule=Host(`local-api.harborlist.com`)"
       - "traefik.http.routers.backend-https.entrypoints=websecure"
       - "traefik.http.routers.backend-https.tls=true"
+      - "traefik.http.routers.backend-https.service=backend"
       - "traefik.http.services.backend.loadbalancer.server.port=3001"
+      - "traefik.http.services.backend.loadbalancer.server.scheme=http"
 
   # Local DynamoDB
   dynamodb-local:
@@ -124,9 +141,7 @@ services:
     image: amazon/dynamodb-local:latest
     ports:
       - "8000:8000"
-    command: ["-jar", "DynamoDBLocal.jar", "-sharedDb", "-dbPath", "./data"]
-    volumes:
-      - dynamodb_data:/home/dynamodblocal/data
+    command: ["-jar", "DynamoDBLocal.jar", "-inMemory", "-sharedDb"]
     networks:
       - harborlist-local
 

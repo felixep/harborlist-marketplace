@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { usePlatformSettings } from '../../../hooks/usePlatformSettings';
-import { SettingsAuditLog as AuditLogType } from '../../../types/admin';
+import { SettingsAuditLog as AuditLogType } from '@harborlist/shared-types';
 
 const SettingsAuditLog: React.FC = () => {
   const { auditLog, loadingAuditLog, getAuditLog } = usePlatformSettings();

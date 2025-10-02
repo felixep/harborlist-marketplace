@@ -3,7 +3,37 @@ import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, ScanCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
 import { createResponse, createErrorResponse } from '../shared/utils';
 
-const dynamoClient = new DynamoDBClient({ region: process.env.AWS_REGION || 'us-east-1' });
+// Basic types for DynamoDB data
+interface Listing {
+  id: string;
+  ownerId: string;
+  status?: string;
+  type?: string;
+  pricePerDay?: number;
+  location?: {
+    state?: string;
+  };
+  boatDetails?: {
+    type?: string;
+  };
+}
+
+interface Review {
+  id: string;
+  listingId: string;
+  rating?: number;
+}
+
+const dynamoClient = new DynamoDBClient({ 
+  region: process.env.AWS_REGION || 'us-east-1',
+  ...(process.env.DYNAMODB_ENDPOINT && {
+    endpoint: process.env.DYNAMODB_ENDPOINT,
+    credentials: {
+      accessKeyId: 'local',
+      secretAccessKey: 'local',
+    },
+  }),
+});
 const docClient = DynamoDBDocumentClient.from(dynamoClient);
 
 const LISTINGS_TABLE = process.env.LISTINGS_TABLE || 'boat-listings';
@@ -31,7 +61,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
     const path = event.path;
     
-    if (path === '/stats/platform') {
+    if (path === '/platform' || path === '/stats/platform') {
       const stats = await getPlatformStats();
       return createResponse(200, stats);
     }
@@ -52,16 +82,16 @@ async function getPlatformStats(): Promise<PlatformStats> {
 
     const listings = listingsResult.Items || [];
     const totalListings = listings.length;
-    const activeListings = listings.filter(listing => listing.status === 'active').length;
-
-    // Calculate unique users (listing owners)
-    const uniqueUsers = new Set(listings.map(listing => listing.ownerId)).size;
+    const activeListings = (listings as Listing[]).filter(listing => listing.status === 'active').length;
+    
+    // Calculate total listings by type
+    const uniqueUsers = new Set((listings as Listing[]).map(listing => listing.ownerId)).size;
 
     // Get location statistics
     const stateCount: { [key: string]: number } = {};
     const boatTypeCount: { [key: string]: number } = {};
 
-    listings.forEach(listing => {
+    (listings as Listing[]).forEach(listing => {
       if (listing.location?.state) {
         stateCount[listing.location.state] = (stateCount[listing.location.state] || 0) + 1;
       }
@@ -95,7 +125,7 @@ async function getPlatformStats(): Promise<PlatformStats> {
       totalReviews = reviews.length;
 
       if (totalReviews > 0) {
-        const totalRating = reviews.reduce((sum, review) => sum + (review.rating || 0), 0);
+        const totalRating = (reviews as Review[]).reduce((sum: number, review: Review) => sum + (review.rating || 0), 0);
         averageRating = totalRating / totalReviews;
         userSatisfactionScore = averageRating;
       }

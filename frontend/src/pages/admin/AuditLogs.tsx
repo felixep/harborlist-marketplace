@@ -9,7 +9,7 @@ import {
   MagnifyingGlassIcon
 } from '@heroicons/react/24/outline';
 import { useAuditLogs } from '../../hooks/useAuditLogs';
-import { AuditLog } from '../../types/admin';
+import { AuditLog } from '@harborlist/shared-types';
 
 interface AuditLogFilters {
   userId?: string;

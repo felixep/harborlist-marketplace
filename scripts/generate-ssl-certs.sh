@@ -26,9 +26,22 @@ openssl req -new -sha256 -key ./certs/local/server-key.pem -out ./certs/local/se
 
 # Create extensions file for SAN (Subject Alternative Names)
 cat > ./certs/local/server-ext.cnf << EOF
-authorityKeyIdentifier=keyid,issuer
-basicConstraints=CA:FALSE
-keyUsage = digitalSignature, nonRepudiation, keyEncipherment, dataEncipherment
+[req]
+distinguished_name = req_distinguished_name
+req_extensions = v3_req
+prompt = no
+
+[req_distinguished_name]
+C = US
+ST = CA
+L = San Francisco
+O = HarborList Local Dev
+CN = local.harborlist.com
+
+[v3_req]
+basicConstraints = CA:FALSE
+keyUsage = digitalSignature, keyEncipherment
+extendedKeyUsage = serverAuth
 subjectAltName = @alt_names
 
 [alt_names]

@@ -1,8 +1,82 @@
-# 🔧 Troubleshooting Guide
+# 🔧 HarborList Troubleshooting Guide
 
 ## 📋 **Overview**
 
-This comprehensive troubleshooting guide provides systematic solutions for common issues, debugging procedures, and escalation paths for the HarborList platform. Our troubleshooting approach prioritizes quick resolution through structured problem identification, root cause analysis, and preventive measures.
+This comprehensive troubleshooting guide provides systematic solutions for common issues encountered during development and deployment of the HarborList marketplace platform. Updated with recent architectural improvements including NPM workspaces, SSL-enabled local development, and DynamoDB Local configurations.
+
+## 🏠 **Local Development Troubleshooting** 
+
+### **Frontend Issues**
+
+#### 🚫 **Blank Page on Load**
+**Symptoms**: Frontend loads but displays blank page
+**Root Cause**: Shared types import errors across workspace boundaries
+**Solution**:
+```bash
+# Rebuild shared types package
+cd packages/shared-types && npm run build
+
+# Clean install frontend dependencies
+cd ../../frontend && rm -rf node_modules && npm install && npm run dev
+```
+
+#### 🔒 **SSL Certificate Errors in Chrome**
+**Symptoms**: `ERR_SSL_KEY_USAGE_INCOMPATIBLE` 
+**Root Cause**: Missing Chrome-compatible SSL certificate extensions
+**Solution**:
+```bash
+# Regenerate SSL certificates
+docker-compose -f docker-compose.local.yml down
+docker volume rm harborlist-marketplace_traefik_certs
+docker-compose -f docker-compose.local.yml --profile enhanced up -d
+```
+
+#### 🌐 **DNS Resolution Issues**
+**Symptoms**: `local.harborlist.com` not resolving
+**Root Cause**: Corrupted `/etc/hosts` file
+**Solution**:
+```bash
+# Fix hosts file
+sudo sed -i '' '/harborlist/d' /etc/hosts
+echo "127.0.0.1 local.harborlist.com" | sudo tee -a /etc/hosts
+echo "127.0.0.1 local-api.harborlist.com" | sudo tee -a /etc/hosts
+```
+
+### **Backend Issues**
+
+#### 🗄️ **Database Connection Errors**
+**Symptoms**: `ValidationException: Value null at 'tableName'`
+**Root Cause**: Environment variables not loaded in container
+**Solution**:
+```bash
+# Completely recreate backend container
+docker-compose -f docker-compose.local.yml stop backend
+docker-compose -f docker-compose.local.yml rm -f backend  
+docker-compose -f docker-compose.local.yml --profile enhanced up -d backend
+```
+
+#### 🔐 **Authentication 401 Errors**
+**Symptoms**: Login returns 401 even with correct credentials
+**Root Cause**: User status is `pending_verification` instead of `active`
+**Solution**:
+```bash
+# Activate user via DynamoDB update
+AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test aws dynamodb update-item \
+  --table-name boat-users --key '{"id":{"S":"USER_ID"}}' \
+  --update-expression "SET #status = :status, #emailVerified = :emailVerified" \
+  --expression-attribute-names '{"#status":"status","#emailVerified":"emailVerified"}' \
+  --expression-attribute-values '{":status":{"S":"active"},":emailVerified":{"BOOL":true}}' \
+  --endpoint-url http://localhost:8000 --region us-east-1
+```
+
+#### 🐘 **DynamoDB SQLite Errors** 
+**Symptoms**: `SQLiteException: unable to open database file`
+**Root Cause**: DynamoDB Local persistence issues in Docker
+**Solution**: Already configured for in-memory mode to prevent this issue
+```yaml
+# docker-compose.local.yml configuration:
+command: ["-jar", "DynamoDBLocal.jar", "-inMemory", "-sharedDb"]
+```
 
 ---
 

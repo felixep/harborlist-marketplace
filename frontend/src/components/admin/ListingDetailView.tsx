@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { FlaggedListing, ContentFlag, ModerationDecision } from '../../types/admin';
+import { FlaggedListing, ContentFlag, ModerationDecision } from '@harborlist/shared-types';
 
 interface ListingDetailViewProps {
   listing: FlaggedListing;

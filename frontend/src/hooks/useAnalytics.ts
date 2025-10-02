@@ -11,7 +11,7 @@
 
 import { useState, useEffect } from 'react';
 import { adminApi } from '../services/adminApi';
-import { AnalyticsMetrics, DateRange } from '../types/admin';
+import { AnalyticsMetrics, DateRange } from '@harborlist/shared-types';
 
 /**
  * Return type for the useAnalytics hook

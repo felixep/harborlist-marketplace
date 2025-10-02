@@ -1,7 +1,7 @@
 import React from 'react';
-import { GeographicMetrics } from '../../types/admin';
+import { GeographicMetrics } from '@harborlist/shared-types';
 import AnalyticsChart from './AnalyticsChart';
-import { ChartData } from '../../types/admin';
+import { ChartData } from '@harborlist/shared-types';
 
 interface GeographicDistributionProps {
   data: GeographicMetrics;

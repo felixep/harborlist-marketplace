@@ -4,18 +4,26 @@ This guide will help you set up and run the complete HarborList marketplace plat
 
 ## 🏗️ Architecture Overview
 
-The local development environment mirrors our production AWS serverless architecture:
+The local development environment mirrors our production AWS serverless architecture with **NPM workspaces** for shared types and comprehensive SSL-enabled local services:
 
 ```mermaid
 graph TB
     subgraph "Local Development Environment"
+        subgraph "NPM Workspace Architecture"
+            ST[📦 @harborlist/shared-types<br/>packages/shared-types/<br/>🔗 Centralized TypeScript definitions]
+        end
+        
         subgraph "Application Layer"
-            FE[Frontend - React + Vite<br/>local.harborlist.com:3000<br/>🔥 Hot Reload Enabled]
-            BE[Backend - Express + Lambda<br/>local-api.harborlist.com:3001<br/>🔥 Hot Reload Enabled]
+            FE[Frontend - React + Vite<br/>https://local.harborlist.com<br/>🔥 Hot Reload + SSL Enabled]
+            BE[Backend - Express + Lambda<br/>https://local-api.harborlist.com<br/>🔥 Hot Reload + SSL Enabled]
+        end
+        
+        subgraph "Reverse Proxy & SSL"
+            TRAEFIK[Traefik v3<br/>Port 443/80<br/>🔒 SSL Termination & Routing]
         end
         
         subgraph "Local AWS Services"
-            DDB[DynamoDB Local<br/>localhost:8000<br/>📊 Full AWS API Compatible]
+            DDB[DynamoDB Local<br/>localhost:8000<br/>📊 In-Memory Mode]
             S3[LocalStack S3<br/>localhost:4566<br/>📁 File Storage & CDN]
             SES[LocalStack SES<br/>localhost:4566<br/>📧 Email Service]
         end
@@ -26,7 +34,10 @@ graph TB
         end
     end
     
-    FE -->|API Calls| BE
+    FE -->|Import Types| ST
+    BE -->|Import Types| ST
+    FE -->|HTTPS API Calls| TRAEFIK
+    TRAEFIK -->|Route to Backend| BE
     BE -->|Database Queries| DDB
     BE -->|File Operations| S3
     BE -->|Email Sending| SES
@@ -34,6 +45,8 @@ graph TB
     
     style FE fill:#61dafb,stroke:#333,stroke-width:2px
     style BE fill:#68a063,stroke:#333,stroke-width:2px
+    style ST fill:#f39c12,stroke:#333,stroke-width:2px
+    style TRAEFIK fill:#24a0ed,stroke:#333,stroke-width:2px
     style DDB fill:#ff9900,stroke:#333,stroke-width:2px
     style S3 fill:#ff9900,stroke:#333,stroke-width:2px
     style ADMIN fill:#f39c12,stroke:#333,stroke-width:2px
@@ -51,6 +64,45 @@ graph TB
 - **macOS/Linux/Windows** with WSL2
 - **4GB RAM** minimum (8GB recommended)
 - **10GB free disk space**
+
+## 🏗️ NPM Workspaces & Shared Types Architecture
+
+HarborList uses **NPM workspaces** to manage dependencies and share TypeScript definitions across frontend, backend, and shared packages.
+
+### Workspace Structure
+```
+harborlist-marketplace/
+├── package.json                    # Root workspace configuration
+├── frontend/                       # React application workspace
+├── backend/                        # Node.js/Lambda services workspace
+└── packages/
+    └── shared-types/              # Centralized TypeScript definitions
+        ├── package.json           # @harborlist/shared-types package
+        ├── src/
+        │   ├── index.ts          # Main export file
+        │   └── common.ts         # Domain types & enums
+        ├── dist/                 # Compiled JavaScript output
+        └── types/                # TypeScript declaration files
+```
+
+### Key Benefits
+- ✅ **Type Safety**: Shared TypeScript interfaces across all services
+- ✅ **Single Source of Truth**: Centralized domain definitions
+- ✅ **Development Efficiency**: Hot reload works across workspace packages
+- ✅ **Build Optimization**: Automatic dependency linking and compilation
+- ✅ **Production Ready**: Proper npm package with versioning support
+
+### Shared Types Usage
+```typescript
+// Backend services
+import { User, Listing, ListingStatus } from '@harborlist/shared-types';
+
+// Frontend components
+import { APIResponse, PaginatedResponse } from '@harborlist/shared-types';
+
+// Both runtime enums and TypeScript types available
+const status: ListingStatus = ListingStatus.ACTIVE;
+```
 
 ## 🚀 Quick Start (5 minutes)
 
@@ -85,25 +137,43 @@ npm run dev:setup
 
 ### 4. Start Development Environment
 ```bash
-# Start all services
+# Start all services with SSL-enabled configuration
 npm run dev:start
 
 # Or start in background
 npm run dev:start:bg
 ```
 
-### 5. Create Admin User
+### 5. Database Setup & SSL Configuration
+
+The local environment automatically handles:
+
+- **🔒 SSL Certificates**: Auto-generated Chrome-compatible certificates
+- **📊 DynamoDB Tables**: Created automatically with proper schema:
+  - `boat-listings` - Boat marketplace listings
+  - `boat-users` - User accounts and authentication
+  - `boat-reviews` - User reviews and ratings
+  - `boat-sessions` - Authentication sessions
+  - `boat-login-attempts` - Security monitoring
+  - `boat-audit-logs` - Compliance and audit trail
+
+### 6. Create Admin User
 ```bash
 # In a new terminal, create your first admin user
 npm run dev:admin
 ```
 
 ### 6. Access the Application
-- **Frontend**: http://local.harborlist.com:3000
-- **Backend API**: http://local-api.harborlist.com:3001
-- **API Health**: http://local-api.harborlist.com:3001/health
+
+🎉 **SSL-Enabled Local Services**:
+- **Frontend**: https://local.harborlist.com (React + Vite with HMR)
+- **Backend API**: https://local-api.harborlist.com (Express + Lambda handlers)
+- **API Health**: https://local-api.harborlist.com/health
+
+**Development Tools**:
 - **DynamoDB Admin**: http://localhost:8001
 - **LocalStack Dashboard**: http://localhost:4566
+- **Traefik Dashboard**: http://traefik.local.harborlist.com
 
 ## 🛠️ Development Commands
 
@@ -335,7 +405,112 @@ curl http://localhost:4566/_localstack/health
 - [Frontend Documentation](../docs/frontend/README.md)
 - [Infrastructure Documentation](../docs/architecture/README.md)
 
-## 💡 Pro Tips
+## � Troubleshooting Guide
+
+### Common Issues & Solutions
+
+#### 🚫 **Frontend Shows Blank Page**
+**Problem**: Frontend loads but shows blank page
+**Solution**:
+```bash
+# Check if shared types are properly built
+cd packages/shared-types && npm run build
+
+# Restart frontend with clean install
+cd frontend && rm -rf node_modules && npm install && npm run dev
+```
+
+#### 🔒 **SSL Certificate Errors in Chrome**
+**Problem**: `ERR_SSL_KEY_USAGE_INCOMPATIBLE` in Chrome
+**Solution**: SSL certificates are auto-generated with Chrome-compatible extensions. If issues persist:
+```bash
+# Regenerate SSL certificates
+docker-compose -f docker-compose.local.yml down
+docker volume rm harborlist-marketplace_traefik_certs
+docker-compose -f docker-compose.local.yml --profile enhanced up -d
+```
+
+#### 🌐 **DNS Resolution Issues**
+**Problem**: `local.harborlist.com` not resolving
+**Solution**: Check and fix `/etc/hosts` file:
+```bash
+# Verify hosts file
+cat /etc/hosts | grep harborlist
+
+# Re-add entries if missing
+echo "127.0.0.1 local.harborlist.com" | sudo tee -a /etc/hosts
+echo "127.0.0.1 local-api.harborlist.com" | sudo tee -a /etc/hosts
+```
+
+#### 🔥 **Vite HMR Not Working with HTTPS**
+**Problem**: Hot reload stops working after SSL setup
+**Solution**: Vite is configured for HTTPS HMR. If issues persist:
+```bash
+# Check frontend configuration
+cd frontend && npm run dev -- --host 0.0.0.0 --port 3000
+```
+
+#### 🗄️ **DynamoDB Connection Errors**
+**Problem**: `ValidationException: Value null at 'tableName'`
+**Solution**: Environment variables not loaded properly:
+```bash
+# Restart backend completely (not just restart)
+docker-compose -f docker-compose.local.yml stop backend
+docker-compose -f docker-compose.local.yml rm -f backend
+docker-compose -f docker-compose.local.yml --profile enhanced up -d backend
+```
+
+#### 🔐 **Authentication 401 Errors**
+**Problem**: Login returns 401 even with correct credentials
+**Solution**: User needs to be activated for local development:
+```bash
+# Create and activate test user
+curl -k -X POST https://local-api.harborlist.com/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Test User","email":"test@example.com","password":"TestPass123!"}'
+
+# Then activate via DynamoDB Admin UI or AWS CLI
+```
+
+#### 📊 **Database Tables Missing**
+**Problem**: API returns table not found errors
+**Solution**: Recreate database tables:
+```bash
+# Use the setup script
+cd backend && chmod +x scripts/setup-local-db.sh && ./scripts/setup-local-db.sh
+
+# Or create manually via AWS CLI
+AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test aws dynamodb create-table \
+  --table-name boat-listings \
+  --attribute-definitions AttributeName=id,AttributeType=S \
+  --key-schema AttributeName=id,KeyType=HASH \
+  --provisioned-throughput ReadCapacityUnits=5,WriteCapacityUnits=5 \
+  --endpoint-url http://localhost:8000 --region us-east-1
+```
+
+### Debug Commands
+
+```bash
+# Check all container status
+docker ps
+
+# View specific service logs
+docker logs harborlist-marketplace-frontend-1 --tail 20
+docker logs harborlist-marketplace-backend-1 --tail 20
+docker logs harborlist-marketplace-dynamodb-local-1 --tail 20
+
+# Test API endpoints
+curl -k https://local-api.harborlist.com/health
+curl -k https://local-api.harborlist.com/api/stats/platform
+
+# Check environment variables in containers
+docker exec harborlist-marketplace-backend-1 env | grep TABLE
+
+# Access container shell
+docker exec -it harborlist-marketplace-backend-1 sh
+```
+
+## �💡 Pro Tips
 
 ### IDE Setup
 - Use VS Code with Docker extension for container management

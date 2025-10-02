@@ -2,7 +2,7 @@ import React from 'react';
 import { render, screen } from '@testing-library/react';
 import { describe, it, expect } from 'vitest';
 import ChartContainer from '../ChartContainer';
-import { ChartData } from '../../../types/admin';
+import { ChartData } from '@harborlist/shared-types';
 
 describe('ChartContainer', () => {
   const mockChartData: ChartData = {

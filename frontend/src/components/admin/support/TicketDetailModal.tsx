@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { SupportTicket, TicketResponse } from '../../../types/admin';
+import { SupportTicket, TicketResponse } from '@harborlist/shared-types';
 
 interface TicketDetailModalProps {
   ticket: SupportTicket;

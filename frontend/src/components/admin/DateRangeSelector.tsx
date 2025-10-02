@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { DateRange } from '../../types/admin';
+import { DateRange } from '@harborlist/shared-types';
 
 interface DateRangeSelectorProps {
   dateRange: DateRange;

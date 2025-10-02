@@ -1,4 +1,4 @@
-import { Review, ListingRating } from '../types/listing';
+import { Review, ListingRating } from '@harborlist/shared-types';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://api-dev.harborlist.com';
 

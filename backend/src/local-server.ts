@@ -116,7 +116,7 @@ app.get('/health', (req: Request, res: Response) => {
 
 // API Routes - dynamically load handlers
 app.use('/api/auth', lambdaToExpress('./auth-service'));
-app.use('/api/listings', lambdaToExpress('./listing-service'));
+app.use('/api/listings', lambdaToExpress('./listing'));
 app.use('/api/search', lambdaToExpress('./search'));
 app.use('/api/media', lambdaToExpress('./media'));
 app.use('/api/email', lambdaToExpress('./email'));

@@ -1,5 +1,5 @@
 import { config } from '../config/env';
-import { AdminUser, AdminPermission, UserRole } from '../../../backend/src/types/common';
+import { AdminUser, AdminPermission, UserRole } from '@harborlist/shared-types';
 import { apiClient, ApiRequestOptions } from './apiClient';
 
 interface AdminLoginRequest {
