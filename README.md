@@ -230,14 +230,22 @@ harborlist-marketplace/
 │   │   ├── stats-service/ # Analytics service
 │   │   ├── shared/        # Shared utilities
 │   │   └── types/         # Shared type definitions
-│   └── scripts/           # Utility scripts
+│   └── scripts/           # Backend utility scripts
 ├── infrastructure/        # AWS CDK infrastructure
 │   ├── lib/              # CDK stack definitions
 │   ├── bin/              # CDK app entry point
-│   ├── scripts/          # Deployment scripts
 │   ├── reports/          # Infrastructure reports
 │   └── test/             # Infrastructure tests
-└── certs/                # SSL certificates
+├── tools/                # DevOps and operational tools
+│   ├── deployment/       # Deployment scripts
+│   ├── monitoring/       # Monitoring and health checks
+│   ├── cost-management/  # Cost analysis and billing
+│   ├── performance/      # Performance testing
+│   ├── cloudflare/      # Cloudflare tunnel management
+│   ├── utilities/       # General utilities
+│   └── security/        # Security and validation
+├── docs/                 # Project documentation
+└── certs/               # SSL certificates
 ```
 
 ## 🚀 Deployment Infrastructure
@@ -250,13 +258,15 @@ harborlist-marketplace/
 - DNS performance optimization
 - Multi-region deployment support
 
-### Monitoring Scripts
-The `infrastructure/scripts/` directory contains various automation scripts:
-- Cost analysis and monitoring
-- Performance testing
-- Cloudflare tunnel management
-- AWS billing monitoring
-- Development environment validation
+### DevOps Tools
+The `tools/` directory contains categorized operational scripts:
+- **Deployment**: CDK deployment and verification scripts
+- **Monitoring**: Health checks, performance monitoring, environment reports
+- **Cost Management**: AWS billing monitoring, cost analysis, budget alerts
+- **Performance**: Load testing, DNS performance, comprehensive benchmarks
+- **Cloudflare**: Tunnel management, cache control, resilience testing
+- **Utilities**: General maintenance, validation, and helper scripts
+- **Security**: Infrastructure validation, compliance checking
 
 ## 📈 Current Status
 
