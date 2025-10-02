@@ -123,7 +123,7 @@ Welcome to the complete enterprise-grade documentation for HarborList Marketplac
 - **Cloudflare Tools**: CDN management and tunnel configuration
 - **Utility Tools**: General maintenance and administrative automation
 
-### [`� Monitoring & Observability`](./monitoring/README.md)
+### [`📊 Monitoring & Observability`](./monitoring/README.md)
 - **CloudWatch Integration**: Metrics, logs, and dashboard configuration
 - **Alert Management**: Proactive monitoring and incident response
 - **Performance Tracking**: Application and infrastructure metrics
