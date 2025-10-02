@@ -38,7 +38,7 @@ graph TB
             
             IAM[IAM Roles & Policies<br/>- Least Privilege Access<br/>- Service-to-Service Auth<br/>- Cross-Account Access]
             
-            VPC[VPC (Optional)<br/>- Private Subnets<br/>- Security Groups<br/>- NACLs]
+            VPC[VPC - Optional<br/>- Private Subnets<br/>- Security Groups<br/>- NACLs]
         end
         
         subgraph "Monitoring & Logging"

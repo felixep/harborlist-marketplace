@@ -12,7 +12,7 @@ graph TB
             
             CFCache[Cloudflare Caching<br/>- Static Asset Caching<br/>- API Response Caching<br/>- Dynamic Content Optimization<br/>- Purge Management]
             
-            CFOptimization[Performance Features<br/>- Auto Minify (CSS/JS/HTML)<br/>- Image Optimization<br/>- Brotli Compression<br/>- HTTP/3 Support]
+            CFOptimization[Performance Features<br/>- Auto Minify CSS/JS/HTML<br/>- Image Optimization<br/>- Brotli Compression<br/>- HTTP/3 Support]
         end
         
         subgraph "AWS CloudFront"
@@ -46,7 +46,7 @@ graph TB
         subgraph "Asset Optimization"
             ImageOptim[Image Optimization<br/>- WebP Format<br/>- Responsive Images<br/>- Lazy Loading<br/>- Progressive Enhancement]
             
-            BundleOptim[Bundle Optimization<br/>- Tree Shaking<br/>- Dead Code Elimination<br/>- Minification<br/>- Compression (Gzip/Brotli)]
+            BundleOptim[Bundle Optimization<br/>- Tree Shaking<br/>- Dead Code Elimination<br/>- Minification<br/>- Compression Gzip/Brotli]
         end
     end
     
@@ -82,13 +82,13 @@ graph TB
             
             HotPartition[Hot Partition Mitigation<br/>- Key Distribution<br/>- Write Sharding<br/>- Time-based Partitioning<br/>- Random Suffix Strategy]
             
-            BatchOperations[Batch Operations<br/>- BatchGetItem (25 items)<br/>- BatchWriteItem (25 items)<br/>- TransactWriteItems<br/>- Parallel Processing]
+            BatchOperations[Batch Operations<br/>- BatchGetItem 25 items<br/>- BatchWriteItem 25 items<br/>- TransactWriteItems<br/>- Parallel Processing]
         end
         
         subgraph "Caching Strategy"
             AppCache[Application-Level Caching<br/>- Redis/ElastiCache<br/>- In-Memory Cache<br/>- Session Storage<br/>- Query Result Cache]
             
-            DAXCache[DynamoDB Accelerator (DAX)<br/>- Microsecond Latency<br/>- Read-Through Cache<br/>- Write-Through Cache<br/>- Multi-AZ Support]
+            DAXCache[DynamoDB Accelerator DAX<br/>- Microsecond Latency<br/>- Read-Through Cache<br/>- Write-Through Cache<br/>- Multi-AZ Support]
         end
         
         subgraph "Query Optimization"
@@ -165,7 +165,7 @@ graph TB
         end
         
         subgraph "Backend Performance"
-            APIMetrics[API Performance Metrics<br/>- Response Times<br/>- Throughput (RPS)<br/>- Error Rates<br/>- Success Rate (SLA)]
+            APIMetrics[API Performance Metrics<br/>- Response Times<br/>- Throughput RPS<br/>- Error Rates<br/>- Success Rate SLA]
             
             BusinessMetrics[Business Metrics<br/>- Listing Creation Rate<br/>- User Registration Rate<br/>- Search Performance<br/>- Revenue Tracking]
         end
@@ -272,7 +272,7 @@ graph TB
         end
         
         subgraph "Technical Performance KPIs"
-            PerformanceKPIs[Performance KPIs<br/>- API Response Times<br/>- Error Rates<br/>- Availability (SLA)<br/>- Throughput Metrics]
+            PerformanceKPIs[Performance KPIs<br/>- API Response Times<br/>- Error Rates<br/>- Availability SLA<br/>- Throughput Metrics]
             
             CostMetrics[Cost Analytics<br/>- AWS Spend Tracking<br/>- Cost per User<br/>- Resource Utilization<br/>- Optimization Opportunities]
         end

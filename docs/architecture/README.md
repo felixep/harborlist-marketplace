@@ -89,8 +89,8 @@ graph TB
         end
         
         subgraph "Data Layer"
-            DDB[(DynamoDB Tables)]
-            S3[(S3 Storage)]
+            DDB[DynamoDB Tables]
+            S3[S3 Storage]
             Secrets[Secrets Manager]
         end
         
@@ -173,11 +173,11 @@ graph LR
     end
     
     subgraph "Data & Storage"
-        Users[(Users Table<br/>DynamoDB)]
-        Listings[(Listings Table<br/>DynamoDB)]
-        AuditLogs[(Audit Logs<br/>DynamoDB)]
-        Sessions[(Admin Sessions<br/>DynamoDB)]
-        MediaBucket[(Media Files<br/>S3 Bucket)]
+        Users[Users Table<br/>DynamoDB]
+        Listings[Listings Table<br/>DynamoDB]
+        AuditLogs[Audit Logs<br/>DynamoDB]
+        Sessions[Admin Sessions<br/>DynamoDB]
+        MediaBucket[Media Files<br/>S3 Bucket]
     end
     
     Web --> Gateway
@@ -435,7 +435,7 @@ graph TB
     subgraph "Development Environment"
         Dev_Code[Local Development]
         Dev_DB[Local DynamoDB]
-        Dev_S3[Local S3 (MinIO)]
+        Dev_S3[Local S3 - MinIO]
     end
     
     subgraph "CI/CD Pipeline"

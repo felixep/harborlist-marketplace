@@ -312,9 +312,9 @@ graph TD
     end
     
     subgraph "Data Persistence"
-        DynamoDB[(DynamoDB<br/>Listings Table)]
-        S3[(S3 Bucket<br/>Image Storage)]
-        AuditLog[(Audit Logs<br/>Change Tracking)]
+        DynamoDB[DynamoDB<br/>Listings Table]
+        S3[S3 Bucket<br/>Image Storage]
+        AuditLog[Audit Logs<br/>Change Tracking]
     end
     
     subgraph "Post-Processing"
@@ -366,11 +366,11 @@ graph TB
     end
     
     subgraph "Data Sources"
-        UsersTable[(Users Table<br/>DynamoDB)]
-        ListingsTable[(Listings Table<br/>DynamoDB)]
-        AuditLogsTable[(Audit Logs<br/>DynamoDB)]
-        SessionsTable[(Admin Sessions<br/>DynamoDB)]
-        CloudWatchMetrics[(CloudWatch<br/>System Metrics)]
+        UsersTable[Users Table<br/>DynamoDB]
+        ListingsTable[Listings Table<br/>DynamoDB]
+        AuditLogsTable[Audit Logs<br/>DynamoDB]
+        SessionsTable[Admin Sessions<br/>DynamoDB]
+        CloudWatchMetrics[CloudWatch<br/>System Metrics]
     end
     
     subgraph "Data Processing"
