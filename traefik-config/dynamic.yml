@@ -1,0 +1,111 @@
+# Traefik Dynamic Configuration
+# SSL certificates and advanced routing rules
+
+tls:
+  certificates:
+    - certFile: /etc/ssl/certs/server-cert.pem
+      keyFile: /etc/ssl/certs/server-key.pem
+      stores:
+        - default
+  stores:
+    default:
+      defaultCertificate:
+        certFile: /etc/ssl/certs/server-cert.pem
+        keyFile: /etc/ssl/certs/server-key.pem
+
+http:
+  middlewares:
+    # WAF-like security middleware
+    security-waf:
+      plugin:
+        block-malicious:
+          enabled: true
+          rules:
+            - "(?i)(union|select|insert|delete|drop|create|alter)"
+            - "(?i)(<script|javascript:|vbscript:|onload=|onerror=)"
+            - "(?i)(\\.\\.[\\/\\\\]|\\.\\.%)"
+    
+    # Rate limiting tiers
+    api-auth-rate:
+      rateLimit:
+        burst: 10
+        average: 1
+        sourceCriterion:
+          requestHeaderName: "Authorization"
+    
+    public-api-rate:
+      rateLimit:
+        burst: 50
+        average: 5
+        sourceCriterion:
+          ipStrategy:
+            depth: 1
+    
+    admin-api-rate:
+      rateLimit:
+        burst: 20
+        average: 2
+        sourceCriterion:
+          requestHeaderName: "Authorization"
+    
+    # Compression (like Cloudflare)
+    compression:
+      compress: 
+        excludedContentTypes:
+          - "text/event-stream"
+    
+    # HTTPS redirect
+    https-redirect:
+      redirectScheme:
+        scheme: https
+        permanent: true
+    
+    # Custom error pages
+    error-pages:
+      errors:
+        status: 
+          - "404"
+          - "500"
+          - "503"
+        service: "error-page-service"
+        query: "/{status}.html"
+
+  routers:
+    # API routes with path-based routing
+    api-auth:
+      rule: "Host(`api.local.harborlist.com`) && PathPrefix(`/api/auth`)"
+      service: "backend"
+      middlewares:
+        - "security-headers"
+        - "api-auth-rate"
+        - "compression"
+    
+    api-listings:
+      rule: "Host(`api.local.harborlist.com`) && PathPrefix(`/api/listings`)"
+      service: "backend"
+      middlewares:
+        - "security-headers"
+        - "public-api-rate"
+        - "compression"
+    
+    api-admin:
+      rule: "Host(`api.local.harborlist.com`) && PathPrefix(`/api/admin`)"
+      service: "backend"
+      middlewares:
+        - "security-headers"
+        - "admin-api-rate"
+        - "compression"
+    
+    # Static assets with aggressive caching
+    static-assets:
+      rule: "Host(`local.harborlist.com`) && (PathPrefix(`/assets`) || PathPrefix(`/images`) || PathPrefix(`/css`) || PathPrefix(`/js`))"
+      service: "frontend"
+      middlewares:
+        - "cache-headers"
+        - "compression"
+
+  services:
+    error-page-service:
+      loadBalancer:
+        servers:
+          - url: "http://nginx-errors:80"
