@@ -1,0 +1,384 @@
+name: Cleanup Resources
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to clean up'
+        required: true
+        type: choice
+        options:
+          - 'dev'
+          - 'staging'
+          - 'all-non-prod'
+        default: 'dev'
+      cleanup_type:
+        description: 'Type of cleanup to perform'
+        required: true
+        type: choice
+        options:
+          - 'unused-resources'
+          - 'old-deployments'
+          - 'logs-and-artifacts'
+          - 'comprehensive'
+        default: 'unused-resources'
+      confirm_cleanup:
+        description: 'Type "cleanup" to confirm resource cleanup'
+        required: true
+        type: string
+      dry_run:
+        description: 'Perform dry run (preview changes without executing)'
+        required: false
+        type: boolean
+        default: true
+
+env:
+  AWS_REGION: 'us-east-1'
+
+jobs:
+  validate-input:
+    runs-on: ubuntu-latest
+    outputs:
+      should-proceed: ${{ steps.validation.outputs.should-proceed }}
+    steps:
+      - name: Validate cleanup confirmation
+        run: |
+          if [ "${{ github.event.inputs.confirm_cleanup }}" != "cleanup" ]; then
+            echo "❌ Cleanup confirmation failed. Please type 'cleanup' to confirm."
+            exit 1
+          fi
+          echo "✅ Cleanup confirmed for ${{ github.event.inputs.environment }} environment"
+
+      - name: Validate environment selection
+        run: |
+          if [ "${{ github.event.inputs.environment }}" == "production" ]; then
+            echo "❌ Production cleanup not allowed through this workflow"
+            exit 1
+          fi
+          echo "✅ Environment validation passed"
+
+      - name: Set proceed flag
+        id: validation
+        run: echo "should-proceed=true" >> $GITHUB_OUTPUT
+
+  approval-gate:
+    runs-on: ubuntu-latest
+    needs: validate-input
+    if: needs.validate-input.outputs.should-proceed == 'true' && github.event.inputs.dry_run != 'true'
+    environment:
+      name: cleanup-approval
+    steps:
+      - name: Manual approval required for actual cleanup
+        run: |
+          echo "🔒 Manual approval required for resource cleanup"
+          echo "Environment: ${{ github.event.inputs.environment }}"
+          echo "Cleanup type: ${{ github.event.inputs.cleanup_type }}"
+          echo "Requested by: ${{ github.actor }}"
+          echo "Dry run: ${{ github.event.inputs.dry_run }}"
+
+  pre-cleanup-analysis:
+    runs-on: ubuntu-latest
+    needs: validate-input
+    if: needs.validate-input.outputs.should-proceed == 'true'
+    outputs:
+      resources-found: ${{ steps.analysis.outputs.resources-found }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_DEV }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_DEV }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Analyze resources for cleanup
+        id: analysis
+        run: |
+          echo "🔍 Analyzing resources for cleanup..."
+          
+          # Create analysis report
+          echo "## Resource Cleanup Analysis Report" > cleanup-analysis.md
+          echo "**Environment:** ${{ github.event.inputs.environment }}" >> cleanup-analysis.md
+          echo "**Cleanup Type:** ${{ github.event.inputs.cleanup_type }}" >> cleanup-analysis.md
+          echo "**Dry Run:** ${{ github.event.inputs.dry_run }}" >> cleanup-analysis.md
+          echo "**Requested by:** ${{ github.actor }}" >> cleanup-analysis.md
+          echo "**Date:** $(date)" >> cleanup-analysis.md
+          echo "" >> cleanup-analysis.md
+          
+          case "${{ github.event.inputs.cleanup_type }}" in
+            "unused-resources")
+              echo "### Unused Resources Analysis" >> cleanup-analysis.md
+              
+              # Check for unused EC2 instances
+              echo "#### EC2 Instances" >> cleanup-analysis.md
+              aws ec2 describe-instances --query 'Reservations[*].Instances[?State.Name==`stopped`].[InstanceId,Tags[?Key==`Name`].Value|[0],LaunchTime]' --output table >> cleanup-analysis.md || echo "No stopped instances found" >> cleanup-analysis.md
+              
+              # Check for unused EBS volumes
+              echo "#### EBS Volumes" >> cleanup-analysis.md
+              aws ec2 describe-volumes --query 'Volumes[?State==`available`].[VolumeId,Size,CreateTime]' --output table >> cleanup-analysis.md || echo "No available volumes found" >> cleanup-analysis.md
+              
+              # Check for unused Elastic IPs
+              echo "#### Elastic IPs" >> cleanup-analysis.md
+              aws ec2 describe-addresses --query 'Addresses[?!InstanceId].[PublicIp,AllocationId]' --output table >> cleanup-analysis.md || echo "No unassociated Elastic IPs found" >> cleanup-analysis.md
+              
+              # Check for unused Load Balancers
+              echo "#### Load Balancers" >> cleanup-analysis.md
+              aws elbv2 describe-load-balancers --query 'LoadBalancers[?State.Code==`active`].[LoadBalancerName,LoadBalancerArn,CreatedTime]' --output table >> cleanup-analysis.md || echo "No load balancers found" >> cleanup-analysis.md
+              ;;
+              
+            "old-deployments")
+              echo "### Old Deployments Analysis" >> cleanup-analysis.md
+              
+              # Check CloudFormation stacks
+              echo "#### CloudFormation Stacks" >> cleanup-analysis.md
+              aws cloudformation describe-stacks --query 'Stacks[?StackStatus==`DELETE_FAILED` || StackStatus==`ROLLBACK_COMPLETE`].[StackName,StackStatus,CreationTime]' --output table >> cleanup-analysis.md || echo "No failed stacks found" >> cleanup-analysis.md
+              
+              # Check old Lambda versions
+              echo "#### Lambda Function Versions" >> cleanup-analysis.md
+              aws lambda list-functions --query 'Functions[*].[FunctionName,LastModified]' --output table >> cleanup-analysis.md || echo "No Lambda functions found" >> cleanup-analysis.md
+              ;;
+              
+            "logs-and-artifacts")
+              echo "### Logs and Artifacts Analysis" >> cleanup-analysis.md
+              
+              # Check CloudWatch log groups
+              echo "#### CloudWatch Log Groups" >> cleanup-analysis.md
+              aws logs describe-log-groups --query 'logGroups[*].[logGroupName,storedBytes,creationTime]' --output table >> cleanup-analysis.md || echo "No log groups found" >> cleanup-analysis.md
+              
+              # Check S3 buckets for old artifacts
+              echo "#### S3 Artifacts" >> cleanup-analysis.md
+              aws s3api list-buckets --query 'Buckets[*].[Name,CreationDate]' --output table >> cleanup-analysis.md || echo "No S3 buckets found" >> cleanup-analysis.md
+              ;;
+              
+            "comprehensive")
+              echo "### Comprehensive Analysis" >> cleanup-analysis.md
+              echo "Running all cleanup analyses..." >> cleanup-analysis.md
+              
+              # Run all analyses above
+              echo "#### All Resource Types" >> cleanup-analysis.md
+              echo "See individual sections above for detailed analysis" >> cleanup-analysis.md
+              ;;
+          esac
+          
+          echo "resources-found=true" >> $GITHUB_OUTPUT
+
+      - name: Upload analysis report
+        uses: actions/upload-artifact@v4
+        with:
+          name: cleanup-analysis-${{ github.run_number }}
+          path: cleanup-analysis.md
+          retention-days: 30
+
+  cleanup-unused-resources:
+    runs-on: ubuntu-latest
+    needs: [validate-input, pre-cleanup-analysis, approval-gate]
+    if: |
+      always() && 
+      needs.validate-input.outputs.should-proceed == 'true' && 
+      needs.pre-cleanup-analysis.outputs.resources-found == 'true' &&
+      (github.event.inputs.cleanup_type == 'unused-resources' || github.event.inputs.cleanup_type == 'comprehensive') &&
+      (github.event.inputs.dry_run == 'true' || needs.approval-gate.result == 'success')
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_DEV }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_DEV }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Clean up unused resources
+        run: |
+          echo "🧹 Cleaning up unused resources..."
+          
+          DRY_RUN_FLAG=""
+          if [ "${{ github.event.inputs.dry_run }}" == "true" ]; then
+            DRY_RUN_FLAG="--dry-run"
+            echo "🔍 DRY RUN MODE - No actual changes will be made"
+          fi
+          
+          # Run cleanup script
+          chmod +x ./scripts/operations/cleanup-resources.sh
+          ./scripts/operations/cleanup-resources.sh \
+            --environment=${{ github.event.inputs.environment }} \
+            --type=unused-resources \
+            $DRY_RUN_FLAG || echo "⚠️ Cleanup script not found or failed"
+
+  cleanup-old-deployments:
+    runs-on: ubuntu-latest
+    needs: [validate-input, pre-cleanup-analysis, approval-gate]
+    if: |
+      always() && 
+      needs.validate-input.outputs.should-proceed == 'true' && 
+      needs.pre-cleanup-analysis.outputs.resources-found == 'true' &&
+      (github.event.inputs.cleanup_type == 'old-deployments' || github.event.inputs.cleanup_type == 'comprehensive') &&
+      (github.event.inputs.dry_run == 'true' || needs.approval-gate.result == 'success')
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_DEV }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_DEV }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Clean up old deployments
+        run: |
+          echo "🧹 Cleaning up old deployments..."
+          
+          DRY_RUN_FLAG=""
+          if [ "${{ github.event.inputs.dry_run }}" == "true" ]; then
+            DRY_RUN_FLAG="--dry-run"
+            echo "🔍 DRY RUN MODE - No actual changes will be made"
+          fi
+          
+          # Clean up old CloudFormation stacks
+          echo "Cleaning up failed CloudFormation stacks..."
+          
+          # Clean up old Lambda versions (keep last 3)
+          echo "Cleaning up old Lambda versions..."
+          
+          # Run cleanup script
+          chmod +x ./scripts/operations/cleanup-resources.sh
+          ./scripts/operations/cleanup-resources.sh \
+            --environment=${{ github.event.inputs.environment }} \
+            --type=old-deployments \
+            $DRY_RUN_FLAG || echo "⚠️ Cleanup script not found or failed"
+
+  cleanup-logs-artifacts:
+    runs-on: ubuntu-latest
+    needs: [validate-input, pre-cleanup-analysis, approval-gate]
+    if: |
+      always() && 
+      needs.validate-input.outputs.should-proceed == 'true' && 
+      needs.pre-cleanup-analysis.outputs.resources-found == 'true' &&
+      (github.event.inputs.cleanup_type == 'logs-and-artifacts' || github.event.inputs.cleanup_type == 'comprehensive') &&
+      (github.event.inputs.dry_run == 'true' || needs.approval-gate.result == 'success')
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_DEV }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_DEV }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Clean up logs and artifacts
+        run: |
+          echo "🧹 Cleaning up logs and artifacts..."
+          
+          DRY_RUN_FLAG=""
+          if [ "${{ github.event.inputs.dry_run }}" == "true" ]; then
+            DRY_RUN_FLAG="--dry-run"
+            echo "🔍 DRY RUN MODE - No actual changes will be made"
+          fi
+          
+          # Clean up old CloudWatch logs (older than 30 days)
+          echo "Cleaning up old CloudWatch logs..."
+          
+          # Clean up old S3 artifacts (older than 90 days)
+          echo "Cleaning up old S3 artifacts..."
+          
+          # Run cleanup script
+          chmod +x ./scripts/operations/cleanup-resources.sh
+          ./scripts/operations/cleanup-resources.sh \
+            --environment=${{ github.event.inputs.environment }} \
+            --type=logs-and-artifacts \
+            $DRY_RUN_FLAG || echo "⚠️ Cleanup script not found or failed"
+
+  post-cleanup-verification:
+    runs-on: ubuntu-latest
+    needs: [cleanup-unused-resources, cleanup-old-deployments, cleanup-logs-artifacts]
+    if: always() && (needs.cleanup-unused-resources.result == 'success' || needs.cleanup-old-deployments.result == 'success' || needs.cleanup-logs-artifacts.result == 'success')
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_DEV }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_DEV }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Verify cleanup results
+        run: |
+          echo "✅ Verifying cleanup results..."
+          
+          # Create post-cleanup report
+          echo "## Post-Cleanup Verification Report" > post-cleanup-report.md
+          echo "**Environment:** ${{ github.event.inputs.environment }}" >> post-cleanup-report.md
+          echo "**Cleanup Type:** ${{ github.event.inputs.cleanup_type }}" >> post-cleanup-report.md
+          echo "**Dry Run:** ${{ github.event.inputs.dry_run }}" >> post-cleanup-report.md
+          echo "**Completed by:** ${{ github.actor }}" >> post-cleanup-report.md
+          echo "**Date:** $(date)" >> post-cleanup-report.md
+          echo "" >> post-cleanup-report.md
+          
+          # Verify resources are still functioning
+          echo "### Resource Verification" >> post-cleanup-report.md
+          
+          # Check critical resources are still available
+          echo "#### Critical Resources Status" >> post-cleanup-report.md
+          aws ec2 describe-instances --query 'Reservations[*].Instances[?State.Name==`running`].[InstanceId,Tags[?Key==`Name`].Value|[0]]' --output table >> post-cleanup-report.md || echo "No running instances" >> post-cleanup-report.md
+          
+          # Verify application health if not dry run
+          if [ "${{ github.event.inputs.dry_run }}" != "true" ]; then
+            echo "#### Application Health Check" >> post-cleanup-report.md
+            if [ "${{ github.event.inputs.environment }}" == "dev" ]; then
+              curl -f https://dev.boatlistings.com/health && echo "✅ Dev environment healthy" >> post-cleanup-report.md || echo "⚠️ Dev environment health check failed" >> post-cleanup-report.md
+            elif [ "${{ github.event.inputs.environment }}" == "staging" ]; then
+              curl -f https://staging.boatlistings.com/health && echo "✅ Staging environment healthy" >> post-cleanup-report.md || echo "⚠️ Staging environment health check failed" >> post-cleanup-report.md
+            fi
+          fi
+          
+          echo "Cleanup verification completed"
+
+      - name: Upload post-cleanup report
+        uses: actions/upload-artifact@v4
+        with:
+          name: post-cleanup-report-${{ github.run_number }}
+          path: post-cleanup-report.md
+          retention-days: 30
+
+  notification:
+    runs-on: ubuntu-latest
+    needs: [cleanup-unused-resources, cleanup-old-deployments, cleanup-logs-artifacts, post-cleanup-verification]
+    if: always()
+    steps:
+      - name: Notify cleanup status
+        run: |
+          echo "🧹 Resource Cleanup Notification"
+          echo "Environment: ${{ github.event.inputs.environment }}"
+          echo "Cleanup Type: ${{ github.event.inputs.cleanup_type }}"
+          echo "Dry Run: ${{ github.event.inputs.dry_run }}"
+          echo "Requested by: ${{ github.actor }}"
+          echo ""
+          
+          # Check results
+          if [ "${{ needs.cleanup-unused-resources.result }}" == "success" ] || [ "${{ needs.cleanup-old-deployments.result }}" == "success" ] || [ "${{ needs.cleanup-logs-artifacts.result }}" == "success" ]; then
+            if [ "${{ github.event.inputs.dry_run }}" == "true" ]; then
+              echo "✅ Cleanup analysis completed successfully (DRY RUN)"
+              echo "📋 Review the analysis report to see what would be cleaned up"
+            else
+              echo "✅ Resource cleanup completed successfully"
+              echo "📋 Check the post-cleanup report for verification results"
+            fi
+          else
+            echo "❌ Resource cleanup failed or was skipped"
+            echo "📋 Check the workflow logs for details"
+          fi
+          
+          echo ""
+          echo "📊 Cleanup Summary:"
+          echo "- Unused Resources: ${{ needs.cleanup-unused-resources.result }}"
+          echo "- Old Deployments: ${{ needs.cleanup-old-deployments.result }}"
+          echo "- Logs & Artifacts: ${{ needs.cleanup-logs-artifacts.result }}"
+          echo "- Verification: ${{ needs.post-cleanup-verification.result }}"

@@ -2,7 +2,22 @@
 
 ## 📚 **Comprehensive Technical Documentation**
 
-Welcome to the complete enterprise-grade documentation for HarborList Marketplace, a modern serverless boat marketplace platform built with React 18, TypeScript, AWS Lambda (Node.js 18), DynamoDB, and Cloudflare integration. This documentation reflects the current implementation as of October 2025.
+Welco### [`☁️ AWS Infrastructure`](./operations/README.md)
+- **CDK Infrastructure**: Infrastructure as Code patterns and best practices
+- **Resource Management**: AWS service configuration and optimization
+- **Environment Strategy**: Multi-environment deployment patterns
+- **Cost Optimization**: Resource efficiency and cost management
+
+### [`🔧 DevOps Tools & Automation`](./tools/README.md)
+- **Tool Suite Overview**: Comprehensive DevOps automation toolkit
+- **Deployment Tools**: Infrastructure deployment and verification scripts
+- **Monitoring Tools**: Health checks, performance monitoring, and alerting
+- **Cost Management Tools**: Automated billing analysis and optimization
+- **Performance Tools**: Load testing and performance benchmarking
+- **Cloudflare Tools**: CDN management and tunnel configuration
+- **Utility Tools**: General maintenance and administrative automation
+
+### [`📊 Monitoring & Observability`](./monitoring/README.md)te enterprise-grade documentation for HarborList Marketplace, a modern serverless boat marketplace platform built with React 18, TypeScript, AWS Lambda (Node.js 18), DynamoDB, and Cloudflare integration. This documentation reflects the current implementation as of October 2025.
 
 ## 🎯 **Project Overview**
 
@@ -251,11 +266,11 @@ Welcome to the complete enterprise-grade documentation for HarborList Marketplac
 
 ## 📊 **Document Metrics**
 
-- **Total Documents**: 50+ comprehensive guides
-- **Code Examples**: 200+ practical implementations
-- **Architecture Diagrams**: 25+ system and flow diagrams
+- **Total Documents**: 25+ comprehensive guides
+- **Code Examples**: 150+ practical implementations  
+- **Architecture Diagrams**: 29 Mermaid system and flow diagrams
 - **API Endpoints**: 40+ documented endpoints
-- **Test Cases**: 300+ documented test scenarios
+- **Service Documentation**: 7 detailed microservice guides
 
 ---
 

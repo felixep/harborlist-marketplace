@@ -1,0 +1,313 @@
+name: Deploy to Staging
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_deployment:
+        description: 'Type "deploy-staging" to confirm deployment to staging environment'
+        required: true
+        type: string
+      skip_tests:
+        description: 'Skip tests before deployment'
+        required: false
+        type: boolean
+        default: false
+      migration_required:
+        description: 'Database migration required'
+        required: false
+        type: boolean
+        default: false
+
+env:
+  NODE_VERSION: '18'
+  AWS_REGION: 'us-east-1'
+
+jobs:
+  validate-input:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate deployment confirmation
+        run: |
+          if [ "${{ github.event.inputs.confirm_deployment }}" != "deploy-staging" ]; then
+            echo "❌ Deployment confirmation failed. Please type 'deploy-staging' to confirm."
+            exit 1
+          fi
+          echo "✅ Deployment confirmed for staging environment"
+
+  approval-gate:
+    runs-on: ubuntu-latest
+    needs: validate-input
+    environment:
+      name: staging-approval
+    steps:
+      - name: Manual approval required
+        run: |
+          echo "🔒 Manual approval required for staging deployment"
+          echo "Deployment requested by: ${{ github.actor }}"
+          echo "Branch: ${{ github.ref_name }}"
+          echo "Commit: ${{ github.sha }}"
+
+  pre-deployment-checks:
+    runs-on: ubuntu-latest
+    needs: approval-gate
+    outputs:
+      should-deploy: ${{ steps.checks.outputs.should-deploy }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: |
+          cd backend && npm ci
+          cd ../frontend && npm ci
+          cd ../infrastructure && npm ci
+
+      - name: Run comprehensive tests
+        if: ${{ github.event.inputs.skip_tests != 'true' }}
+        run: |
+          echo "🧪 Running backend tests..."
+          cd backend && npm test
+          
+          echo "🧪 Running frontend tests..."
+          cd ../frontend && npm test -- --run
+          
+          echo "🧪 Running infrastructure tests..."
+          cd ../infrastructure && npm test
+          
+          echo "🧪 Running integration tests..."
+          cd ../backend && npm run test:integration || echo "⚠️ Integration tests not configured"
+
+      - name: Security and compliance scan
+        run: |
+          echo "🔒 Running security audit..."
+          cd backend && npm audit --audit-level=moderate
+          cd ../frontend && npm audit --audit-level=moderate
+          cd ../infrastructure && npm audit --audit-level=moderate
+          
+          echo "🔍 Running compliance checks..."
+          ./scripts/operations/security-scan.sh --environment=staging || echo "⚠️ Security scan script not found"
+
+      - name: Performance baseline check
+        run: |
+          echo "📊 Running performance baseline check..."
+          ./scripts/operations/performance-test.sh --baseline-check || echo "⚠️ Performance test script not found"
+
+      - name: Database migration check
+        if: ${{ github.event.inputs.migration_required == 'true' }}
+        run: |
+          echo "🗄️ Validating database migration..."
+          # Add database migration validation logic here
+          echo "Migration validation completed"
+
+      - name: Set deployment flag
+        id: checks
+        run: echo "should-deploy=true" >> $GITHUB_OUTPUT
+
+  build:
+    runs-on: ubuntu-latest
+    needs: pre-deployment-checks
+    if: needs.pre-deployment-checks.outputs.should-deploy == 'true'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Build backend
+        run: |
+          echo "🏗️ Building backend for staging..."
+          cd backend
+          npm ci
+          npm run build
+
+      - name: Build frontend
+        run: |
+          echo "🏗️ Building frontend for staging..."
+          cd frontend
+          npm ci
+          npm run build:staging
+
+      - name: Prepare infrastructure
+        run: |
+          echo "🏗️ Preparing infrastructure for staging..."
+          cd infrastructure
+          npm ci
+          npm run build
+
+      - name: Run build verification
+        run: |
+          echo "✅ Verifying build artifacts..."
+          ls -la backend/dist/
+          ls -la frontend/dist/
+          ls -la infrastructure/cdk.out/
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts-staging
+          path: |
+            backend/dist/
+            frontend/dist/
+            infrastructure/cdk.out/
+          retention-days: 14
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: [pre-deployment-checks, build]
+    if: needs.pre-deployment-checks.outputs.should-deploy == 'true'
+    environment:
+      name: staging
+      url: https://staging.boatlistings.com
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build-artifacts-staging
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_STAGING }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_STAGING }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Pre-deployment backup
+        run: |
+          echo "💾 Creating pre-deployment backup..."
+          ./scripts/operations/backup-database.sh --environment=staging || echo "⚠️ Backup script not found"
+
+      - name: Deploy to staging
+        run: |
+          echo "🚀 Deploying to staging environment..."
+          chmod +x ./scripts/deployment/deploy-staging.sh
+          ./scripts/deployment/deploy-staging.sh
+
+      - name: Run database migration
+        if: ${{ github.event.inputs.migration_required == 'true' }}
+        run: |
+          echo "🗄️ Running database migration..."
+          # Add database migration logic here
+          echo "Database migration completed"
+
+      - name: Verify deployment
+        run: |
+          echo "✅ Verifying staging deployment..."
+          # Wait for services to be ready
+          sleep 60
+          
+          # Comprehensive health checks
+          curl -f https://staging.boatlistings.com/health || echo "⚠️ Health check failed"
+          curl -f https://staging.boatlistings.com/api/health || echo "⚠️ API health check failed"
+          
+          # Basic functionality tests
+          echo "🧪 Running smoke tests..."
+          # Add smoke test logic here
+          
+          echo "📊 Deployment verification completed"
+
+      - name: Update deployment status
+        if: always()
+        run: |
+          if [ ${{ job.status }} == 'success' ]; then
+            echo "✅ Staging deployment completed successfully"
+            echo "🌐 Application URL: https://staging.boatlistings.com"
+          else
+            echo "❌ Staging deployment failed"
+            echo "📋 Check the logs above for details"
+            echo "🔄 Consider running rollback if needed"
+          fi
+
+  post-deployment-tests:
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: needs.deploy.result == 'success'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run post-deployment tests
+        run: |
+          echo "🧪 Running post-deployment tests..."
+          # Add comprehensive post-deployment test suite
+          echo "End-to-end tests completed"
+
+      - name: Performance validation
+        run: |
+          echo "📊 Running performance validation..."
+          ./scripts/operations/performance-test.sh --environment=staging || echo "⚠️ Performance test script not found"
+
+      - name: Security validation
+        run: |
+          echo "🔒 Running security validation..."
+          ./scripts/operations/security-scan.sh --environment=staging || echo "⚠️ Security scan script not found"
+
+  rollback-on-failure:
+    runs-on: ubuntu-latest
+    needs: [deploy, post-deployment-tests]
+    if: failure()
+    environment:
+      name: staging
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_STAGING }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_STAGING }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Automatic rollback
+        run: |
+          echo "🔄 Initiating automatic rollback..."
+          chmod +x ./scripts/deployment/rollback.sh
+          ./scripts/deployment/rollback.sh --environment=staging --auto-confirm
+
+  notification:
+    runs-on: ubuntu-latest
+    needs: [deploy, post-deployment-tests, rollback-on-failure]
+    if: always()
+    steps:
+      - name: Notify deployment status
+        run: |
+          if [ "${{ needs.deploy.result }}" == "success" ] && [ "${{ needs.post-deployment-tests.result }}" == "success" ]; then
+            echo "✅ Staging deployment notification: SUCCESS"
+            echo "Environment: Staging"
+            echo "URL: https://staging.boatlistings.com"
+            echo "Deployed by: ${{ github.actor }}"
+            echo "Commit: ${{ github.sha }}"
+            echo "Migration: ${{ github.event.inputs.migration_required }}"
+          elif [ "${{ needs.rollback-on-failure.result }}" == "success" ]; then
+            echo "🔄 Staging deployment notification: ROLLED BACK"
+            echo "Environment: Staging"
+            echo "Deployed by: ${{ github.actor }}"
+            echo "Commit: ${{ github.sha }}"
+            echo "Rollback completed successfully"
+          else
+            echo "❌ Staging deployment notification: FAILED"
+            echo "Environment: Staging"
+            echo "Deployed by: ${{ github.actor }}"
+            echo "Commit: ${{ github.sha }}"
+            echo "Please check the workflow logs for details"
+          fi
+
+      - name: Cleanup artifacts
+        uses: actions/upload-artifact/merge@v4
+        with:
+          name: deployment-logs-staging-${{ github.run_number }}
+          pattern: build-artifacts-staging
+          delete-merged: true

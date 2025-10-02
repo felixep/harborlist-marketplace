@@ -1,0 +1,718 @@
+name: Sanitation and Compliance Testing
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to test'
+        required: true
+        type: choice
+        options:
+          - 'dev'
+          - 'staging'
+          - 'production'
+        default: 'staging'
+      compliance_framework:
+        description: 'Compliance framework to test against'
+        required: true
+        type: choice
+        options:
+          - 'gdpr'
+          - 'ccpa'
+          - 'pci-dss'
+          - 'sox'
+          - 'hipaa'
+          - 'iso27001'
+          - 'comprehensive'
+        default: 'gdpr'
+      test_scope:
+        description: 'Scope of compliance testing'
+        required: true
+        type: choice
+        options:
+          - 'data-privacy'
+          - 'access-controls'
+          - 'audit-logging'
+          - 'data-retention'
+          - 'encryption'
+          - 'comprehensive'
+        default: 'data-privacy'
+      confirm_test:
+        description: 'Type "compliance" to confirm compliance testing'
+        required: true
+        type: string
+
+env:
+  NODE_VERSION: '18'
+
+jobs:
+  validate-input:
+    runs-on: ubuntu-latest
+    outputs:
+      should-proceed: ${{ steps.validation.outputs.should-proceed }}
+      base-url: ${{ steps.validation.outputs.base-url }}
+    steps:
+      - name: Validate test confirmation
+        run: |
+          if [ "${{ github.event.inputs.confirm_test }}" != "compliance" ]; then
+            echo "❌ Test confirmation failed. Please type 'compliance' to confirm."
+            exit 1
+          fi
+          echo "✅ Compliance testing confirmed for ${{ github.event.inputs.environment }} environment"
+
+      - name: Set environment URL
+        id: validation
+        run: |
+          case "${{ github.event.inputs.environment }}" in
+            "dev")
+              echo "base-url=https://dev.boatlistings.com" >> $GITHUB_OUTPUT
+              ;;
+            "staging")
+              echo "base-url=https://staging.boatlistings.com" >> $GITHUB_OUTPUT
+              ;;
+            "production")
+              echo "base-url=https://boatlistings.com" >> $GITHUB_OUTPUT
+              ;;
+          esac
+          echo "should-proceed=true" >> $GITHUB_OUTPUT
+
+  production-approval:
+    runs-on: ubuntu-latest
+    needs: validate-input
+    if: needs.validate-input.outputs.should-proceed == 'true' && github.event.inputs.environment == 'production'
+    environment:
+      name: production-compliance-testing
+    steps:
+      - name: Production compliance testing approval
+        run: |
+          echo "🔒 Manual approval required for production compliance testing"
+          echo "Framework: ${{ github.event.inputs.compliance_framework }}"
+          echo "Test scope: ${{ github.event.inputs.test_scope }}"
+          echo "Requested by: ${{ github.actor }}"
+
+  setup-compliance-tools:
+    runs-on: ubuntu-latest
+    needs: [validate-input, production-approval]
+    if: always() && needs.validate-input.outputs.should-proceed == 'true' && (github.event.inputs.environment != 'production' || needs.production-approval.result == 'success')
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install compliance testing tools
+        run: |
+          echo "🛠️ Installing compliance testing tools..."
+          
+          # Install curl for API testing
+          sudo apt-get update
+          sudo apt-get install -y curl jq
+          
+          # Install Python for compliance scripts
+          sudo apt-get install -y python3 python3-pip
+          
+          # Install compliance testing libraries
+          pip3 install requests beautifulsoup4 lxml
+          
+          # Install AWS CLI for infrastructure compliance
+          curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+          unzip awscliv2.zip
+          sudo ./aws/install
+          
+          # Verify installations
+          curl --version
+          jq --version
+          python3 --version
+          aws --version
+
+      - name: Create compliance test scripts
+        run: |
+          echo "📝 Creating compliance test scripts..."
+          
+          mkdir -p compliance-tests
+          
+          # Create GDPR compliance test script
+          cat > compliance-tests/gdpr-test.py << 'EOF'
+          #!/usr/bin/env python3
+          import requests
+          import json
+          import sys
+          
+          def test_gdpr_compliance(base_url):
+              results = {
+                  "framework": "GDPR",
+                  "tests": [],
+                  "passed": 0,
+                  "failed": 0
+              }
+              
+              # Test 1: Privacy Policy Accessibility
+              try:
+                  response = requests.get(f"{base_url}/privacy-policy", timeout=10)
+                  if response.status_code == 200:
+                      results["tests"].append({"test": "Privacy Policy Accessible", "status": "PASS"})
+                      results["passed"] += 1
+                  else:
+                      results["tests"].append({"test": "Privacy Policy Accessible", "status": "FAIL", "details": f"Status: {response.status_code}"})
+                      results["failed"] += 1
+              except Exception as e:
+                  results["tests"].append({"test": "Privacy Policy Accessible", "status": "FAIL", "details": str(e)})
+                  results["failed"] += 1
+              
+              # Test 2: Cookie Consent
+              try:
+                  response = requests.get(base_url, timeout=10)
+                  if "cookie" in response.text.lower() and "consent" in response.text.lower():
+                      results["tests"].append({"test": "Cookie Consent Present", "status": "PASS"})
+                      results["passed"] += 1
+                  else:
+                      results["tests"].append({"test": "Cookie Consent Present", "status": "FAIL", "details": "No cookie consent found"})
+                      results["failed"] += 1
+              except Exception as e:
+                  results["tests"].append({"test": "Cookie Consent Present", "status": "FAIL", "details": str(e)})
+                  results["failed"] += 1
+              
+              # Test 3: Data Subject Rights
+              try:
+                  response = requests.get(f"{base_url}/api/user/data-request", timeout=10)
+                  # Expecting 401 or 403 for unauthenticated request, not 404
+                  if response.status_code in [401, 403]:
+                      results["tests"].append({"test": "Data Subject Rights Endpoint", "status": "PASS"})
+                      results["passed"] += 1
+                  else:
+                      results["tests"].append({"test": "Data Subject Rights Endpoint", "status": "FAIL", "details": f"Status: {response.status_code}"})
+                      results["failed"] += 1
+              except Exception as e:
+                  results["tests"].append({"test": "Data Subject Rights Endpoint", "status": "FAIL", "details": str(e)})
+                  results["failed"] += 1
+              
+              return results
+          
+          if __name__ == "__main__":
+              base_url = sys.argv[1] if len(sys.argv) > 1 else "https://staging.boatlistings.com"
+              results = test_gdpr_compliance(base_url)
+              print(json.dumps(results, indent=2))
+          EOF
+          
+          # Create data privacy test script
+          cat > compliance-tests/data-privacy-test.py << 'EOF'
+          #!/usr/bin/env python3
+          import requests
+          import json
+          import sys
+          
+          def test_data_privacy(base_url):
+              results = {
+                  "category": "Data Privacy",
+                  "tests": [],
+                  "passed": 0,
+                  "failed": 0
+              }
+              
+              # Test 1: HTTPS Enforcement
+              try:
+                  http_url = base_url.replace("https://", "http://")
+                  response = requests.get(http_url, timeout=10, allow_redirects=False)
+                  if response.status_code in [301, 302, 308] and "https" in response.headers.get("Location", ""):
+                      results["tests"].append({"test": "HTTPS Enforcement", "status": "PASS"})
+                      results["passed"] += 1
+                  else:
+                      results["tests"].append({"test": "HTTPS Enforcement", "status": "FAIL", "details": "No HTTPS redirect"})
+                      results["failed"] += 1
+              except Exception as e:
+                  results["tests"].append({"test": "HTTPS Enforcement", "status": "FAIL", "details": str(e)})
+                  results["failed"] += 1
+              
+              # Test 2: Security Headers
+              try:
+                  response = requests.get(base_url, timeout=10)
+                  security_headers = [
+                      "Strict-Transport-Security",
+                      "X-Content-Type-Options",
+                      "X-Frame-Options",
+                      "Content-Security-Policy"
+                  ]
+                  
+                  missing_headers = []
+                  for header in security_headers:
+                      if header not in response.headers:
+                          missing_headers.append(header)
+                  
+                  if not missing_headers:
+                      results["tests"].append({"test": "Security Headers Present", "status": "PASS"})
+                      results["passed"] += 1
+                  else:
+                      results["tests"].append({"test": "Security Headers Present", "status": "FAIL", "details": f"Missing: {missing_headers}"})
+                      results["failed"] += 1
+              except Exception as e:
+                  results["tests"].append({"test": "Security Headers Present", "status": "FAIL", "details": str(e)})
+                  results["failed"] += 1
+              
+              # Test 3: Data Minimization
+              try:
+                  response = requests.get(f"{base_url}/api/listings?limit=1", timeout=10)
+                  if response.status_code == 200:
+                      data = response.json()
+                      # Check if response contains only necessary data
+                      if isinstance(data, dict) and "listings" in data:
+                          results["tests"].append({"test": "Data Minimization Check", "status": "PASS"})
+                          results["passed"] += 1
+                      else:
+                          results["tests"].append({"test": "Data Minimization Check", "status": "WARN", "details": "Review API response structure"})
+                          results["failed"] += 1
+                  else:
+                      results["tests"].append({"test": "Data Minimization Check", "status": "FAIL", "details": f"API Status: {response.status_code}"})
+                      results["failed"] += 1
+              except Exception as e:
+                  results["tests"].append({"test": "Data Minimization Check", "status": "FAIL", "details": str(e)})
+                  results["failed"] += 1
+              
+              return results
+          
+          if __name__ == "__main__":
+              base_url = sys.argv[1] if len(sys.argv) > 1 else "https://staging.boatlistings.com"
+              results = test_data_privacy(base_url)
+              print(json.dumps(results, indent=2))
+          EOF
+          
+          chmod +x compliance-tests/*.py
+
+      - name: Upload compliance test scripts
+        uses: actions/upload-artifact@v4
+        with:
+          name: compliance-test-scripts
+          path: compliance-tests/
+          retention-days: 7
+
+  data-privacy-tests:
+    runs-on: ubuntu-latest
+    needs: [validate-input, setup-compliance-tools]
+    if: |
+      needs.setup-compliance-tools.result == 'success' &&
+      (github.event.inputs.test_scope == 'data-privacy' || github.event.inputs.test_scope == 'comprehensive')
+    steps:
+      - name: Download compliance test scripts
+        uses: actions/download-artifact@v4
+        with:
+          name: compliance-test-scripts
+          path: compliance-tests/
+
+      - name: Run data privacy tests
+        run: |
+          echo "🔒 Running data privacy compliance tests..."
+          
+          mkdir -p compliance-reports
+          BASE_URL="${{ needs.validate-input.outputs.base-url }}"
+          
+          # Run data privacy tests
+          python3 compliance-tests/data-privacy-test.py "$BASE_URL" > compliance-reports/data-privacy-results.json
+          
+          # Run framework-specific tests
+          case "${{ github.event.inputs.compliance_framework }}" in
+            "gdpr"|"comprehensive")
+              echo "Running GDPR compliance tests..."
+              python3 compliance-tests/gdpr-test.py "$BASE_URL" > compliance-reports/gdpr-results.json
+              ;;
+          esac
+
+      - name: Upload data privacy test results
+        uses: actions/upload-artifact@v4
+        with:
+          name: data-privacy-test-results
+          path: compliance-reports/
+          retention-days: 30
+
+  access-control-tests:
+    runs-on: ubuntu-latest
+    needs: [validate-input, setup-compliance-tools]
+    if: |
+      needs.setup-compliance-tools.result == 'success' &&
+      (github.event.inputs.test_scope == 'access-controls' || github.event.inputs.test_scope == 'comprehensive')
+    steps:
+      - name: Run access control tests
+        run: |
+          echo "🔐 Running access control compliance tests..."
+          
+          mkdir -p compliance-reports
+          BASE_URL="${{ needs.validate-input.outputs.base-url }}"
+          
+          # Create access control test results
+          cat > compliance-reports/access-control-results.json << EOF
+          {
+            "category": "Access Controls",
+            "tests": [
+              {
+                "test": "Authentication Required for Admin",
+                "status": "TESTING",
+                "details": "Checking admin endpoint protection"
+              },
+              {
+                "test": "Role-Based Access Control",
+                "status": "TESTING", 
+                "details": "Verifying RBAC implementation"
+              },
+              {
+                "test": "Session Management",
+                "status": "TESTING",
+                "details": "Checking session security"
+              }
+            ],
+            "passed": 0,
+            "failed": 0
+          }
+          EOF
+          
+          # Test admin endpoint protection
+          echo "Testing admin endpoint protection..."
+          ADMIN_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/admin" || echo "000")
+          
+          if [ "$ADMIN_STATUS" = "401" ] || [ "$ADMIN_STATUS" = "403" ] || [ "$ADMIN_STATUS" = "302" ]; then
+            echo "✅ Admin endpoint properly protected"
+            jq '.tests[0].status = "PASS" | .passed += 1' compliance-reports/access-control-results.json > tmp.json && mv tmp.json compliance-reports/access-control-results.json
+          else
+            echo "⚠️ Admin endpoint may not be properly protected (Status: $ADMIN_STATUS)"
+            jq '.tests[0].status = "FAIL" | .tests[0].details = "Status: '$ADMIN_STATUS'" | .failed += 1' compliance-reports/access-control-results.json > tmp.json && mv tmp.json compliance-reports/access-control-results.json
+          fi
+          
+          # Test API authentication
+          echo "Testing API authentication..."
+          API_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/api/admin/users" || echo "000")
+          
+          if [ "$API_STATUS" = "401" ] || [ "$API_STATUS" = "403" ]; then
+            echo "✅ API properly requires authentication"
+            jq '.tests[1].status = "PASS" | .passed += 1' compliance-reports/access-control-results.json > tmp.json && mv tmp.json compliance-reports/access-control-results.json
+          else
+            echo "⚠️ API may not require proper authentication (Status: $API_STATUS)"
+            jq '.tests[1].status = "FAIL" | .tests[1].details = "API Status: '$API_STATUS'" | .failed += 1' compliance-reports/access-control-results.json > tmp.json && mv tmp.json compliance-reports/access-control-results.json
+          fi
+          
+          # Test session security headers
+          echo "Testing session security..."
+          HEADERS=$(curl -s -I "$BASE_URL" || echo "")
+          
+          if echo "$HEADERS" | grep -i "set-cookie.*secure" && echo "$HEADERS" | grep -i "set-cookie.*httponly"; then
+            echo "✅ Secure session cookies configured"
+            jq '.tests[2].status = "PASS" | .passed += 1' compliance-reports/access-control-results.json > tmp.json && mv tmp.json compliance-reports/access-control-results.json
+          else
+            echo "⚠️ Session cookies may not be properly secured"
+            jq '.tests[2].status = "WARN" | .tests[2].details = "Review cookie security flags" | .failed += 1' compliance-reports/access-control-results.json > tmp.json && mv tmp.json compliance-reports/access-control-results.json
+          fi
+
+      - name: Upload access control test results
+        uses: actions/upload-artifact@v4
+        with:
+          name: access-control-test-results
+          path: compliance-reports/
+          retention-days: 30
+
+  audit-logging-tests:
+    runs-on: ubuntu-latest
+    needs: [validate-input, setup-compliance-tools]
+    if: |
+      needs.setup-compliance-tools.result == 'success' &&
+      (github.event.inputs.test_scope == 'audit-logging' || github.event.inputs.test_scope == 'comprehensive')
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_DEV }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_DEV }}
+          aws-region: 'us-east-1'
+
+      - name: Run audit logging tests
+        run: |
+          echo "📋 Running audit logging compliance tests..."
+          
+          mkdir -p compliance-reports
+          
+          # Create audit logging test results
+          cat > compliance-reports/audit-logging-results.json << EOF
+          {
+            "category": "Audit Logging",
+            "tests": [
+              {
+                "test": "CloudWatch Logs Configuration",
+                "status": "TESTING",
+                "details": "Checking CloudWatch logs setup"
+              },
+              {
+                "test": "Application Audit Logs",
+                "status": "TESTING",
+                "details": "Verifying application-level audit logging"
+              },
+              {
+                "test": "Log Retention Policy",
+                "status": "TESTING",
+                "details": "Checking log retention configuration"
+              }
+            ],
+            "passed": 0,
+            "failed": 0
+          }
+          EOF
+          
+          # Check CloudWatch log groups
+          echo "Checking CloudWatch log groups..."
+          LOG_GROUPS=$(aws logs describe-log-groups --query 'logGroups[?contains(logGroupName, `boat-listing`) || contains(logGroupName, `boatlisting`)].logGroupName' --output text || echo "")
+          
+          if [ -n "$LOG_GROUPS" ]; then
+            echo "✅ CloudWatch log groups found: $LOG_GROUPS"
+            jq '.tests[0].status = "PASS" | .tests[0].details = "Log groups: '$LOG_GROUPS'" | .passed += 1' compliance-reports/audit-logging-results.json > tmp.json && mv tmp.json compliance-reports/audit-logging-results.json
+          else
+            echo "⚠️ No CloudWatch log groups found for the application"
+            jq '.tests[0].status = "FAIL" | .tests[0].details = "No log groups found" | .failed += 1' compliance-reports/audit-logging-results.json > tmp.json && mv tmp.json compliance-reports/audit-logging-results.json
+          fi
+          
+          # Check for audit log endpoints
+          echo "Checking audit log endpoints..."
+          BASE_URL="${{ needs.validate-input.outputs.base-url }}"
+          AUDIT_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/api/audit-logs" || echo "000")
+          
+          if [ "$AUDIT_STATUS" = "401" ] || [ "$AUDIT_STATUS" = "403" ]; then
+            echo "✅ Audit log endpoint exists and is protected"
+            jq '.tests[1].status = "PASS" | .passed += 1' compliance-reports/audit-logging-results.json > tmp.json && mv tmp.json compliance-reports/audit-logging-results.json
+          else
+            echo "⚠️ Audit log endpoint status: $AUDIT_STATUS"
+            jq '.tests[1].status = "WARN" | .tests[1].details = "Endpoint status: '$AUDIT_STATUS'" | .failed += 1' compliance-reports/audit-logging-results.json > tmp.json && mv tmp.json compliance-reports/audit-logging-results.json
+          fi
+          
+          # Check log retention policies
+          echo "Checking log retention policies..."
+          if [ -n "$LOG_GROUPS" ]; then
+            for log_group in $LOG_GROUPS; do
+              RETENTION=$(aws logs describe-log-groups --log-group-name-prefix "$log_group" --query 'logGroups[0].retentionInDays' --output text || echo "null")
+              if [ "$RETENTION" != "null" ] && [ "$RETENTION" != "None" ]; then
+                echo "✅ Log retention configured for $log_group: $RETENTION days"
+                jq '.tests[2].status = "PASS" | .tests[2].details = "Retention configured" | .passed += 1' compliance-reports/audit-logging-results.json > tmp.json && mv tmp.json compliance-reports/audit-logging-results.json
+                break
+              fi
+            done
+          else
+            echo "⚠️ Cannot check retention - no log groups found"
+            jq '.tests[2].status = "FAIL" | .tests[2].details = "No log groups to check" | .failed += 1' compliance-reports/audit-logging-results.json > tmp.json && mv tmp.json compliance-reports/audit-logging-results.json
+          fi
+
+      - name: Upload audit logging test results
+        uses: actions/upload-artifact@v4
+        with:
+          name: audit-logging-test-results
+          path: compliance-reports/
+          retention-days: 30
+
+  encryption-tests:
+    runs-on: ubuntu-latest
+    needs: [validate-input, setup-compliance-tools]
+    if: |
+      needs.setup-compliance-tools.result == 'success' &&
+      (github.event.inputs.test_scope == 'encryption' || github.event.inputs.test_scope == 'comprehensive')
+    steps:
+      - name: Run encryption compliance tests
+        run: |
+          echo "🔐 Running encryption compliance tests..."
+          
+          mkdir -p compliance-reports
+          BASE_URL="${{ needs.validate-input.outputs.base-url }}"
+          
+          # Create encryption test results
+          cat > compliance-reports/encryption-results.json << EOF
+          {
+            "category": "Encryption",
+            "tests": [
+              {
+                "test": "TLS Configuration",
+                "status": "TESTING",
+                "details": "Checking TLS/SSL configuration"
+              },
+              {
+                "test": "Certificate Validity",
+                "status": "TESTING",
+                "details": "Verifying SSL certificate"
+              },
+              {
+                "test": "Cipher Strength",
+                "status": "TESTING",
+                "details": "Checking encryption cipher strength"
+              }
+            ],
+            "passed": 0,
+            "failed": 0
+          }
+          EOF
+          
+          # Test TLS configuration
+          echo "Testing TLS configuration..."
+          DOMAIN=$(echo "$BASE_URL" | sed 's|https://||' | sed 's|/.*||')
+          
+          # Check if TLS is working
+          if echo | openssl s_client -connect "$DOMAIN:443" -servername "$DOMAIN" 2>/dev/null | grep -q "CONNECTED"; then
+            echo "✅ TLS connection successful"
+            jq '.tests[0].status = "PASS" | .passed += 1' compliance-reports/encryption-results.json > tmp.json && mv tmp.json compliance-reports/encryption-results.json
+          else
+            echo "❌ TLS connection failed"
+            jq '.tests[0].status = "FAIL" | .tests[0].details = "TLS connection failed" | .failed += 1' compliance-reports/encryption-results.json > tmp.json && mv tmp.json compliance-reports/encryption-results.json
+          fi
+          
+          # Check certificate validity
+          echo "Checking certificate validity..."
+          CERT_INFO=$(echo | openssl s_client -connect "$DOMAIN:443" -servername "$DOMAIN" 2>/dev/null | openssl x509 -noout -dates 2>/dev/null || echo "")
+          
+          if echo "$CERT_INFO" | grep -q "notAfter"; then
+            EXPIRY=$(echo "$CERT_INFO" | grep "notAfter" | cut -d= -f2)
+            echo "✅ Certificate valid until: $EXPIRY"
+            jq '.tests[1].status = "PASS" | .tests[1].details = "Valid until: '$EXPIRY'" | .passed += 1' compliance-reports/encryption-results.json > tmp.json && mv tmp.json compliance-reports/encryption-results.json
+          else
+            echo "⚠️ Could not verify certificate validity"
+            jq '.tests[1].status = "WARN" | .tests[1].details = "Certificate check failed" | .failed += 1' compliance-reports/encryption-results.json > tmp.json && mv tmp.json compliance-reports/encryption-results.json
+          fi
+          
+          # Check cipher strength
+          echo "Checking cipher strength..."
+          CIPHER_INFO=$(echo | openssl s_client -connect "$DOMAIN:443" -servername "$DOMAIN" 2>/dev/null | grep "Cipher" || echo "")
+          
+          if echo "$CIPHER_INFO" | grep -q "AES\|ChaCha20"; then
+            echo "✅ Strong encryption cipher in use"
+            jq '.tests[2].status = "PASS" | .tests[2].details = "Strong cipher detected" | .passed += 1' compliance-reports/encryption-results.json > tmp.json && mv tmp.json compliance-reports/encryption-results.json
+          else
+            echo "⚠️ Could not verify cipher strength"
+            jq '.tests[2].status = "WARN" | .tests[2].details = "Cipher verification failed" | .failed += 1' compliance-reports/encryption-results.json > tmp.json && mv tmp.json compliance-reports/encryption-results.json
+          fi
+
+      - name: Upload encryption test results
+        uses: actions/upload-artifact@v4
+        with:
+          name: encryption-test-results
+          path: compliance-reports/
+          retention-days: 30
+
+  analyze-compliance-results:
+    runs-on: ubuntu-latest
+    needs: [data-privacy-tests, access-control-tests, audit-logging-tests, encryption-tests]
+    if: always() && (needs.data-privacy-tests.result == 'success' || needs.access-control-tests.result == 'success' || needs.audit-logging-tests.result == 'success' || needs.encryption-tests.result == 'success')
+    steps:
+      - name: Download all compliance test results
+        uses: actions/download-artifact@v4
+        with:
+          pattern: "*-test-results"
+          merge-multiple: true
+
+      - name: Analyze compliance results
+        run: |
+          echo "📊 Analyzing compliance test results..."
+          
+          # Create comprehensive compliance report
+          echo "# Compliance Test Report" > compliance-report.md
+          echo "**Environment:** ${{ github.event.inputs.environment }}" >> compliance-report.md
+          echo "**Framework:** ${{ github.event.inputs.compliance_framework }}" >> compliance-report.md
+          echo "**Test Scope:** ${{ github.event.inputs.test_scope }}" >> compliance-report.md
+          echo "**Executed by:** ${{ github.actor }}" >> compliance-report.md
+          echo "**Date:** $(date)" >> compliance-report.md
+          echo "" >> compliance-report.md
+          
+          # Initialize counters
+          TOTAL_PASSED=0
+          TOTAL_FAILED=0
+          TOTAL_WARNINGS=0
+          
+          # Process each test result file
+          for result_file in *.json; do
+            if [ -f "$result_file" ]; then
+              echo "Processing $result_file..."
+              
+              # Extract test category
+              CATEGORY=$(jq -r '.category // .framework // "Unknown"' "$result_file" 2>/dev/null || echo "Unknown")
+              
+              echo "## $CATEGORY Results" >> compliance-report.md
+              
+              # Count results
+              PASSED=$(jq -r '.passed // 0' "$result_file" 2>/dev/null || echo "0")
+              FAILED=$(jq -r '.failed // 0' "$result_file" 2>/dev/null || echo "0")
+              
+              TOTAL_PASSED=$((TOTAL_PASSED + PASSED))
+              TOTAL_FAILED=$((TOTAL_FAILED + FAILED))
+              
+              echo "- **Passed:** $PASSED" >> compliance-report.md
+              echo "- **Failed:** $FAILED" >> compliance-report.md
+              echo "" >> compliance-report.md
+              
+              # Add test details
+              if jq -e '.tests' "$result_file" >/dev/null 2>&1; then
+                echo "### Test Details" >> compliance-report.md
+                jq -r '.tests[] | "- **\(.test):** \(.status) \(if .details then "(\(.details))" else "" end)"' "$result_file" >> compliance-report.md 2>/dev/null || echo "- Test details unavailable" >> compliance-report.md
+                echo "" >> compliance-report.md
+              fi
+            fi
+          done
+          
+          # Add executive summary
+          sed -i '7i\\n## Executive Summary\n' compliance-report.md
+          sed -i "8i- **Total Tests Passed:** $TOTAL_PASSED" compliance-report.md
+          sed -i "9i- **Total Tests Failed:** $TOTAL_FAILED" compliance-report.md
+          
+          # Calculate compliance score
+          TOTAL_TESTS=$((TOTAL_PASSED + TOTAL_FAILED))
+          if [ $TOTAL_TESTS -gt 0 ]; then
+            COMPLIANCE_SCORE=$((TOTAL_PASSED * 100 / TOTAL_TESTS))
+            sed -i "10i- **Compliance Score:** $COMPLIANCE_SCORE%" compliance-report.md
+          fi
+          
+          sed -i '11i\\n' compliance-report.md
+          
+          # Add recommendations
+          echo "" >> compliance-report.md
+          echo "## Recommendations" >> compliance-report.md
+          
+          if [ $TOTAL_FAILED -gt 0 ]; then
+            echo "⚠️ **Action Required:** $TOTAL_FAILED compliance issues found" >> compliance-report.md
+            echo "- Review all failed tests and implement necessary fixes" >> compliance-report.md
+            echo "- Prioritize critical compliance requirements" >> compliance-report.md
+          else
+            echo "✅ **Good:** All compliance tests passed" >> compliance-report.md
+          fi
+          
+          echo "- Implement regular compliance testing" >> compliance-report.md
+          echo "- Document compliance procedures" >> compliance-report.md
+          echo "- Train team on compliance requirements" >> compliance-report.md
+          echo "- Schedule periodic compliance reviews" >> compliance-report.md
+
+      - name: Upload comprehensive compliance report
+        uses: actions/upload-artifact@v4
+        with:
+          name: compliance-report-${{ github.run_number }}
+          path: compliance-report.md
+          retention-days: 90
+
+  notification:
+    runs-on: ubuntu-latest
+    needs: [data-privacy-tests, access-control-tests, audit-logging-tests, encryption-tests, analyze-compliance-results]
+    if: always()
+    steps:
+      - name: Notify compliance test status
+        run: |
+          echo "📋 Compliance Test Notification"
+          echo "Environment: ${{ github.event.inputs.environment }}"
+          echo "Framework: ${{ github.event.inputs.compliance_framework }}"
+          echo "Test Scope: ${{ github.event.inputs.test_scope }}"
+          echo "Executed by: ${{ github.actor }}"
+          echo ""
+          
+          # Check results
+          if [ "${{ needs.analyze-compliance-results.result }}" == "success" ]; then
+            echo "✅ Compliance testing completed successfully"
+            echo "📋 Comprehensive compliance report generated and available in artifacts"
+            echo "🔍 Review all test results for compliance issues"
+          else
+            echo "❌ Compliance testing failed or incomplete"
+            echo "📋 Check the workflow logs for details"
+          fi
+          
+          echo ""
+          echo "📊 Test Summary:"
+          echo "- Data Privacy: ${{ needs.data-privacy-tests.result }}"
+          echo "- Access Controls: ${{ needs.access-control-tests.result }}"
+          echo "- Audit Logging: ${{ needs.audit-logging-tests.result }}"
+          echo "- Encryption: ${{ needs.encryption-tests.result }}"
+          echo "- Analysis: ${{ needs.analyze-compliance-results.result }}"

@@ -1,0 +1,483 @@
+name: Performance Testing
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to test'
+        required: true
+        type: choice
+        options:
+          - 'dev'
+          - 'staging'
+          - 'production'
+        default: 'staging'
+      test_type:
+        description: 'Type of performance test'
+        required: true
+        type: choice
+        options:
+          - 'load-test'
+          - 'stress-test'
+          - 'spike-test'
+          - 'endurance-test'
+          - 'baseline-test'
+          - 'comprehensive'
+        default: 'load-test'
+      duration_minutes:
+        description: 'Test duration in minutes'
+        required: false
+        type: number
+        default: 10
+      concurrent_users:
+        description: 'Number of concurrent users'
+        required: false
+        type: number
+        default: 50
+      confirm_test:
+        description: 'Type "test" to confirm performance testing'
+        required: true
+        type: string
+
+env:
+  NODE_VERSION: '18'
+
+jobs:
+  validate-input:
+    runs-on: ubuntu-latest
+    outputs:
+      should-proceed: ${{ steps.validation.outputs.should-proceed }}
+      base-url: ${{ steps.validation.outputs.base-url }}
+    steps:
+      - name: Validate test confirmation
+        run: |
+          if [ "${{ github.event.inputs.confirm_test }}" != "test" ]; then
+            echo "❌ Test confirmation failed. Please type 'test' to confirm."
+            exit 1
+          fi
+          echo "✅ Performance test confirmed for ${{ github.event.inputs.environment }} environment"
+
+      - name: Set environment URL
+        id: validation
+        run: |
+          case "${{ github.event.inputs.environment }}" in
+            "dev")
+              echo "base-url=https://dev.boatlistings.com" >> $GITHUB_OUTPUT
+              ;;
+            "staging")
+              echo "base-url=https://staging.boatlistings.com" >> $GITHUB_OUTPUT
+              ;;
+            "production")
+              echo "base-url=https://boatlistings.com" >> $GITHUB_OUTPUT
+              ;;
+          esac
+          echo "should-proceed=true" >> $GITHUB_OUTPUT
+
+  production-approval:
+    runs-on: ubuntu-latest
+    needs: validate-input
+    if: needs.validate-input.outputs.should-proceed == 'true' && github.event.inputs.environment == 'production'
+    environment:
+      name: production-performance-testing
+    steps:
+      - name: Production performance testing approval
+        run: |
+          echo "🔒 Manual approval required for production performance testing"
+          echo "Test type: ${{ github.event.inputs.test_type }}"
+          echo "Duration: ${{ github.event.inputs.duration_minutes }} minutes"
+          echo "Concurrent users: ${{ github.event.inputs.concurrent_users }}"
+          echo "Requested by: ${{ github.actor }}"
+
+  pre-test-health-check:
+    runs-on: ubuntu-latest
+    needs: [validate-input, production-approval]
+    if: always() && needs.validate-input.outputs.should-proceed == 'true' && (github.event.inputs.environment != 'production' || needs.production-approval.result == 'success')
+    outputs:
+      system-healthy: ${{ steps.health-check.outputs.system-healthy }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Pre-test health check
+        id: health-check
+        run: |
+          echo "🏥 Performing pre-test health check..."
+          
+          BASE_URL="${{ needs.validate-input.outputs.base-url }}"
+          
+          # Basic health check
+          echo "Checking application health..."
+          if curl -f "$BASE_URL/health" --max-time 30; then
+            echo "✅ Application health check passed"
+          else
+            echo "❌ Application health check failed"
+            exit 1
+          fi
+          
+          # API health check
+          echo "Checking API health..."
+          if curl -f "$BASE_URL/api/health" --max-time 30; then
+            echo "✅ API health check passed"
+          else
+            echo "⚠️ API health check failed - continuing with limited tests"
+          fi
+          
+          # Database connectivity check
+          echo "Checking database connectivity..."
+          if curl -f "$BASE_URL/api/listings?limit=1" --max-time 30; then
+            echo "✅ Database connectivity check passed"
+          else
+            echo "⚠️ Database connectivity check failed"
+          fi
+          
+          echo "system-healthy=true" >> $GITHUB_OUTPUT
+
+  setup-performance-tools:
+    runs-on: ubuntu-latest
+    needs: pre-test-health-check
+    if: needs.pre-test-health-check.outputs.system-healthy == 'true'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install performance testing tools
+        run: |
+          echo "🛠️ Installing performance testing tools..."
+          
+          # Install k6 for load testing
+          sudo gpg -k
+          sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update
+          sudo apt-get install k6
+          
+          # Install artillery as backup
+          npm install -g artillery@latest
+          
+          # Verify installations
+          k6 version
+          artillery version
+
+      - name: Create performance test scripts
+        run: |
+          echo "📝 Creating performance test scripts..."
+          
+          mkdir -p performance-tests
+          
+          # Create k6 load test script
+          cat > performance-tests/load-test.js << 'EOF'
+          import http from 'k6/http';
+          import { check, sleep } from 'k6';
+          import { Rate } from 'k6/metrics';
+          
+          const errorRate = new Rate('errors');
+          const BASE_URL = __ENV.BASE_URL || 'https://staging.boatlistings.com';
+          
+          export let options = {
+            stages: [
+              { duration: '2m', target: __ENV.CONCURRENT_USERS || 50 },
+              { duration: __ENV.DURATION || '10m', target: __ENV.CONCURRENT_USERS || 50 },
+              { duration: '2m', target: 0 },
+            ],
+            thresholds: {
+              http_req_duration: ['p(95)<2000'],
+              http_req_failed: ['rate<0.05'],
+              errors: ['rate<0.1'],
+            },
+          };
+          
+          export default function() {
+            // Test homepage
+            let response = http.get(`${BASE_URL}/`);
+            check(response, {
+              'homepage status is 200': (r) => r.status === 200,
+              'homepage response time < 2s': (r) => r.timings.duration < 2000,
+            }) || errorRate.add(1);
+            
+            sleep(1);
+            
+            // Test API endpoints
+            response = http.get(`${BASE_URL}/api/listings?limit=10`);
+            check(response, {
+              'listings API status is 200': (r) => r.status === 200,
+              'listings API response time < 1s': (r) => r.timings.duration < 1000,
+            }) || errorRate.add(1);
+            
+            sleep(1);
+            
+            // Test search functionality
+            response = http.get(`${BASE_URL}/api/listings/search?q=boat&limit=5`);
+            check(response, {
+              'search API status is 200': (r) => r.status === 200,
+              'search API response time < 1.5s': (r) => r.timings.duration < 1500,
+            }) || errorRate.add(1);
+            
+            sleep(2);
+          }
+          EOF
+          
+          # Create stress test script
+          cat > performance-tests/stress-test.js << 'EOF'
+          import http from 'k6/http';
+          import { check, sleep } from 'k6';
+          import { Rate } from 'k6/metrics';
+          
+          const errorRate = new Rate('errors');
+          const BASE_URL = __ENV.BASE_URL || 'https://staging.boatlistings.com';
+          
+          export let options = {
+            stages: [
+              { duration: '1m', target: 50 },
+              { duration: '2m', target: 100 },
+              { duration: '2m', target: 200 },
+              { duration: '2m', target: 300 },
+              { duration: '1m', target: 0 },
+            ],
+            thresholds: {
+              http_req_duration: ['p(95)<5000'],
+              http_req_failed: ['rate<0.1'],
+            },
+          };
+          
+          export default function() {
+            let response = http.get(`${BASE_URL}/api/listings?limit=20`);
+            check(response, {
+              'status is 200': (r) => r.status === 200,
+            }) || errorRate.add(1);
+            
+            sleep(Math.random() * 3);
+          }
+          EOF
+
+      - name: Upload test scripts
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-test-scripts
+          path: performance-tests/
+          retention-days: 7
+
+  run-load-test:
+    runs-on: ubuntu-latest
+    needs: [validate-input, pre-test-health-check, setup-performance-tools]
+    if: |
+      needs.pre-test-health-check.outputs.system-healthy == 'true' &&
+      (github.event.inputs.test_type == 'load-test' || github.event.inputs.test_type == 'comprehensive')
+    steps:
+      - name: Download test scripts
+        uses: actions/download-artifact@v4
+        with:
+          name: performance-test-scripts
+          path: performance-tests/
+
+      - name: Install k6
+        run: |
+          sudo gpg -k
+          sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update
+          sudo apt-get install k6
+
+      - name: Run load test
+        run: |
+          echo "🚀 Running load test..."
+          
+          export BASE_URL="${{ needs.validate-input.outputs.base-url }}"
+          export CONCURRENT_USERS="${{ github.event.inputs.concurrent_users }}"
+          export DURATION="${{ github.event.inputs.duration_minutes }}m"
+          
+          k6 run performance-tests/load-test.js \
+            --out json=load-test-results.json \
+            --summary-export=load-test-summary.json
+
+      - name: Upload load test results
+        uses: actions/upload-artifact@v4
+        with:
+          name: load-test-results
+          path: |
+            load-test-results.json
+            load-test-summary.json
+          retention-days: 30
+
+  run-stress-test:
+    runs-on: ubuntu-latest
+    needs: [validate-input, pre-test-health-check, setup-performance-tools]
+    if: |
+      needs.pre-test-health-check.outputs.system-healthy == 'true' &&
+      (github.event.inputs.test_type == 'stress-test' || github.event.inputs.test_type == 'comprehensive')
+    steps:
+      - name: Download test scripts
+        uses: actions/download-artifact@v4
+        with:
+          name: performance-test-scripts
+          path: performance-tests/
+
+      - name: Install k6
+        run: |
+          sudo gpg -k
+          sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update
+          sudo apt-get install k6
+
+      - name: Run stress test
+        run: |
+          echo "💪 Running stress test..."
+          
+          export BASE_URL="${{ needs.validate-input.outputs.base-url }}"
+          
+          k6 run performance-tests/stress-test.js \
+            --out json=stress-test-results.json \
+            --summary-export=stress-test-summary.json
+
+      - name: Upload stress test results
+        uses: actions/upload-artifact@v4
+        with:
+          name: stress-test-results
+          path: |
+            stress-test-results.json
+            stress-test-summary.json
+          retention-days: 30
+
+  run-custom-performance-test:
+    runs-on: ubuntu-latest
+    needs: [validate-input, pre-test-health-check, setup-performance-tools]
+    if: needs.pre-test-health-check.outputs.system-healthy == 'true'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run custom performance test script
+        run: |
+          echo "🎯 Running custom performance test..."
+          
+          # Run the performance test script from the repository
+          chmod +x ./scripts/operations/performance-test.sh
+          ./scripts/operations/performance-test.sh \
+            --environment=${{ github.event.inputs.environment }} \
+            --type=${{ github.event.inputs.test_type }} \
+            --duration=${{ github.event.inputs.duration_minutes }} \
+            --users=${{ github.event.inputs.concurrent_users }} \
+            --output-format=json || echo "⚠️ Custom performance test script not found"
+
+  analyze-results:
+    runs-on: ubuntu-latest
+    needs: [run-load-test, run-stress-test, run-custom-performance-test]
+    if: always() && (needs.run-load-test.result == 'success' || needs.run-stress-test.result == 'success' || needs.run-custom-performance-test.result == 'success')
+    steps:
+      - name: Download all test results
+        uses: actions/download-artifact@v4
+        with:
+          pattern: "*-test-results"
+          merge-multiple: true
+
+      - name: Analyze performance results
+        run: |
+          echo "📊 Analyzing performance test results..."
+          
+          # Create comprehensive performance report
+          echo "# Performance Test Report" > performance-report.md
+          echo "**Environment:** ${{ github.event.inputs.environment }}" >> performance-report.md
+          echo "**Test Type:** ${{ github.event.inputs.test_type }}" >> performance-report.md
+          echo "**Duration:** ${{ github.event.inputs.duration_minutes }} minutes" >> performance-report.md
+          echo "**Concurrent Users:** ${{ github.event.inputs.concurrent_users }}" >> performance-report.md
+          echo "**Executed by:** ${{ github.actor }}" >> performance-report.md
+          echo "**Date:** $(date)" >> performance-report.md
+          echo "" >> performance-report.md
+          
+          # Analyze load test results if available
+          if [ -f "load-test-summary.json" ]; then
+            echo "## Load Test Results" >> performance-report.md
+            echo "\`\`\`json" >> performance-report.md
+            cat load-test-summary.json >> performance-report.md
+            echo "\`\`\`" >> performance-report.md
+            echo "" >> performance-report.md
+          fi
+          
+          # Analyze stress test results if available
+          if [ -f "stress-test-summary.json" ]; then
+            echo "## Stress Test Results" >> performance-report.md
+            echo "\`\`\`json" >> performance-report.md
+            cat stress-test-summary.json >> performance-report.md
+            echo "\`\`\`" >> performance-report.md
+            echo "" >> performance-report.md
+          fi
+          
+          # Add recommendations
+          echo "## Recommendations" >> performance-report.md
+          echo "- Review response times and identify bottlenecks" >> performance-report.md
+          echo "- Monitor error rates and investigate failures" >> performance-report.md
+          echo "- Consider scaling if performance thresholds are exceeded" >> performance-report.md
+          echo "- Schedule regular performance testing" >> performance-report.md
+
+      - name: Upload performance report
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-report-${{ github.run_number }}
+          path: performance-report.md
+          retention-days: 90
+
+  post-test-health-check:
+    runs-on: ubuntu-latest
+    needs: [validate-input, analyze-results]
+    if: always() && needs.analyze-results.result == 'success'
+    steps:
+      - name: Post-test health check
+        run: |
+          echo "🏥 Performing post-test health check..."
+          
+          BASE_URL="${{ needs.validate-input.outputs.base-url }}"
+          
+          # Wait for system to stabilize
+          sleep 30
+          
+          # Check application health
+          if curl -f "$BASE_URL/health" --max-time 30; then
+            echo "✅ Post-test application health check passed"
+          else
+            echo "⚠️ Post-test application health check failed"
+          fi
+          
+          # Check API health
+          if curl -f "$BASE_URL/api/health" --max-time 30; then
+            echo "✅ Post-test API health check passed"
+          else
+            echo "⚠️ Post-test API health check failed"
+          fi
+
+  notification:
+    runs-on: ubuntu-latest
+    needs: [run-load-test, run-stress-test, run-custom-performance-test, analyze-results, post-test-health-check]
+    if: always()
+    steps:
+      - name: Notify performance test status
+        run: |
+          echo "📊 Performance Test Notification"
+          echo "Environment: ${{ github.event.inputs.environment }}"
+          echo "Test Type: ${{ github.event.inputs.test_type }}"
+          echo "Duration: ${{ github.event.inputs.duration_minutes }} minutes"
+          echo "Concurrent Users: ${{ github.event.inputs.concurrent_users }}"
+          echo "Executed by: ${{ github.actor }}"
+          echo ""
+          
+          # Check results
+          if [ "${{ needs.analyze-results.result }}" == "success" ]; then
+            echo "✅ Performance testing completed successfully"
+            echo "📋 Performance report generated and available in artifacts"
+            echo "🏥 Post-test health check: ${{ needs.post-test-health-check.result }}"
+          else
+            echo "❌ Performance testing failed or incomplete"
+            echo "📋 Check the workflow logs for details"
+          fi
+          
+          echo ""
+          echo "📊 Test Summary:"
+          echo "- Load Test: ${{ needs.run-load-test.result }}"
+          echo "- Stress Test: ${{ needs.run-stress-test.result }}"
+          echo "- Custom Test: ${{ needs.run-custom-performance-test.result }}"
+          echo "- Analysis: ${{ needs.analyze-results.result }}"
