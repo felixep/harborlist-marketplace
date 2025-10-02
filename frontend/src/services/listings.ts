@@ -1,0 +1,114 @@
+import { Listing, SearchFilters, SearchResult } from '../types/listing';
+
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://api-dev.harborlist.com';
+
+class ApiError extends Error {
+  constructor(public status: number, message: string) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
+async function apiRequest<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+  const token = localStorage.getItem('authToken');
+  
+  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token && { Authorization: `Bearer ${token}` }),
+      ...options.headers,
+    },
+    ...options,
+  });
+
+  if (!response.ok) {
+    throw new ApiError(response.status, `API Error: ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+export async function getListings(params?: {
+  limit?: number;
+  nextToken?: string;
+}): Promise<{ listings: Listing[]; nextToken?: string; total: number }> {
+  const searchParams = new URLSearchParams();
+  if (params?.limit) searchParams.set('limit', params.limit.toString());
+  if (params?.nextToken) searchParams.set('nextToken', params.nextToken);
+
+  return apiRequest(`/listings?${searchParams.toString()}`);
+}
+
+export async function getListing(id: string): Promise<{ listing: Listing }> {
+  return apiRequest(`/listings/${id}`);
+}
+
+export async function createListing(listing: Omit<Listing, 'listingId' | 'createdAt' | 'updatedAt'>): Promise<{ listingId: string }> {
+  return apiRequest('/listings', {
+    method: 'POST',
+    body: JSON.stringify(listing),
+  });
+}
+
+export async function updateListing(id: string, updates: Partial<Listing>): Promise<void> {
+  return apiRequest(`/listings/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(updates),
+  });
+}
+
+export async function deleteListing(id: string): Promise<void> {
+  return apiRequest(`/listings/${id}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function searchListings(params: SearchFilters & {
+  limit?: number;
+  offset?: number;
+}): Promise<SearchResult> {
+  return apiRequest('/search', {
+    method: 'POST',
+    body: JSON.stringify(params),
+  });
+}
+
+export async function contactOwner(params: {
+  listingId: string;
+  senderName: string;
+  senderEmail: string;
+  senderPhone?: string;
+  message: string;
+}): Promise<{ messageId: string }> {
+  return apiRequest('/contact', {
+    method: 'POST',
+    body: JSON.stringify(params),
+  });
+}
+
+export async function uploadMedia(file: File, listingId: string): Promise<{
+  uploadId: string;
+  url: string;
+  thumbnail?: string;
+}> {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('listingId', listingId);
+  formData.append('type', file.type.startsWith('video/') ? 'video' : 'image');
+
+  const token = localStorage.getItem('authToken');
+  
+  const response = await fetch(`${API_BASE_URL}/media/upload`, {
+    method: 'POST',
+    headers: {
+      ...(token && { Authorization: `Bearer ${token}` }),
+    },
+    body: formData,
+  });
+
+  if (!response.ok) {
+    throw new ApiError(response.status, `Upload failed: ${response.statusText}`);
+  }
+
+  return response.json();
+}

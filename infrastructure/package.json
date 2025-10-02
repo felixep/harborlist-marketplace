@@ -1,0 +1,41 @@
+{
+  "name": "boat-listing-infrastructure",
+  "version": "1.0.0",
+  "scripts": {
+    "build": "tsc",
+    "synth": "cdk synth",
+    "synth:dev": "cdk synth -c environment=dev",
+    "synth:staging": "cdk synth -c environment=staging",
+    "synth:prod": "cdk synth -c environment=prod",
+    "synth:dev:domains": "cdk synth -c environment=dev -c useCustomDomains=true",
+    "synth:staging:domains": "cdk synth -c environment=staging -c useCustomDomains=true",
+    "synth:prod:domains": "cdk synth -c environment=prod -c useCustomDomains=true",
+    "deploy": "cdk deploy",
+    "deploy:dev": "cdk deploy -c environment=dev",
+    "deploy:staging": "cdk deploy -c environment=staging", 
+    "deploy:prod": "cdk deploy -c environment=prod",
+    "deploy:dev:no-domains": "cdk deploy -c environment=dev -c useCustomDomains=false",
+    "deploy:staging:no-domains": "cdk deploy -c environment=staging -c useCustomDomains=false",
+    "deploy:prod:no-domains": "cdk deploy -c environment=prod -c useCustomDomains=false",
+    "diff": "cdk diff",
+    "diff:dev": "cdk diff -c environment=dev",
+    "diff:staging": "cdk diff -c environment=staging",
+    "diff:prod": "cdk diff -c environment=prod",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "validate": "npm run build && npm run test && npm run synth:dev",
+    "validate:all": "npm run validate && npm run synth:staging && npm run synth:prod"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "aws-cdk": "^2.100.0",
+    "typescript": "^5.0.0",
+    "jest": "^29.0.0",
+    "@types/jest": "^29.0.0",
+    "ts-jest": "^29.0.0"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "^2.100.0",
+    "constructs": "^10.0.0"
+  }
+}

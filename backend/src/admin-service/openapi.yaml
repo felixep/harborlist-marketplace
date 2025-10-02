@@ -1,0 +1,821 @@
+openapi: 3.0.3
+info:
+  title: HarborList Admin API
+  description: Comprehensive administrative API for the HarborList boat marketplace platform
+  version: 1.0.0
+  contact:
+    name: HarborList Development Team
+    email: dev@harborlist.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: https://api.harborlist.com/admin
+    description: Production server
+  - url: https://api-staging.harborlist.com/admin
+    description: Staging server
+  - url: https://api-dev.harborlist.com/admin
+    description: Development server
+
+security:
+  - BearerAuth: []
+
+paths:
+  /auth/verify:
+    post:
+      summary: Verify admin authentication
+      description: Verifies the current admin user's authentication status and returns user information
+      tags:
+        - Authentication
+      responses:
+        '200':
+          description: Authentication verified successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: '#/components/schemas/AdminUser'
+                  permissions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AdminPermission'
+                  sessionInfo:
+                    $ref: '#/components/schemas/SessionInfo'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /dashboard:
+    get:
+      summary: Get dashboard overview
+      description: Retrieves key platform metrics and system health information
+      tags:
+        - Dashboard
+      responses:
+        '200':
+          description: Dashboard data retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardData'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /users:
+    get:
+      summary: Get users list
+      description: Retrieves a paginated list of platform users with filtering options
+      tags:
+        - User Management
+      parameters:
+        - name: page
+          in: query
+          description: Page number for pagination
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          description: Number of users per page
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: search
+          in: query
+          description: Search term for user email or name
+          schema:
+            type: string
+        - name: status
+          in: query
+          description: Filter by user status
+          schema:
+            $ref: '#/components/schemas/UserStatus'
+        - name: role
+          in: query
+          description: Filter by user role
+          schema:
+            $ref: '#/components/schemas/UserRole'
+      responses:
+        '200':
+          description: Users retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UsersList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /users/{userId}:
+    get:
+      summary: Get user details
+      description: Retrieves detailed information about a specific user
+      tags:
+        - User Management
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          description: User ID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: User details retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserDetails'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /users/{userId}/status:
+    put:
+      summary: Update user status
+      description: Updates the status of a specific user (suspend, activate, ban)
+      tags:
+        - User Management
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          description: User ID
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - status
+                - reason
+              properties:
+                status:
+                  $ref: '#/components/schemas/UserStatus'
+                reason:
+                  type: string
+                  description: Reason for status change
+                  minLength: 1
+                  maxLength: 500
+      responses:
+        '200':
+          description: User status updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  userId:
+                    type: string
+                  newStatus:
+                    $ref: '#/components/schemas/UserStatus'
+                  reason:
+                    type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /audit-logs:
+    get:
+      summary: Get audit logs
+      description: Retrieves audit logs with filtering and pagination
+      tags:
+        - Audit Logs
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+        - name: userId
+          in: query
+          description: Filter by user ID
+          schema:
+            type: string
+        - name: action
+          in: query
+          description: Filter by action type
+          schema:
+            type: string
+        - name: resource
+          in: query
+          description: Filter by resource type
+          schema:
+            type: string
+        - name: startDate
+          in: query
+          description: Start date for filtering (ISO 8601)
+          schema:
+            type: string
+            format: date-time
+        - name: endDate
+          in: query
+          description: End date for filtering (ISO 8601)
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Audit logs retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditLogsList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /audit-logs/search:
+    post:
+      summary: Search audit logs
+      description: Performs advanced search on audit logs with full-text capabilities
+      tags:
+        - Audit Logs
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - query
+              properties:
+                query:
+                  type: string
+                  description: Search query
+                  minLength: 1
+                startDate:
+                  type: string
+                  format: date-time
+                endDate:
+                  type: string
+                  format: date-time
+                filters:
+                  type: object
+                  additionalProperties: true
+                page:
+                  type: integer
+                  minimum: 1
+                  default: 1
+                limit:
+                  type: integer
+                  minimum: 1
+                  maximum: 200
+                  default: 50
+      responses:
+        '200':
+          description: Search results retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditLogsSearchResults'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /sessions:
+    get:
+      summary: Get admin sessions
+      description: Retrieves active admin sessions with filtering options
+      tags:
+        - Session Management
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: status
+          in: query
+          description: Filter by session status
+          schema:
+            type: string
+            enum: [active, inactive, expired]
+            default: active
+        - name: userId
+          in: query
+          description: Filter by user ID
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Sessions retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionsList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /sessions/{sessionId}/terminate:
+    post:
+      summary: Terminate session
+      description: Terminates a specific admin session
+      tags:
+        - Session Management
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          description: Session ID to terminate
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Session terminated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  sessionId:
+                    type: string
+                  terminatedBy:
+                    type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /security/suspicious-activity:
+    get:
+      summary: Get suspicious activity
+      description: Retrieves detected suspicious activities and security events
+      tags:
+        - Security Monitoring
+      parameters:
+        - name: timeRange
+          in: query
+          description: Time range for activity lookup
+          schema:
+            type: string
+            enum: [1h, 6h, 24h, 7d, 30d]
+            default: 24h
+        - name: severity
+          in: query
+          description: Filter by severity level
+          schema:
+            type: string
+            enum: [low, medium, high, critical, all]
+            default: all
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+      responses:
+        '200':
+          description: Suspicious activities retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuspiciousActivityList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    AdminUser:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        role:
+          $ref: '#/components/schemas/UserRole'
+        status:
+          $ref: '#/components/schemas/UserStatus'
+        permissions:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminPermission'
+        lastLogin:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        mfaEnabled:
+          type: boolean
+
+    UserRole:
+      type: string
+      enum:
+        - user
+        - admin
+        - super_admin
+        - moderator
+        - support
+
+    UserStatus:
+      type: string
+      enum:
+        - active
+        - suspended
+        - banned
+        - pending_verification
+
+    AdminPermission:
+      type: string
+      enum:
+        - user_management
+        - content_moderation
+        - financial_access
+        - system_config
+        - analytics_view
+        - audit_log_view
+
+    SessionInfo:
+      type: object
+      properties:
+        sessionId:
+          type: string
+        deviceId:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+
+    DashboardData:
+      type: object
+      properties:
+        metrics:
+          type: object
+          properties:
+            totalUsers:
+              type: integer
+            activeUsers:
+              type: integer
+            newUsersToday:
+              type: integer
+            totalListings:
+              type: integer
+            activeListings:
+              type: integer
+            pendingModeration:
+              type: integer
+            flaggedListings:
+              type: integer
+        systemHealth:
+          $ref: '#/components/schemas/SystemHealth'
+        lastUpdated:
+          type: string
+          format: date-time
+
+    SystemHealth:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [healthy, degraded, unhealthy]
+        services:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              status:
+                type: string
+                enum: [up, down, degraded]
+              responseTime:
+                type: number
+              lastCheck:
+                type: string
+                format: date-time
+
+    UsersList:
+      type: object
+      properties:
+        users:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminUser'
+        total:
+          type: integer
+        page:
+          type: integer
+        totalPages:
+          type: integer
+
+    UserDetails:
+      type: object
+      properties:
+        user:
+          $ref: '#/components/schemas/AdminUser'
+        activity:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserActivity'
+        sessions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Session'
+
+    UserActivity:
+      type: object
+      properties:
+        id:
+          type: string
+        action:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        ipAddress:
+          type: string
+        userAgent:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+
+    Session:
+      type: object
+      properties:
+        sessionId:
+          type: string
+        userId:
+          type: string
+        deviceId:
+          type: string
+        ipAddress:
+          type: string
+        userAgent:
+          type: string
+        issuedAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+        lastActivity:
+          type: string
+          format: date-time
+        isActive:
+          type: boolean
+
+    AuditLog:
+      type: object
+      properties:
+        id:
+          type: string
+        userId:
+          type: string
+        userEmail:
+          type: string
+        action:
+          type: string
+        resource:
+          type: string
+        resourceId:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+        ipAddress:
+          type: string
+        userAgent:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        sessionId:
+          type: string
+
+    AuditLogsList:
+      type: object
+      properties:
+        logs:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditLog'
+        total:
+          type: integer
+        page:
+          type: integer
+        totalPages:
+          type: integer
+
+    AuditLogsSearchResults:
+      type: object
+      properties:
+        logs:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditLog'
+        total:
+          type: integer
+        page:
+          type: integer
+        totalPages:
+          type: integer
+        searchQuery:
+          type: string
+        searchTime:
+          type: number
+
+    SessionsList:
+      type: object
+      properties:
+        sessions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Session'
+        total:
+          type: integer
+        page:
+          type: integer
+        totalPages:
+          type: integer
+
+    SuspiciousActivity:
+      type: object
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+        severity:
+          type: string
+          enum: [low, medium, high, critical]
+        description:
+          type: string
+        ipAddress:
+          type: string
+        userEmail:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        details:
+          type: object
+          additionalProperties: true
+
+    SuspiciousActivityList:
+      type: object
+      properties:
+        activities:
+          type: array
+          items:
+            $ref: '#/components/schemas/SuspiciousActivity'
+        total:
+          type: integer
+        page:
+          type: integer
+        totalPages:
+          type: integer
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              type: array
+              items:
+                type: string
+            requestId:
+              type: string
+
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    Forbidden:
+      description: Forbidden
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    NotFound:
+      description: Not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    TooManyRequests:
+      description: Too many requests
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+      headers:
+        X-RateLimit-Limit:
+          description: Request limit per time window
+          schema:
+            type: integer
+        X-RateLimit-Remaining:
+          description: Remaining requests in current window
+          schema:
+            type: integer
+        X-RateLimit-Reset:
+          description: Time when rate limit resets (Unix timestamp)
+          schema:
+            type: integer
+
+tags:
+  - name: Authentication
+    description: Admin authentication and authorization
+  - name: Dashboard
+    description: Dashboard overview and metrics
+  - name: User Management
+    description: User account management operations
+  - name: Audit Logs
+    description: Audit log retrieval and analysis
+  - name: Session Management
+    description: Admin session tracking and management
+  - name: Security Monitoring
+    description: Security monitoring and threat detection

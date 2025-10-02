@@ -1,0 +1,32 @@
+{
+  "overall": "healthy",
+  "services": {
+    "api": {
+      "status": "healthy",
+      "responseTime": 145,
+      "uptime": 99.98
+    },
+    "database": {
+      "status": "healthy",
+      "connections": 12,
+      "maxConnections": 100
+    },
+    "cache": {
+      "status": "healthy",
+      "hitRate": 0.85,
+      "memoryUsage": 0.65
+    },
+    "storage": {
+      "status": "healthy",
+      "diskUsage": 0.45,
+      "availableSpace": "2.5TB"
+    }
+  },
+  "metrics": {
+    "cpuUsage": 0.35,
+    "memoryUsage": 0.68,
+    "errorRate": 0.02,
+    "requestsPerMinute": 1250
+  },
+  "alerts": []
+}

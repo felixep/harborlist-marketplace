@@ -1,0 +1,12 @@
+{
+  "totalUsers": 1250,
+  "activeListings": 342,
+  "pendingModeration": 15,
+  "systemHealth": "healthy",
+  "revenueToday": 2450.75,
+  "userGrowth": 12.5,
+  "listingGrowth": 8.3,
+  "errorRate": 0.02,
+  "responseTime": 145,
+  "uptime": 99.98
+}

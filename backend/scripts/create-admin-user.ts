@@ -1,0 +1,307 @@
+#!/usr/bin/env ts-node
+
+/**
+ * Admin User Creation Script
+ * 
+ * This script creates an admin user in the HarborList system.
+ * It can be run locally or in production to set up the initial admin account.
+ * 
+ * Usage:
+ *   npm run create-admin -- --email admin@example.com --name "Admin User" --role super_admin
+ *   
+ * Environment Variables Required:
+ *   - USERS_TABLE: DynamoDB users table name
+ *   - AWS_REGION: AWS region (default: us-east-1)
+ */
+
+import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
+import { DynamoDBDocumentClient, PutCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
+import { hashPassword, createAdminUser } from '../src/shared/auth';
+import { User, UserRole, AdminPermission } from '../src/types/common';
+import crypto from 'crypto';
+
+// Configuration
+const USERS_TABLE = process.env.USERS_TABLE || 'boat-users';
+const AWS_REGION = process.env.AWS_REGION || 'us-east-1';
+
+// Initialize DynamoDB client
+const client = new DynamoDBClient({ region: AWS_REGION });
+const docClient = DynamoDBDocumentClient.from(client);
+
+interface CreateAdminOptions {
+  email: string;
+  name: string;
+  role: UserRole;
+  password?: string;
+  permissions?: AdminPermission[];
+}
+
+async function checkUserExists(email: string): Promise<boolean> {
+  try {
+    const result = await docClient.send(new QueryCommand({
+      TableName: USERS_TABLE,
+      IndexName: 'email-index',
+      KeyConditionExpression: 'email = :email',
+      ExpressionAttributeValues: {
+        ':email': email
+      }
+    }));
+
+    return !!(result.Items && result.Items.length > 0);
+  } catch (error) {
+    console.error('Error checking if user exists:', error);
+    throw error;
+  }
+}
+
+async function createAdminUserInDB(options: CreateAdminOptions): Promise<User> {
+  const { email, name, role, password, permissions } = options;
+
+  // Check if user already exists
+  const userExists = await checkUserExists(email);
+  if (userExists) {
+    throw new Error(`User with email ${email} already exists`);
+  }
+
+  // Generate a secure password if not provided
+  const userPassword = password || generateSecurePassword();
+  const hashedPassword = await hashPassword(userPassword);
+
+  // Determine permissions based on role
+  let userPermissions: AdminPermission[];
+  if (permissions) {
+    userPermissions = permissions;
+  } else {
+    switch (role) {
+      case UserRole.SUPER_ADMIN:
+        userPermissions = Object.values(AdminPermission);
+        break;
+      case UserRole.ADMIN:
+        userPermissions = [
+          AdminPermission.USER_MANAGEMENT,
+          AdminPermission.CONTENT_MODERATION,
+          AdminPermission.ANALYTICS_VIEW,
+          AdminPermission.AUDIT_LOG_VIEW
+        ];
+        break;
+      case UserRole.MODERATOR:
+        userPermissions = [
+          AdminPermission.CONTENT_MODERATION,
+          AdminPermission.AUDIT_LOG_VIEW
+        ];
+        break;
+      case UserRole.SUPPORT:
+        userPermissions = [
+          AdminPermission.AUDIT_LOG_VIEW
+        ];
+        break;
+      default:
+        throw new Error(`Invalid admin role: ${role}`);
+    }
+  }
+
+  // Create admin user object
+  const adminUserData = createAdminUser({
+    email,
+    name,
+    role,
+    permissions: userPermissions
+  });
+
+  // Add password and other required fields
+  const user: User = {
+    ...adminUserData,
+    password: hashedPassword,
+    // Admin accounts require MFA setup after first login
+    mfaEnabled: false,
+    sessionTimeout: role === UserRole.SUPER_ADMIN ? 30 : 60 // minutes
+  } as User;
+
+  // Save to database
+  await docClient.send(new PutCommand({
+    TableName: USERS_TABLE,
+    Item: user,
+    ConditionExpression: 'attribute_not_exists(id)' // Prevent overwriting
+  }));
+
+  console.log(`✅ Admin user created successfully!`);
+  console.log(`📧 Email: ${email}`);
+  console.log(`👤 Name: ${name}`);
+  console.log(`🔑 Role: ${role}`);
+  console.log(`🛡️  Permissions: ${userPermissions.join(', ')}`);
+  
+  if (!password) {
+    console.log(`🔐 Generated Password: ${userPassword}`);
+    console.log(`⚠️  IMPORTANT: Save this password securely! It won't be shown again.`);
+  }
+  
+  console.log(`\n📋 Next Steps:`);
+  console.log(`1. Log in to the admin panel at: /admin/login`);
+  console.log(`2. Set up MFA (required for admin accounts)`);
+  console.log(`3. Change the password after first login`);
+
+  return user;
+}
+
+function generateSecurePassword(): string {
+  // Generate a secure 16-character password with mixed case, numbers, and symbols
+  const lowercase = 'abcdefghijklmnopqrstuvwxyz';
+  const uppercase = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  const numbers = '0123456789';
+  const symbols = '!@#$%^&*()_+-=[]{}|;:,.<>?';
+  
+  const allChars = lowercase + uppercase + numbers + symbols;
+  let password = '';
+  
+  // Ensure at least one character from each category
+  password += lowercase[Math.floor(Math.random() * lowercase.length)];
+  password += uppercase[Math.floor(Math.random() * uppercase.length)];
+  password += numbers[Math.floor(Math.random() * numbers.length)];
+  password += symbols[Math.floor(Math.random() * symbols.length)];
+  
+  // Fill the rest randomly
+  for (let i = 4; i < 16; i++) {
+    password += allChars[Math.floor(Math.random() * allChars.length)];
+  }
+  
+  // Shuffle the password
+  return password.split('').sort(() => Math.random() - 0.5).join('');
+}
+
+function parseArguments(): CreateAdminOptions {
+  const args = process.argv.slice(2);
+  const options: Partial<CreateAdminOptions> = {};
+
+  for (let i = 0; i < args.length; i += 2) {
+    const key = args[i];
+    const value = args[i + 1];
+
+    switch (key) {
+      case '--email':
+        options.email = value;
+        break;
+      case '--name':
+        options.name = value;
+        break;
+      case '--role':
+        if (!Object.values(UserRole).includes(value as UserRole)) {
+          throw new Error(`Invalid role: ${value}. Valid roles: ${Object.values(UserRole).join(', ')}`);
+        }
+        options.role = value as UserRole;
+        break;
+      case '--password':
+        options.password = value;
+        break;
+      case '--permissions':
+        const perms = value.split(',').map(p => p.trim());
+        const validPerms = perms.filter(p => Object.values(AdminPermission).includes(p as AdminPermission));
+        if (validPerms.length !== perms.length) {
+          throw new Error(`Invalid permissions. Valid permissions: ${Object.values(AdminPermission).join(', ')}`);
+        }
+        options.permissions = validPerms as AdminPermission[];
+        break;
+      default:
+        if (key.startsWith('--')) {
+          throw new Error(`Unknown option: ${key}`);
+        }
+    }
+  }
+
+  // Validate required fields
+  if (!options.email) {
+    throw new Error('Email is required. Use --email flag.');
+  }
+  if (!options.name) {
+    throw new Error('Name is required. Use --name flag.');
+  }
+  if (!options.role) {
+    throw new Error('Role is required. Use --role flag.');
+  }
+
+  // Validate email format
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(options.email)) {
+    throw new Error('Invalid email format.');
+  }
+
+  return options as CreateAdminOptions;
+}
+
+function printUsage() {
+  console.log(`
+🚀 HarborList Admin User Creation Script
+
+Usage:
+  npm run create-admin -- --email <email> --name <name> --role <role> [options]
+
+Required Arguments:
+  --email <email>     Admin user email address
+  --name <name>       Admin user full name
+  --role <role>       Admin role (super_admin, admin, moderator, support)
+
+Optional Arguments:
+  --password <pass>   Custom password (if not provided, one will be generated)
+  --permissions <p>   Comma-separated list of permissions (overrides role defaults)
+
+Examples:
+  # Create a super admin
+  npm run create-admin -- --email admin@harborlist.com --name "Super Admin" --role super_admin
+
+  # Create a moderator with custom password
+  npm run create-admin -- --email mod@harborlist.com --name "Content Moderator" --role moderator --password MySecurePass123!
+
+  # Create admin with specific permissions
+  npm run create-admin -- --email support@harborlist.com --name "Support User" --role support --permissions user_management,audit_log_view
+
+Available Roles:
+  - super_admin: Full system access
+  - admin: User management, content moderation, analytics
+  - moderator: Content moderation only
+  - support: Limited support access
+
+Available Permissions:
+  ${Object.values(AdminPermission).map(p => `- ${p}`).join('\n  ')}
+
+Environment Variables:
+  USERS_TABLE: DynamoDB users table name (default: boat-users)
+  AWS_REGION: AWS region (default: us-east-1)
+`);
+}
+
+async function main() {
+  try {
+    // Check for help flag
+    if (process.argv.includes('--help') || process.argv.includes('-h')) {
+      printUsage();
+      process.exit(0);
+    }
+
+    console.log('🚀 HarborList Admin User Creation Script\n');
+
+    // Parse command line arguments
+    const options = parseArguments();
+
+    // Confirm creation
+    console.log('📋 Creating admin user with the following details:');
+    console.log(`   Email: ${options.email}`);
+    console.log(`   Name: ${options.name}`);
+    console.log(`   Role: ${options.role}`);
+    console.log(`   Table: ${USERS_TABLE}`);
+    console.log(`   Region: ${AWS_REGION}\n`);
+
+    // Create the admin user
+    await createAdminUserInDB(options);
+
+  } catch (error) {
+    console.error('❌ Error creating admin user:', error instanceof Error ? error.message : error);
+    console.log('\nFor usage information, run: npm run create-admin -- --help');
+    process.exit(1);
+  }
+}
+
+// Run the script
+if (require.main === module) {
+  main();
+}
+
+export { createAdminUserInDB, generateSecurePassword };

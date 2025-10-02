@@ -1,0 +1,29 @@
+{
+  "users": [
+    {
+      "id": "user-1",
+      "name": "John Doe",
+      "email": "john.doe@example.com",
+      "status": "active",
+      "role": "user",
+      "createdAt": "2024-01-15T10:30:00Z",
+      "lastLogin": "2024-09-28T08:15:00Z",
+      "listingsCount": 3,
+      "verified": true
+    },
+    {
+      "id": "user-2",
+      "name": "Jane Smith",
+      "email": "jane.smith@example.com",
+      "status": "suspended",
+      "role": "user",
+      "createdAt": "2024-02-20T14:45:00Z",
+      "lastLogin": "2024-09-25T16:30:00Z",
+      "listingsCount": 1,
+      "verified": false
+    }
+  ],
+  "total": 1250,
+  "page": 1,
+  "totalPages": 63
+}

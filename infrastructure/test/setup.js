@@ -1,0 +1,7 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+// Jest setup file for infrastructure tests
+require("jest");
+// Set test timeout to 30 seconds for CDK synthesis
+jest.setTimeout(30000);
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJmaWxlIjoic2V0dXAuanMiLCJzb3VyY2VSb290IjoiIiwic291cmNlcyI6WyJzZXR1cC50cyJdLCJuYW1lcyI6W10sIm1hcHBpbmdzIjoiOztBQUFBLDJDQUEyQztBQUMzQyxnQkFBYztBQUVkLG1EQUFtRDtBQUNuRCxJQUFJLENBQUMsVUFBVSxDQUFDLEtBQUssQ0FBQyxDQUFDIiwic291cmNlc0NvbnRlbnQiOlsiLy8gSmVzdCBzZXR1cCBmaWxlIGZvciBpbmZyYXN0cnVjdHVyZSB0ZXN0c1xuaW1wb3J0ICdqZXN0JztcblxuLy8gU2V0IHRlc3QgdGltZW91dCB0byAzMCBzZWNvbmRzIGZvciBDREsgc3ludGhlc2lzXG5qZXN0LnNldFRpbWVvdXQoMzAwMDApOyJdfQ==

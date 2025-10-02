@@ -1,0 +1,553 @@
+{
+  "summary": {
+    "totalTests": 48,
+    "passed": 47,
+    "failed": 1,
+    "warnings": 0,
+    "successRate": "97.92"
+  },
+  "timestamp": "2025-09-28T14:44:35.789Z",
+  "environment": "dev",
+  "architecture": "Cloudflare + S3 + API Gateway",
+  "requirements": {
+    "6.1": "Frontend routes work correctly",
+    "6.2": "API endpoints respond with same functionality",
+    "6.3": "Static assets served with appropriate caching headers",
+    "6.4": "Loading times equal to or better than previous setup",
+    "6.5": "Errors handled gracefully with proper error pages",
+    "7.4": "All health checks pass"
+  },
+  "details": [
+    {
+      "test": "DNS Resolution - Frontend",
+      "passed": true,
+      "message": "Frontend DNS resolves to: 104.21.26.179, 172.67.138.62",
+      "details": {
+        "records": [
+          "104.21.26.179",
+          "172.67.138.62"
+        ]
+      },
+      "timestamp": "2025-09-28T14:44:33.636Z"
+    },
+    {
+      "test": "DNS Response Time",
+      "passed": true,
+      "message": "DNS resolution time: 1.01ms (requirement: <100ms)",
+      "details": {
+        "responseTime": 1.0115839999999992
+      },
+      "timestamp": "2025-09-28T14:44:33.636Z"
+    },
+    {
+      "test": "DNS Resolution - API",
+      "passed": true,
+      "message": "API DNS resolves to: 172.67.138.62, 104.21.26.179",
+      "details": {
+        "records": [
+          "172.67.138.62",
+          "104.21.26.179"
+        ]
+      },
+      "timestamp": "2025-09-28T14:44:33.646Z"
+    },
+    {
+      "test": "SSL Certificate - Frontend",
+      "passed": true,
+      "message": "HTTPS connection successful",
+      "details": {
+        "statusCode": 200
+      },
+      "timestamp": "2025-09-28T14:44:33.825Z"
+    },
+    {
+      "test": "SSL Certificate - API",
+      "passed": false,
+      "message": "HTTPS connection successful",
+      "details": {
+        "statusCode": 403
+      },
+      "timestamp": "2025-09-28T14:44:33.999Z"
+    },
+    {
+      "test": "Frontend Route - /",
+      "passed": true,
+      "message": "Route loads successfully (59.85ms)",
+      "details": {
+        "statusCode": 200,
+        "expectedStatus": 200,
+        "responseTime": 59.84941700000002,
+        "url": "https://dev.harborlist.com/",
+        "hasHtmlContent": true
+      },
+      "timestamp": "2025-09-28T14:44:34.060Z"
+    },
+    {
+      "test": "Frontend SPA Structure - /",
+      "passed": true,
+      "message": "SPA root element found",
+      "details": {
+        "hasRoot": true
+      },
+      "timestamp": "2025-09-28T14:44:34.060Z"
+    },
+    {
+      "test": "Frontend Route - /search",
+      "passed": true,
+      "message": "Route loads successfully (65.77ms)",
+      "details": {
+        "statusCode": 404,
+        "expectedStatus": 404,
+        "responseTime": 65.76845800000001,
+        "url": "https://dev.harborlist.com/search",
+        "hasHtmlContent": true
+      },
+      "timestamp": "2025-09-28T14:44:34.126Z"
+    },
+    {
+      "test": "Frontend SPA Structure - /search",
+      "passed": true,
+      "message": "SPA root element found",
+      "details": {
+        "hasRoot": true
+      },
+      "timestamp": "2025-09-28T14:44:34.126Z"
+    },
+    {
+      "test": "Frontend Route - /about",
+      "passed": true,
+      "message": "Route loads successfully (68.61ms)",
+      "details": {
+        "statusCode": 404,
+        "expectedStatus": 404,
+        "responseTime": 68.60700000000003,
+        "url": "https://dev.harborlist.com/about",
+        "hasHtmlContent": true
+      },
+      "timestamp": "2025-09-28T14:44:34.195Z"
+    },
+    {
+      "test": "Frontend SPA Structure - /about",
+      "passed": true,
+      "message": "SPA root element found",
+      "details": {
+        "hasRoot": true
+      },
+      "timestamp": "2025-09-28T14:44:34.195Z"
+    },
+    {
+      "test": "Frontend Route - /contact",
+      "passed": true,
+      "message": "Route loads successfully (65.82ms)",
+      "details": {
+        "statusCode": 404,
+        "expectedStatus": 404,
+        "responseTime": 65.81570800000009,
+        "url": "https://dev.harborlist.com/contact",
+        "hasHtmlContent": true
+      },
+      "timestamp": "2025-09-28T14:44:34.261Z"
+    },
+    {
+      "test": "Frontend SPA Structure - /contact",
+      "passed": true,
+      "message": "SPA root element found",
+      "details": {
+        "hasRoot": true
+      },
+      "timestamp": "2025-09-28T14:44:34.261Z"
+    },
+    {
+      "test": "Frontend Route - /login",
+      "passed": true,
+      "message": "Route loads successfully (61.97ms)",
+      "details": {
+        "statusCode": 404,
+        "expectedStatus": 404,
+        "responseTime": 61.972875000000045,
+        "url": "https://dev.harborlist.com/login",
+        "hasHtmlContent": true
+      },
+      "timestamp": "2025-09-28T14:44:34.323Z"
+    },
+    {
+      "test": "Frontend SPA Structure - /login",
+      "passed": true,
+      "message": "SPA root element found",
+      "details": {
+        "hasRoot": true
+      },
+      "timestamp": "2025-09-28T14:44:34.323Z"
+    },
+    {
+      "test": "Frontend Route - /register",
+      "passed": true,
+      "message": "Route loads successfully (73.56ms)",
+      "details": {
+        "statusCode": 404,
+        "expectedStatus": 404,
+        "responseTime": 73.55574999999999,
+        "url": "https://dev.harborlist.com/register",
+        "hasHtmlContent": true
+      },
+      "timestamp": "2025-09-28T14:44:34.397Z"
+    },
+    {
+      "test": "Frontend SPA Structure - /register",
+      "passed": true,
+      "message": "SPA root element found",
+      "details": {
+        "hasRoot": true
+      },
+      "timestamp": "2025-09-28T14:44:34.397Z"
+    },
+    {
+      "test": "Frontend Route - /sell",
+      "passed": true,
+      "message": "Route loads successfully (62.64ms)",
+      "details": {
+        "statusCode": 404,
+        "expectedStatus": 404,
+        "responseTime": 62.64020900000003,
+        "url": "https://dev.harborlist.com/sell",
+        "hasHtmlContent": true
+      },
+      "timestamp": "2025-09-28T14:44:34.460Z"
+    },
+    {
+      "test": "Frontend SPA Structure - /sell",
+      "passed": true,
+      "message": "SPA root element found",
+      "details": {
+        "hasRoot": true
+      },
+      "timestamp": "2025-09-28T14:44:34.461Z"
+    },
+    {
+      "test": "Frontend Route - /services",
+      "passed": true,
+      "message": "Route loads successfully (84.68ms)",
+      "details": {
+        "statusCode": 404,
+        "expectedStatus": 404,
+        "responseTime": 84.678542,
+        "url": "https://dev.harborlist.com/services",
+        "hasHtmlContent": true
+      },
+      "timestamp": "2025-09-28T14:44:34.546Z"
+    },
+    {
+      "test": "Frontend SPA Structure - /services",
+      "passed": true,
+      "message": "SPA root element found",
+      "details": {
+        "hasRoot": true
+      },
+      "timestamp": "2025-09-28T14:44:34.546Z"
+    },
+    {
+      "test": "Frontend Route - /finance",
+      "passed": true,
+      "message": "Route loads successfully (59.31ms)",
+      "details": {
+        "statusCode": 404,
+        "expectedStatus": 404,
+        "responseTime": 59.30574999999999,
+        "url": "https://dev.harborlist.com/finance",
+        "hasHtmlContent": true
+      },
+      "timestamp": "2025-09-28T14:44:34.605Z"
+    },
+    {
+      "test": "Frontend SPA Structure - /finance",
+      "passed": true,
+      "message": "SPA root element found",
+      "details": {
+        "hasRoot": true
+      },
+      "timestamp": "2025-09-28T14:44:34.605Z"
+    },
+    {
+      "test": "Frontend Route - /insurance",
+      "passed": true,
+      "message": "Route loads successfully (71.04ms)",
+      "details": {
+        "statusCode": 404,
+        "expectedStatus": 404,
+        "responseTime": 71.04383300000006,
+        "url": "https://dev.harborlist.com/insurance",
+        "hasHtmlContent": true
+      },
+      "timestamp": "2025-09-28T14:44:34.677Z"
+    },
+    {
+      "test": "Frontend SPA Structure - /insurance",
+      "passed": true,
+      "message": "SPA root element found",
+      "details": {
+        "hasRoot": true
+      },
+      "timestamp": "2025-09-28T14:44:34.677Z"
+    },
+    {
+      "test": "Frontend Route - /safety",
+      "passed": true,
+      "message": "Route loads successfully (66.83ms)",
+      "details": {
+        "statusCode": 404,
+        "expectedStatus": 404,
+        "responseTime": 66.83050000000003,
+        "url": "https://dev.harborlist.com/safety",
+        "hasHtmlContent": true
+      },
+      "timestamp": "2025-09-28T14:44:34.744Z"
+    },
+    {
+      "test": "Frontend SPA Structure - /safety",
+      "passed": true,
+      "message": "SPA root element found",
+      "details": {
+        "hasRoot": true
+      },
+      "timestamp": "2025-09-28T14:44:34.744Z"
+    },
+    {
+      "test": "Frontend Route - /help",
+      "passed": true,
+      "message": "Route loads successfully (64.68ms)",
+      "details": {
+        "statusCode": 404,
+        "expectedStatus": 404,
+        "responseTime": 64.6797919999999,
+        "url": "https://dev.harborlist.com/help",
+        "hasHtmlContent": true
+      },
+      "timestamp": "2025-09-28T14:44:34.809Z"
+    },
+    {
+      "test": "Frontend SPA Structure - /help",
+      "passed": true,
+      "message": "SPA root element found",
+      "details": {
+        "hasRoot": true
+      },
+      "timestamp": "2025-09-28T14:44:34.809Z"
+    },
+    {
+      "test": "Frontend Route - /valuation",
+      "passed": true,
+      "message": "Route loads successfully (65.46ms)",
+      "details": {
+        "statusCode": 404,
+        "expectedStatus": 404,
+        "responseTime": 65.45633300000009,
+        "url": "https://dev.harborlist.com/valuation",
+        "hasHtmlContent": true
+      },
+      "timestamp": "2025-09-28T14:44:34.875Z"
+    },
+    {
+      "test": "Frontend SPA Structure - /valuation",
+      "passed": true,
+      "message": "SPA root element found",
+      "details": {
+        "hasRoot": true
+      },
+      "timestamp": "2025-09-28T14:44:34.875Z"
+    },
+    {
+      "test": "Static Asset - /boat-icon.svg",
+      "passed": true,
+      "message": "Asset loads successfully",
+      "details": {
+        "statusCode": 200,
+        "expectedType": "image/svg+xml",
+        "actualType": "image/svg+xml"
+      },
+      "timestamp": "2025-09-28T14:44:34.995Z"
+    },
+    {
+      "test": "Static Asset Caching - /boat-icon.svg",
+      "passed": true,
+      "message": "Caching headers present: max-age=14400",
+      "details": {
+        "cacheControl": "max-age=14400",
+        "etag": "\"059372f8e5b7e5c3339b126d2824582a\""
+      },
+      "timestamp": "2025-09-28T14:44:34.995Z"
+    },
+    {
+      "test": "Static Asset - /assets/index-2892e3ff.css",
+      "passed": true,
+      "message": "Asset loads successfully",
+      "details": {
+        "statusCode": 200,
+        "expectedType": "text/css",
+        "actualType": "text/css"
+      },
+      "timestamp": "2025-09-28T14:44:35.166Z"
+    },
+    {
+      "test": "Static Asset Caching - /assets/index-2892e3ff.css",
+      "passed": true,
+      "message": "Caching headers present: max-age=14400",
+      "details": {
+        "cacheControl": "max-age=14400",
+        "etag": "\"d6be359232bd673dc5df2fd1d666e93b\""
+      },
+      "timestamp": "2025-09-28T14:44:35.166Z"
+    },
+    {
+      "test": "Static Asset - /assets/index-1ccd5071.js",
+      "passed": true,
+      "message": "Asset loads successfully",
+      "details": {
+        "statusCode": 200,
+        "expectedType": "application/javascript",
+        "actualType": "text/javascript"
+      },
+      "timestamp": "2025-09-28T14:44:35.214Z"
+    },
+    {
+      "test": "Static Asset Caching - /assets/index-1ccd5071.js",
+      "passed": true,
+      "message": "Caching headers present: max-age=14400",
+      "details": {
+        "cacheControl": "max-age=14400",
+        "etag": "\"76976a1552ba09ca6ae53e97b7950e34\""
+      },
+      "timestamp": "2025-09-28T14:44:35.214Z"
+    },
+    {
+      "test": "API Endpoint - /health",
+      "passed": true,
+      "message": "Endpoint responds correctly (403)",
+      "details": {
+        "statusCode": 403,
+        "expectedStatus": [
+          200,
+          403
+        ],
+        "responseTime": 47.93112499999984
+      },
+      "timestamp": "2025-09-28T14:44:35.263Z"
+    },
+    {
+      "test": "API Endpoint - /api/listings",
+      "passed": true,
+      "message": "Endpoint responds correctly (403)",
+      "details": {
+        "statusCode": 403,
+        "expectedStatus": [
+          200,
+          403,
+          404
+        ],
+        "responseTime": 45.56070799999998
+      },
+      "timestamp": "2025-09-28T14:44:35.308Z"
+    },
+    {
+      "test": "API Endpoint - /api/auth/status",
+      "passed": true,
+      "message": "Endpoint responds correctly (403)",
+      "details": {
+        "statusCode": 403,
+        "expectedStatus": [
+          200,
+          401,
+          403
+        ],
+        "responseTime": 45.24225000000001
+      },
+      "timestamp": "2025-09-28T14:44:35.354Z"
+    },
+    {
+      "test": "API Endpoint - /api/search",
+      "passed": true,
+      "message": "Endpoint responds correctly (403)",
+      "details": {
+        "statusCode": 403,
+        "expectedStatus": [
+          200,
+          400,
+          403
+        ],
+        "responseTime": 43.70100000000002
+      },
+      "timestamp": "2025-09-28T14:44:35.398Z"
+    },
+    {
+      "test": "SPA 404 Handling",
+      "passed": true,
+      "message": "SPA routing works (status: 404)",
+      "details": {
+        "statusCode": 404,
+        "hasSpaRoot": true
+      },
+      "timestamp": "2025-09-28T14:44:35.461Z"
+    },
+    {
+      "test": "API Error Handling",
+      "passed": true,
+      "message": "API returns proper error status: 403",
+      "details": {
+        "statusCode": 403
+      },
+      "timestamp": "2025-09-28T14:44:35.506Z"
+    },
+    {
+      "test": "API Health Check",
+      "passed": true,
+      "message": "API is reachable (status: 403)",
+      "details": {
+        "statusCode": 403,
+        "responseTime": 45.44504199999983
+      },
+      "timestamp": "2025-09-28T14:44:35.552Z"
+    },
+    {
+      "test": "Frontend Health Check",
+      "passed": true,
+      "message": "Frontend healthy (59.25ms)",
+      "details": {
+        "statusCode": 200,
+        "responseTime": 59.24820799999998
+      },
+      "timestamp": "2025-09-28T14:44:35.612Z"
+    },
+    {
+      "test": "Global Access - Primary",
+      "passed": true,
+      "message": "Access successful from Primary (58.54ms)",
+      "details": {
+        "location": "Primary",
+        "statusCode": 200,
+        "responseTime": 58.544332999999824
+      },
+      "timestamp": "2025-09-28T14:44:35.671Z"
+    },
+    {
+      "test": "Global Access - Secondary",
+      "passed": true,
+      "message": "Access successful from Secondary (58.09ms)",
+      "details": {
+        "location": "Secondary",
+        "statusCode": 200,
+        "responseTime": 58.09312500000033
+      },
+      "timestamp": "2025-09-28T14:44:35.729Z"
+    },
+    {
+      "test": "Global Access - Tertiary",
+      "passed": true,
+      "message": "Access successful from Tertiary (59.71ms)",
+      "details": {
+        "location": "Tertiary",
+        "statusCode": 200,
+        "responseTime": 59.710667000000285
+      },
+      "timestamp": "2025-09-28T14:44:35.789Z"
+    }
+  ]
+}

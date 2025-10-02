@@ -1,0 +1,364 @@
+import jwt from 'jsonwebtoken';
+import { APIGatewayProxyEvent } from 'aws-lambda';
+import crypto from 'crypto';
+// Note: speakeasy would need to be installed: npm install speakeasy @types/speakeasy
+// For now, we'll create a mock implementation
+import { User, UserRole, UserStatus, AdminPermission, AuthSession, AuditLog } from '../types/common';
+
+export interface JWTPayload {
+  sub: string; // User ID
+  email: string;
+  name: string;
+  role: UserRole;
+  permissions?: AdminPermission[];
+  sessionId: string;
+  deviceId: string;
+  iat: number;
+  exp: number;
+}
+
+export interface AuthTokens {
+  accessToken: string;
+  refreshToken: string;
+  expiresIn: number;
+  tokenType: 'Bearer';
+}
+
+export interface LoginResult {
+  success: boolean;
+  tokens?: AuthTokens;
+  user?: Partial<User>;
+  requiresMFA?: boolean;
+  mfaToken?: string;
+  error?: string;
+}
+
+// Security Configuration
+export const AUTH_CONFIG = {
+  JWT_SECRET: process.env.JWT_SECRET || 'your-secret-key-change-in-production',
+  JWT_REFRESH_SECRET: process.env.JWT_REFRESH_SECRET || 'your-refresh-secret-key',
+  ACCESS_TOKEN_EXPIRY: '15m', // Short-lived access tokens
+  REFRESH_TOKEN_EXPIRY: '7d',
+  MFA_TOKEN_EXPIRY: '5m',
+  MAX_LOGIN_ATTEMPTS: 5,
+  LOCKOUT_DURATION: 30 * 60 * 1000, // 30 minutes in milliseconds
+  PASSWORD_MIN_LENGTH: 8,
+  ADMIN_SESSION_TIMEOUT: 60, // minutes
+  USER_SESSION_TIMEOUT: 24 * 60, // minutes
+};
+
+export function extractTokenFromEvent(event: APIGatewayProxyEvent): string | null {
+  const authHeader = event.headers.Authorization || event.headers.authorization;
+  
+  if (!authHeader) {
+    return null;
+  }
+
+  const parts = authHeader.split(' ');
+  if (parts.length !== 2 || parts[0] !== 'Bearer') {
+    return null;
+  }
+
+  return parts[1];
+}
+
+export function generateSecureToken(): string {
+  return crypto.randomBytes(32).toString('hex');
+}
+
+export function generateDeviceId(): string {
+  return crypto.randomUUID();
+}
+
+export function hashPassword(password: string): Promise<string> {
+  const bcrypt = require('bcryptjs');
+  return bcrypt.hash(password, 12); // Higher cost factor for better security
+}
+
+export function verifyPassword(password: string, hashedPassword: string): Promise<boolean> {
+  const bcrypt = require('bcryptjs');
+  return bcrypt.compare(password, hashedPassword);
+}
+
+export function validatePassword(password: string): { valid: boolean; errors: string[] } {
+  const errors: string[] = [];
+  
+  if (password.length < AUTH_CONFIG.PASSWORD_MIN_LENGTH) {
+    errors.push(`Password must be at least ${AUTH_CONFIG.PASSWORD_MIN_LENGTH} characters long`);
+  }
+  
+  if (!/[A-Z]/.test(password)) {
+    errors.push('Password must contain at least one uppercase letter');
+  }
+  
+  if (!/[a-z]/.test(password)) {
+    errors.push('Password must contain at least one lowercase letter');
+  }
+  
+  if (!/\d/.test(password)) {
+    errors.push('Password must contain at least one number');
+  }
+  
+  if (!/[!@#$%^&*(),.?":{}|<>]/.test(password)) {
+    errors.push('Password must contain at least one special character');
+  }
+  
+  return {
+    valid: errors.length === 0,
+    errors
+  };
+}
+
+export function verifyToken(token: string, secret: string = AUTH_CONFIG.JWT_SECRET): JWTPayload {
+  try {
+    const decoded = jwt.verify(token, secret) as JWTPayload;
+    
+    if (!decoded || !decoded.sub) {
+      throw new Error('Invalid token payload');
+    }
+
+    return decoded;
+  } catch (error) {
+    if (error instanceof jwt.TokenExpiredError) {
+      throw new Error('Token expired');
+    } else if (error instanceof jwt.JsonWebTokenError) {
+      throw new Error('Invalid token');
+    }
+    throw new Error('Token verification failed');
+  }
+}
+
+export function createAccessToken(user: User, sessionId: string, deviceId: string): string {
+  const payload: JWTPayload = {
+    sub: user.id,
+    email: user.email,
+    name: user.name,
+    role: user.role,
+    permissions: user.permissions,
+    sessionId,
+    deviceId,
+    iat: Math.floor(Date.now() / 1000),
+    exp: Math.floor(Date.now() / 1000) + (15 * 60), // 15 minutes
+  };
+
+  return jwt.sign(payload, AUTH_CONFIG.JWT_SECRET);
+}
+
+export function createRefreshToken(userId: string, sessionId: string): string {
+  const payload = {
+    sub: userId,
+    sessionId,
+    type: 'refresh',
+    iat: Math.floor(Date.now() / 1000),
+    exp: Math.floor(Date.now() / 1000) + (7 * 24 * 60 * 60), // 7 days
+  };
+
+  return jwt.sign(payload, AUTH_CONFIG.JWT_REFRESH_SECRET);
+}
+
+export function createMFAToken(userId: string): string {
+  const payload = {
+    sub: userId,
+    type: 'mfa',
+    iat: Math.floor(Date.now() / 1000),
+    exp: Math.floor(Date.now() / 1000) + (5 * 60), // 5 minutes
+  };
+
+  return jwt.sign(payload, AUTH_CONFIG.JWT_SECRET);
+}
+
+export function generateMFASecret(): { secret: string; qrCode: string } {
+  // Generate a random base32 secret
+  const secret = crypto.randomBytes(20).toString('hex');
+  const qrCode = `otpauth://totp/HarborList:admin?secret=${secret}&issuer=HarborList`;
+
+  return {
+    secret,
+    qrCode,
+  };
+}
+
+export function verifyMFAToken(token: string, secret: string): boolean {
+  // Mock implementation - in production, use speakeasy or similar TOTP library
+  // This is a simplified version for demonstration
+  const timeStep = Math.floor(Date.now() / 30000); // 30-second time steps
+  
+  // Check current time step and adjacent ones (for clock drift)
+  for (let i = -2; i <= 2; i++) {
+    const testTimeStep = timeStep + i;
+    const expectedToken = generateTOTP(secret, testTimeStep);
+    if (expectedToken === token) {
+      return true;
+    }
+  }
+  
+  return false;
+}
+
+function generateTOTP(secret: string, timeStep: number): string {
+  // Simplified TOTP generation - in production, use proper TOTP implementation
+  const hash = crypto.createHmac('sha1', Buffer.from(secret, 'hex'));
+  hash.update(Buffer.from(timeStep.toString()));
+  const hmac = hash.digest();
+  
+  const offset = hmac[hmac.length - 1] & 0xf;
+  const code = ((hmac[offset] & 0x7f) << 24) |
+               ((hmac[offset + 1] & 0xff) << 16) |
+               ((hmac[offset + 2] & 0xff) << 8) |
+               (hmac[offset + 3] & 0xff);
+  
+  return (code % 1000000).toString().padStart(6, '0');
+}
+
+export function getUserFromEvent(event: APIGatewayProxyEvent): JWTPayload {
+  // First try to get from Cognito authorizer context
+  if (event.requestContext.authorizer?.claims) {
+    return {
+      sub: event.requestContext.authorizer.claims.sub,
+      email: event.requestContext.authorizer.claims.email,
+      name: event.requestContext.authorizer.claims.name || event.requestContext.authorizer.claims.email,
+      role: event.requestContext.authorizer.claims.role || UserRole.USER,
+      permissions: event.requestContext.authorizer.claims.permissions ? 
+        JSON.parse(event.requestContext.authorizer.claims.permissions) : [],
+      sessionId: event.requestContext.authorizer.claims.sessionId || '',
+      deviceId: event.requestContext.authorizer.claims.deviceId || '',
+      iat: 0,
+      exp: 0,
+    };
+  }
+
+  // Fallback to manual token verification
+  const token = extractTokenFromEvent(event);
+  if (!token) {
+    throw new Error('No authentication token provided');
+  }
+
+  return verifyToken(token);
+}
+
+export function requireAdminRole(payload: JWTPayload, requiredPermissions?: AdminPermission[]): void {
+  if (payload.role === UserRole.USER) {
+    throw new Error('Admin access required');
+  }
+
+  if (requiredPermissions && requiredPermissions.length > 0) {
+    const userPermissions = payload.permissions || [];
+    const hasRequiredPermissions = requiredPermissions.every(permission => 
+      userPermissions.includes(permission)
+    );
+
+    if (!hasRequiredPermissions) {
+      throw new Error('Insufficient permissions');
+    }
+  }
+}
+
+export function getClientInfo(event: APIGatewayProxyEvent): { ipAddress: string; userAgent: string } {
+  return {
+    ipAddress: event.requestContext.identity.sourceIp || 'unknown',
+    userAgent: event.headers['User-Agent'] || event.headers['user-agent'] || 'unknown',
+  };
+}
+
+export function isAccountLocked(user: User): boolean {
+  if (!user.lockedUntil) return false;
+  return new Date(user.lockedUntil) > new Date();
+}
+
+export function shouldLockAccount(loginAttempts: number): boolean {
+  return loginAttempts >= AUTH_CONFIG.MAX_LOGIN_ATTEMPTS;
+}
+
+export function calculateLockoutExpiry(): string {
+  return new Date(Date.now() + AUTH_CONFIG.LOCKOUT_DURATION).toISOString();
+}
+
+// Session Management
+export function createAuthSession(
+  userId: string, 
+  deviceId: string, 
+  clientInfo: { ipAddress: string; userAgent: string }
+): AuthSession {
+  const sessionId = crypto.randomUUID();
+  const now = new Date().toISOString();
+  const expiresAt = new Date(Date.now() + (7 * 24 * 60 * 60 * 1000)).toISOString(); // 7 days
+
+  return {
+    sessionId,
+    userId,
+    deviceId,
+    ipAddress: clientInfo.ipAddress,
+    userAgent: clientInfo.userAgent,
+    issuedAt: now,
+    expiresAt,
+    lastActivity: now,
+    isActive: true,
+  };
+}
+
+export function createAuditLog(
+  user: JWTPayload,
+  action: string,
+  resource: string,
+  details: Record<string, any>,
+  clientInfo: { ipAddress: string; userAgent: string },
+  resourceId?: string
+): AuditLog {
+  return {
+    id: crypto.randomUUID(),
+    userId: user.sub,
+    userEmail: user.email,
+    action,
+    resource,
+    resourceId,
+    details,
+    ipAddress: clientInfo.ipAddress,
+    userAgent: clientInfo.userAgent,
+    timestamp: new Date().toISOString(),
+    sessionId: user.sessionId,
+  };
+}
+
+// Rate limiting helpers
+export function createRateLimitKey(identifier: string, action: string): string {
+  return `rate_limit:${action}:${identifier}`;
+}
+
+export function isRateLimited(attempts: number, windowStart: number, maxAttempts: number, windowMs: number): boolean {
+  const now = Date.now();
+  if (now - windowStart > windowMs) {
+    return false; // Window has expired
+  }
+  return attempts >= maxAttempts;
+}
+
+// Email validation
+export function validateEmail(email: string): boolean {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email);
+}
+
+// Admin user creation helper
+export function createAdminUser(userData: {
+  email: string;
+  name: string;
+  role: UserRole;
+  permissions: AdminPermission[];
+}): Partial<User> {
+  const now = new Date().toISOString();
+  
+  return {
+    id: crypto.randomUUID(),
+    email: userData.email,
+    name: userData.name,
+    role: userData.role,
+    status: UserStatus.ACTIVE,
+    permissions: userData.permissions,
+    emailVerified: true, // Admin accounts are pre-verified
+    phoneVerified: false,
+    mfaEnabled: false,
+    loginAttempts: 0,
+    createdAt: now,
+    updatedAt: now,
+  };
+}

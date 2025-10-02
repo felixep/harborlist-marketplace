@@ -1,0 +1,76 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    font-family: 'Inter', system-ui, sans-serif;
+    scroll-behavior: smooth;
+  }
+  
+  body {
+    @apply bg-slate-50 min-h-screen text-slate-700 antialiased;
+    background-image: 
+      radial-gradient(circle at 20% 80%, rgba(59, 130, 246, 0.03) 0px, transparent 50%),
+      radial-gradient(circle at 80% 20%, rgba(6, 182, 212, 0.03) 0px, transparent 50%);
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-bold text-slate-900;
+    font-family: 'DM Sans', 'Inter', system-ui, sans-serif;
+  }
+}
+
+@layer components {
+  /* Professional Button System */
+  .btn {
+    @apply inline-flex items-center justify-center font-medium transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  
+  .btn-primary {
+    @apply btn bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-500 px-6 py-3 rounded-full;
+    box-shadow: 0 4px 14px 0 rgba(59, 130, 246, 0.25);
+  }
+  
+  .btn-primary:hover {
+    box-shadow: 0 6px 20px 0 rgba(59, 130, 246, 0.35);
+    transform: translateY(-1px);
+  }
+  
+  .btn-secondary {
+    @apply btn bg-white text-slate-700 border-2 border-slate-300 hover:border-slate-400 hover:bg-slate-50 focus:ring-slate-500 px-6 py-3 rounded-full;
+  }
+  
+  .btn-lg {
+    @apply px-8 py-4 text-lg;
+  }
+  
+  /* Professional Card System */
+  .card {
+    @apply bg-white rounded-2xl shadow-lg border border-slate-200/60 overflow-hidden;
+  }
+  
+  .card-hover {
+    @apply card cursor-pointer transition-all duration-200 hover:-translate-y-1;
+  }
+  
+  .card-hover:hover {
+    @apply shadow-xl border-slate-300;
+  }
+  
+  /* Badge System */
+  .badge {
+    @apply inline-flex items-center px-3 py-1 text-sm font-medium rounded-full;
+  }
+  
+  .badge-verified {
+    @apply badge bg-blue-600 text-white;
+  }
+  
+  .badge-featured {
+    @apply badge bg-orange-500 text-white;
+  }
+}
