@@ -4,6 +4,26 @@
 
 The HarborList deployment framework provides automated, reliable, and scalable deployment processes across all environments. Our CI/CD pipeline ensures consistent deployments, comprehensive testing, and zero-downtime releases through infrastructure as code, automated testing, and progressive deployment strategies.
 
+## 🐳 **Local Development Environment**
+
+Before deploying to cloud environments, developers can work with a complete local setup that mirrors production:
+
+- **[📖 Local Development Setup](./local-development.md)** - Complete Docker-based local environment
+- **[🔧 Implementation Details](./local-development-implementation.md)** - Technical implementation summary
+
+**Quick Start:**
+```bash
+npm run hosts:setup     # Add local domains to /etc/hosts
+npm run dev:setup       # Initialize local environment
+npm run dev:start:bg    # Start all services
+npm run dev:admin       # Create admin user
+```
+
+**Local URLs:**
+- Frontend: http://local.harborlist.com:3000
+- Backend: http://local-api.harborlist.com:3001
+- DynamoDB Admin: http://localhost:8001
+
 ---
 
 ## 🏗️ **CI/CD Pipeline Architecture**

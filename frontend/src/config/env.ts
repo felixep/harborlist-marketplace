@@ -1,8 +1,9 @@
 export const config = {
-  apiUrl: import.meta.env.VITE_API_URL || 'http://localhost:3000/api',
-  environment: import.meta.env.VITE_ENVIRONMENT || 'development',
+  apiUrl: import.meta.env.VITE_API_URL || 'http://local-api.harborlist.com:3001/api',
+  environment: import.meta.env.VITE_ENVIRONMENT || 'local',
   isDevelopment: import.meta.env.DEV,
   isProduction: import.meta.env.PROD,
+  isLocal: import.meta.env.VITE_ENVIRONMENT === 'local',
 } as const;
 
 export const endpoints = {

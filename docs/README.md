@@ -38,6 +38,18 @@ Welcome to the complete enterprise-grade documentation for HarborList Marketplac
 
 ---
 
+## 🚀 **Getting Started**
+
+### [`🐳 Local Development Environment`](./LOCAL_DEVELOPMENT.md)
+- **Docker Setup**: Complete local development environment using Docker Compose
+- **Service Emulation**: Local AWS services (DynamoDB, S3, SES) using LocalStack
+- **Hot Reload**: Frontend and backend development with live code updates
+- **Database Management**: Local DynamoDB with admin UI for development
+- **Quick Start**: One-command setup for immediate productivity
+- **Developer Tools**: Integrated monitoring and debugging capabilities
+
+---
+
 ## 🏗️ **Architecture & Design**
 
 ### [`📐 System Architecture`](./architecture/README.md)
@@ -48,6 +60,22 @@ Welcome to the complete enterprise-grade documentation for HarborList Marketplac
 
 ### [`🔧 Technical Specifications`](./architecture/technical-specifications.md)
 - **Technology Stack**: Comprehensive technology choices and rationale
+
+---
+
+## 🐳 **Local Development**
+
+### [`🚀 Local Development Environment`](./deployment/local-development.md)
+- **Docker Setup**: Complete containerized development environment
+- **Service Architecture**: Local AWS services emulation with LocalStack
+- **Development Workflow**: Hot reload, debugging, and testing procedures
+- **Quick Start Guide**: 5-minute setup process for new developers
+
+### [`⚙️ Local Development Implementation`](./deployment/local-development-implementation.md)
+- **Technical Implementation**: Docker Compose configuration details
+- **Architecture Overview**: Local service communication patterns
+- **Development Commands**: Complete command reference and utilities
+- **Troubleshooting Guide**: Common issues and resolution procedures
 - **Database Schema**: DynamoDB table design and GSI patterns
 - **API Design**: RESTful API architecture and endpoints
 - **Security Architecture**: Authentication, authorization, and compliance
@@ -130,6 +158,7 @@ Welcome to the complete enterprise-grade documentation for HarborList Marketplac
 - **Security Monitoring**: Threat detection and compliance monitoring
 
 ### [`🚀 Deployment & CI/CD`](./deployment/README.md)
+- **Local Development**: Docker-based development environment setup
 - **Deployment Strategy**: Blue-green and rolling deployment patterns
 - **Pipeline Configuration**: Automated testing and deployment workflows
 - **Environment Management**: Configuration and secrets management

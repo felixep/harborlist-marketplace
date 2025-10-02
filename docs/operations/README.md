@@ -40,14 +40,18 @@ export class BoatListingStack extends cdk.Stack {
 
 ### **Environment Management**
 
-The platform supports three environments with different resource configurations:
+The platform supports four environments with different resource configurations:
 
 ### **Environment Promotion Strategy**
 
 ```mermaid
 graph TD
+    subgraph "Local Environment"
+        Local[🐳 Local Development<br/>local.harborlist.com<br/><br/>• Docker Compose setup<br/>• No AWS costs<br/>• Offline development<br/>• Hot reload enabled<br/>• Individual developer usage]
+    end
+    
     subgraph "Development Environment"
-        Dev[🔧 Development<br/>dev.harborlist.com<br/><br/>• Minimal resource allocation<br/>• Debug logging enabled<br/>• Relaxed security policies<br/>• Mock data & integrations<br/>• Cost-optimized configuration]
+        Dev[🔧 Development<br/>dev.harborlist.com<br/><br/>• AWS dev resources<br/>• Debug logging enabled<br/>• Relaxed security policies<br/>• Shared team environment<br/>• Cost-optimized configuration]
     end
     
     subgraph "Staging Environment"
@@ -59,12 +63,16 @@ graph TD
     end
     
     subgraph "Promotion Gates"
+        LocalGate[Local Gate<br/>✅ Feature Development<br/>✅ Basic Testing<br/>✅ Code Functionality<br/>✅ Ready for Review]
+        
         DevGate[Development Gate<br/>✅ Unit Tests Pass<br/>✅ Code Quality Checks<br/>✅ Security Scan<br/>✅ Feature Complete]
         
         StagingGate[Staging Gate<br/>✅ Integration Tests Pass<br/>✅ Performance Benchmarks<br/>✅ Security Validation<br/>✅ UAT Approval]
     end
     
-    Dev -->|"Code Review & CI/CD"| DevGate
+    Local -->|"Git Push & PR"| LocalGate
+    LocalGate -->|"Code Review & Merge"| Dev
+    Dev -->|"Automated CI/CD"| DevGate
     DevGate -->|"Automated Promotion"| Staging
     Staging -->|"Manual Validation"| StagingGate
     StagingGate -->|"Approved Release"| Prod
@@ -73,9 +81,11 @@ graph TD
     Staging -.->|Rollback if Issues| Dev
     Prod -.->|Emergency Rollback| Staging
     
+    style Local fill:#f1f8e9,stroke:#689f38,stroke-width:2px
     style Dev fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
     style Staging fill:#fff3e0,stroke:#f57c00,stroke-width:2px
     style Prod fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
+    style LocalGate fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
     style DevGate fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
     style StagingGate fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
 ```

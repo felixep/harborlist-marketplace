@@ -1,0 +1,114 @@
+version: '3.8'
+
+services:
+  # Frontend development server
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - VITE_API_URL=http://local-api.harborlist.com:3001/api
+      - VITE_ENVIRONMENT=local
+      - CHOKIDAR_USEPOLLING=true
+    depends_on:
+      - backend
+    networks:
+      - harborlist-local
+
+  # Backend API server (Express wrapper for Lambda functions)
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    environment:
+      - NODE_ENV=development
+      - DYNAMODB_ENDPOINT=http://dynamodb-local:8000
+      - S3_ENDPOINT=http://localstack:4566
+      - SES_ENDPOINT=http://localstack:4566
+      - JWT_SECRET=local-dev-secret-harborlist-2025
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_REGION=us-east-1
+      - CORS_ORIGINS=http://local.harborlist.com:3000,http://localhost:3000
+      - API_BASE_URL=http://local-api.harborlist.com:3001
+      - FRONTEND_URL=http://local.harborlist.com:3000
+    depends_on:
+      - dynamodb-local
+      - localstack
+    networks:
+      - harborlist-local
+
+  # Local DynamoDB
+  dynamodb-local:
+    image: amazon/dynamodb-local:latest
+    ports:
+      - "8000:8000"
+    command: ["-jar", "DynamoDBLocal.jar", "-sharedDb", "-dbPath", "./data"]
+    volumes:
+      - dynamodb_data:/home/dynamodblocal/data
+    networks:
+      - harborlist-local
+
+  # LocalStack for S3, SES, CloudWatch etc.
+  localstack:
+    image: localstack/localstack:3.0
+    ports:
+      - "4566:4566"
+      - "4510-4559:4510-4559"
+    environment:
+      - SERVICES=s3,ses,cloudwatch,logs
+      - DEBUG=1
+      - DATA_DIR=/tmp/localstack/data
+      - LAMBDA_EXECUTOR=local
+      - DOCKER_HOST=unix:///var/run/docker.sock
+      - HOST_TMP_FOLDER=/tmp/localstack
+    volumes:
+      - localstack_data:/tmp/localstack
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - harborlist-local
+
+  # DynamoDB Admin UI
+  dynamodb-admin:
+    image: aaronshaf/dynamodb-admin:latest
+    ports:
+      - "8001:8001"
+    environment:
+      - DYNAMO_ENDPOINT=http://dynamodb-local:8000
+      - AWS_REGION=us-east-1
+    depends_on:
+      - dynamodb-local
+    networks:
+      - harborlist-local
+
+  # Redis for caching (optional but useful for development)
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - harborlist-local
+
+networks:
+  harborlist-local:
+    driver: bridge
+
+volumes:
+  dynamodb_data:
+    driver: local
+  localstack_data:
+    driver: local
+  redis_data:
+    driver: local

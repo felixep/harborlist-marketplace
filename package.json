@@ -1,0 +1,28 @@
+{
+  "name": "harborlist-marketplace",
+  "version": "1.0.0",
+  "description": "HarborList boat marketplace platform - local development environment",
+  "scripts": {
+    "dev:setup": "echo '🚀 Setting up HarborList local development environment...' && docker-compose -f docker-compose.local.yml up -d dynamodb-local localstack && sleep 10 && cd backend && npm run dev:setup-db",
+    "dev:start": "echo '🌊 Starting HarborList development environment...' && docker-compose -f docker-compose.local.yml up",
+    "dev:start:bg": "echo '🌊 Starting HarborList development environment in background...' && docker-compose -f docker-compose.local.yml up -d",
+    "dev:stop": "echo '🛑 Stopping HarborList development environment...' && docker-compose -f docker-compose.local.yml down",
+    "dev:clean": "echo '🧹 Cleaning HarborList development environment...' && docker-compose -f docker-compose.local.yml down -v --remove-orphans",
+    "dev:logs": "docker-compose -f docker-compose.local.yml logs -f",
+    "dev:logs:backend": "docker-compose -f docker-compose.local.yml logs -f backend",
+    "dev:logs:frontend": "docker-compose -f docker-compose.local.yml logs -f frontend",
+    "dev:restart": "npm run dev:stop && npm run dev:start:bg",
+    "dev:status": "docker-compose -f docker-compose.local.yml ps",
+    "dev:admin": "cd backend && npm run create-admin",
+    "dev:shell:backend": "docker-compose -f docker-compose.local.yml exec backend sh",
+    "dev:shell:frontend": "docker-compose -f docker-compose.local.yml exec frontend sh",
+    "hosts:setup": "echo '\\n# HarborList Local Development\\n127.0.0.1 local.harborlist.com\\n127.0.0.1 local-api.harborlist.com' | sudo tee -a /etc/hosts",
+    "hosts:remove": "sudo sed -i '' '/# HarborList Local Development/,+2d' /etc/hosts",
+    "install": "echo '📦 Installing dependencies...' && cd frontend && npm install && cd ../backend && npm install && cd ../infrastructure && npm install",
+    "build": "echo '🔨 Building all components...' && cd frontend && npm run build && cd ../backend && npm run build",
+    "test": "echo '🧪 Running tests...' && cd frontend && npm test && cd ../backend && npm test && cd ../infrastructure && npm test"
+  },
+  "keywords": ["boat", "marketplace", "harbor", "marine", "listings"],
+  "author": "HarborList Development Team",
+  "license": "MIT"
+}

@@ -380,10 +380,16 @@ stateDiagram-v2
 ```mermaid
 graph TB
     subgraph "Environment Configuration Management"
-        subgraph "Development Environment"
-            DevConfig[Development Configuration<br/>- Local DynamoDB<br/>- Mock Services<br/>- Debug Logging<br/>- Relaxed Security]
+        subgraph "Local Development Environment"
+            LocalConfig[Local Configuration<br/>- Docker Compose<br/>- DynamoDB Local<br/>- LocalStack Services<br/>- Hot Reload]
             
-            DevSecrets[Development Secrets<br/>- Test JWT Secrets<br/>- Mock API Keys<br/>- Local Database URLs<br/>- Debug Tokens]
+            LocalSecrets[Local Secrets<br/>- Hardcoded Dev Keys<br/>- Test Credentials<br/>- No Rotation<br/>- Debug Access]
+        end
+        
+        subgraph "Development Environment"
+            DevConfig[Development Configuration<br/>- AWS DynamoDB<br/>- Dev AWS Services<br/>- Debug Logging<br/>- Relaxed Security]
+            
+            DevSecrets[Development Secrets<br/>- Test JWT Secrets<br/>- Mock API Keys<br/>- Dev Database URLs<br/>- Debug Tokens]
         end
         
         subgraph "Staging Environment"
@@ -408,12 +414,17 @@ graph TB
     end
     
     subgraph "Deployment Isolation"
+        LocalDocker[Local Docker Environment<br/>- Developer Machine<br/>- No AWS Costs<br/>- Offline Development<br/>- Individual Developer]
+        
         DevAWS[Development AWS Account<br/>- Isolated Resources<br/>- Lower Costs<br/>- Experimental Features<br/>- Developer Access]
         
         StagingAWS[Staging AWS Account<br/>- Production Mirror<br/>- Performance Testing<br/>- Integration Validation<br/>- QA Team Access]
         
         ProdAWS[Production AWS Account<br/>- Live Customer Data<br/>- High Availability<br/>- Strict Security<br/>- Limited Access]
     end
+    
+    LocalConfig --> LocalSecrets
+    LocalConfig --> LocalDocker
     
     DevConfig --> DevSecrets
     DevSecrets --> AWSSecretsManager
@@ -433,6 +444,7 @@ graph TB
     CDKContext --> GitHubSecrets
     AWSSecretsManager --> GitHubSecrets
     
+    style LocalDocker fill:#f1f8e9
     style DevAWS fill:#e3f2fd
     style StagingAWS fill:#fff3e0
     style ProdAWS fill:#e8f5e8

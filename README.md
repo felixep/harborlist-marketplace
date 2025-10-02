@@ -1,11 +1,17 @@
 # 🚢 HarborList Marketplace
 
-A comprehensive boat marketplace platform built as a modern, serverless web application. HarborList connects boat buyers and sellers through a robust, scalable platform with separate interfaces for public users and platform administrators.
+A comprehensive boat marketplace platform built as a modern, serverless web applicatio   npm run test
+   ```
+
+> 🚢 **Local Development**: Get started quickly with our [Docker-based local environment](./docs/deployment/local-development.md) that mirrors production AWS services.
+
+> 🛠️ **DevOps Tools**: Explore our [25+ automation scripts](./docs/tools/README.md) for deployment, monitoring, and maintenance tasks.borList connects boat buyers and sellers through a robust, scalable platform with separate interfaces for public users and platform administrators.
 
 ## 📖 Quick Navigation
 
 | Documentation | Description |
 |---------------|-------------|
+| **[🚀 Local Development](./docs/deployment/local-development.md)** | Docker-based local development environment setup |
 | **[🏗️ Architecture](./docs/architecture/README.md)** | Complete system architecture with professional diagrams |
 | **[🔧 Backend Services](./docs/backend/README.md)** | Microservices documentation and API specifications |
 | **[⚛️ Frontend App](./docs/frontend/README.md)** | React application architecture and components |
@@ -115,9 +121,23 @@ A comprehensive boat marketplace platform built as a modern, serverless web appl
    npm run test
    ```
 
-> 🛠️ **DevOps Tools**: Explore our [25+ automation scripts](./docs/tools/README.md) for deployment, monitoring, and maintenance tasks.
+> � **Local Development**: Get started quickly with our [Docker-based local environment](./docs/LOCAL_DEVELOPMENT.md) that mirrors production AWS services.
+
+> �🛠️ **DevOps Tools**: Explore our [25+ automation scripts](./docs/tools/README.md) for deployment, monitoring, and maintenance tasks.
 
 ## 🔧 Development Commands
+
+### Local Development (Docker)
+```bash
+npm run dev:setup        # Initial local environment setup
+npm run dev:start        # Start all services (foreground)
+npm run dev:start:bg     # Start all services (background)
+npm run dev:stop         # Stop all services
+npm run dev:clean        # Clean all data and containers
+npm run dev:admin        # Create admin user
+npm run dev:logs         # View all service logs
+npm run hosts:setup      # Add local domains to /etc/hosts
+```
 
 ### Frontend
 ```bash
@@ -165,7 +185,8 @@ npm run test         # Run infrastructure tests
 
 The application supports multiple deployment environments:
 
-- **Development** (`dev`) - Local development with dev AWS resources
+- **Local** (`local`) - Docker-based local development environment
+- **Development** (`dev`) - AWS development environment with dev resources
 - **Staging** (`staging`) - Pre-production testing environment  
 - **Production** (`prod`) - Live marketplace platform
 
