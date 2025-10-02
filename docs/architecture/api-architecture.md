@@ -102,30 +102,30 @@ sequenceDiagram
         APIGW->>Auth: Validate JWT Token
         Auth->>Auth: Token Verification
         alt Valid Token
-            Auth-->>APIGW: User Context
+            Auth-->>APIGW: "User Context"
         else Invalid Token
-            Auth-->>APIGW: 401 Unauthorized
-            APIGW-->>CF: Error Response
-            CF-->>Client: 401 Error
+            Auth-->>APIGW: "401 Unauthorized"
+            APIGW-->>CF: "Error Response"
+            CF-->>Client: "401 Error"
         end
     end
     
-    APIGW->>Lambda: Invoke Function
+    APIGW->>Lambda: "Invoke Function"
     Note over Lambda: Business Logic Processing
     
-    Lambda->>DDB: Database Query/Write
-    DDB-->>Lambda: Data Response
+    Lambda->>DDB: "Database Query/Write"
+    DDB-->>Lambda: "Data Response"
     
-    Lambda->>CW: Log Metrics & Events
+    Lambda->>CW: "Log Metrics & Events"
     
     alt Success
-        Lambda-->>APIGW: Success Response
-        APIGW-->>CF: HTTP 200
-        CF-->>Client: JSON Response
+        Lambda-->>APIGW: "Success Response"
+        APIGW-->>CF: "HTTP 200"
+        CF-->>Client: "JSON Response"
     else Error
-        Lambda-->>APIGW: Error Response
-        APIGW-->>CF: HTTP 4xx/5xx
-        CF-->>Client: Error Response
+        Lambda-->>APIGW: "Error Response"
+        APIGW-->>CF: "HTTP 4xx/5xx"
+        CF-->>Client: "Error Response"
     end
 ```
 
@@ -198,31 +198,31 @@ graph TB
 stateDiagram-v2
     [*] --> Unauthenticated
     
-    Unauthenticated --> LoginAttempt : Submit Credentials
-    LoginAttempt --> ValidatingCredentials : Valid Format
-    LoginAttempt --> LoginError : Invalid Format
+    Unauthenticated --> LoginAttempt : "Submit Credentials"
+    LoginAttempt --> ValidatingCredentials : "Valid Format"
+    LoginAttempt --> LoginError : "Invalid Format"
     
-    ValidatingCredentials --> CheckingRateLimit : Credentials OK
-    ValidatingCredentials --> LoginError : Invalid Credentials
+    ValidatingCredentials --> CheckingRateLimit : "Credentials OK"
+    ValidatingCredentials --> LoginError : "Invalid Credentials"
     
-    CheckingRateLimit --> AuthenticatingUser : Within Limits
-    CheckingRateLimit --> RateLimited : Too Many Attempts
+    CheckingRateLimit --> AuthenticatingUser : "Within Limits"
+    CheckingRateLimit --> RateLimited : "Too Many Attempts"
     
-    AuthenticatingUser --> GeneratingTokens : Valid User
-    AuthenticatingUser --> LoginError : Authentication Failed
+    AuthenticatingUser --> GeneratingTokens : "Valid User"
+    AuthenticatingUser --> LoginError : "Authentication Failed"
     
-    GeneratingTokens --> Authenticated : Tokens Created
+    GeneratingTokens --> Authenticated : "Tokens Created"
     
-    Authenticated --> RefreshingToken : Token Near Expiry
-    Authenticated --> LoggingOut : User Logout
-    Authenticated --> [*] : Session Expired
+    Authenticated --> RefreshingToken : "Token Near Expiry"
+    Authenticated --> LoggingOut : "User Logout"
+    Authenticated --> [*] : "Session Expired"
     
-    RefreshingToken --> Authenticated : Valid Refresh Token
-    RefreshingToken --> Unauthenticated : Invalid Refresh Token
+    RefreshingToken --> Authenticated : "Valid Refresh Token"
+    RefreshingToken --> Unauthenticated : "Invalid Refresh Token"
     
-    LoggingOut --> Unauthenticated : Logout Complete
-    LoginError --> Unauthenticated : Try Again
-    RateLimited --> Unauthenticated : Wait Period
+    LoggingOut --> Unauthenticated : "Logout Complete"
+    LoginError --> Unauthenticated : "Try Again"
+    RateLimited --> Unauthenticated : "Wait Period"
 ```
 
 ### **Admin Authentication with MFA**
@@ -240,47 +240,47 @@ sequenceDiagram
     UI->>AuthAPI: POST /auth/admin/login
     
     AuthAPI->>DB: Validate Credentials
-    DB-->>AuthAPI: User Data
+    DB-->>AuthAPI: "User Data"
     
     alt First Time Login or MFA Not Setup
-        AuthAPI->>MFA: Generate TOTP Secret
-        MFA-->>AuthAPI: QR Code + Secret
-        AuthAPI-->>UI: MFA Setup Required
-        UI-->>Admin: Show QR Code
+        AuthAPI->>MFA: "Generate TOTP Secret"
+        MFA-->>AuthAPI: "QR Code + Secret"
+        AuthAPI-->>UI: "MFA Setup Required"
+        UI-->>Admin: "Show QR Code"
         
-        Admin->>UI: Enter TOTP Code
-        UI->>AuthAPI: Verify Setup Code
-        AuthAPI->>MFA: Validate TOTP
-        MFA-->>AuthAPI: Verification Result
+        Admin->>UI: "Enter TOTP Code"
+        UI->>AuthAPI: "Verify Setup Code"
+        AuthAPI->>MFA: "Validate TOTP"
+        MFA-->>AuthAPI: "Verification Result"
         
         alt Valid TOTP
-            AuthAPI->>DB: Mark MFA as Verified
-            AuthAPI->>Audit: Log MFA Setup
+            AuthAPI->>DB: "Mark MFA as Verified"
+            AuthAPI->>Audit: "Log MFA Setup"
         else Invalid TOTP
-            AuthAPI-->>UI: Setup Failed
-            UI-->>Admin: Try Again
+            AuthAPI-->>UI: "Setup Failed"
+            UI-->>Admin: "Try Again"
         end
         
     else MFA Already Setup
-        AuthAPI-->>UI: MFA Required
-        UI-->>Admin: Enter TOTP Code
+        AuthAPI-->>UI: "MFA Required"
+        UI-->>Admin: "Enter TOTP Code"
         
-        Admin->>UI: TOTP Code
-        UI->>AuthAPI: Submit MFA Code
-        AuthAPI->>MFA: Validate TOTP
-        MFA-->>AuthAPI: Validation Result
+        Admin->>UI: "TOTP Code"
+        UI->>AuthAPI: "Submit MFA Code"
+        AuthAPI->>MFA: "Validate TOTP"
+        MFA-->>AuthAPI: "Validation Result"
     end
     
     alt MFA Success
-        AuthAPI->>DB: Create Admin Session
-        AuthAPI->>Audit: Log Successful Login
-        AuthAPI-->>UI: Admin JWT + Session
-        UI-->>Admin: Redirect to Dashboard
+        AuthAPI->>DB: "Create Admin Session"
+        AuthAPI->>Audit: "Log Successful Login"
+        AuthAPI-->>UI: "Admin JWT + Session"
+        UI-->>Admin: "Redirect to Dashboard"
         
     else MFA Failed
-        AuthAPI->>Audit: Log Failed MFA
-        AuthAPI-->>UI: Authentication Failed
-        UI-->>Admin: Show Error Message
+        AuthAPI->>Audit: "Log Failed MFA"
+        AuthAPI-->>UI: "Authentication Failed"
+        UI-->>Admin: "Show Error Message"
     end
 ```
 

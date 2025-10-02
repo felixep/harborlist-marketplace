@@ -319,7 +319,7 @@ graph TD
 
 ```mermaid
 stateDiagram-v2
-    [*] --> BlueActive: Initial Deployment
+    [*] --> BlueActive: "Initial Deployment"
     
     state "Blue Environment (Active)" as BlueActive {
         [*] --> ServingTraffic
@@ -334,17 +334,17 @@ stateDiagram-v2
         ReadyForSwitch --> [*]
     }
     
-    BlueActive --> DeploymentInitiated: New Release
-    DeploymentInitiated --> GreenStaging: Deploy to Green
+    BlueActive --> DeploymentInitiated: "New Release"
+    DeploymentInitiated --> GreenStaging: "Deploy to Green"
     
-    GreenStaging --> TrafficSwitching: Tests Pass
-    TrafficSwitching --> GreenActive: Switch DNS/Load Balancer
+    GreenStaging --> TrafficSwitching: "Tests Pass"
+    TrafficSwitching --> GreenActive: "Switch DNS/Load Balancer"
     
     state "Green Environment (Active)" as GreenActive {
         [*] --> ServingTraffic
         ServingTraffic --> MonitoringHealth
         MonitoringHealth --> ServingTraffic
-        MonitoringHealth --> RollbackInitiated: Health Check Fails
+        MonitoringHealth --> RollbackInitiated: "Health Check Fails"
     }
     
     state "Blue Environment (Standby)" as BlueStandby {
@@ -353,12 +353,12 @@ stateDiagram-v2
         ReadyForRollback --> [*]
     }
     
-    TrafficSwitching --> BlueStandby: Blue becomes Standby
+    TrafficSwitching --> BlueStandby: "Blue becomes Standby"
     
-    GreenActive --> RollbackInitiated: Issues Detected
-    RollbackInitiated --> BlueActive: Quick Rollback
+    GreenActive --> RollbackInitiated: "Issues Detected"
+    RollbackInitiated --> BlueActive: "Quick Rollback"
     
-    GreenActive --> BlueStaging: Next Deployment Cycle
+    GreenActive --> BlueStaging: "Next Deployment Cycle"
     
     note right of TrafficSwitching
         - DNS Update (Cloudflare)

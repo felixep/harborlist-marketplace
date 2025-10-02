@@ -246,33 +246,33 @@ sequenceDiagram
     UI->>AG: POST /search
     AG->>LS: Route to search handler
     LS->>DDB: Query listings table
-    DDB-->>LS: Return filtered results
+    DDB-->>LS: "Return filtered results"
     LS->>CW: Log search metrics
-    LS-->>AG: Search results
-    AG-->>UI: HTTP response
-    UI-->>U: Display search results
+    LS-->>AG: "Search results"
+    AG-->>UI: "HTTP response"
+    UI-->>U: "Display search results"
     
     U->>UI: Login
     UI->>AG: POST /auth/login
     AG->>Auth: Authenticate user
     Auth->>DDB: Verify credentials
-    DDB-->>Auth: User data
+    DDB-->>Auth: "User data"
     Auth->>CW: Log authentication
-    Auth-->>AG: JWT token
-    AG-->>UI: Login success
-    UI-->>U: Redirect to dashboard
+    Auth-->>AG: "JWT token"
+    AG-->>UI: "Login success"
+    UI-->>U: "Redirect to dashboard"
     
     U->>UI: Upload listing images
     UI->>AG: POST /media (with JWT)
     AG->>Auth: Validate JWT
-    Auth-->>AG: User context
+    Auth-->>AG: "User context"
     AG->>Media: Process upload
     Media->>S3: Store image files
-    S3-->>Media: File URLs
+    S3-->>Media: "File URLs"
     Media->>CW: Log upload metrics
-    Media-->>AG: Upload success
-    AG-->>UI: Image URLs
-    UI-->>U: Show upload confirmation
+    Media-->>AG: "Upload success"
+    AG-->>UI: "Image URLs"
+    UI-->>U: "Show upload confirmation"
 ```
 
 ### **Database Architecture & Relationships**
@@ -709,16 +709,16 @@ sequenceDiagram
     AG->>L: Invoke Lambda
     L->>L: Business Logic
     L->>DB: Data Operations
-    DB-->>L: Response Data
+    DB-->>L: "Response Data"
     alt Media Request
-        L->>S3: File Operations
-        S3-->>L: File Response
+        L->>S3: "File Operations"
+        S3-->>L: "File Response"
     end
-    L->>CW: Log Metrics
-    L-->>AG: Response
-    AG-->>CF: API Response
-    CF->>CF: Cache & Optimize
-    CF-->>U: Final Response
+    L->>CW: "Log Metrics"
+    L-->>AG: "Response"
+    AG-->>CF: "API Response"
+    CF->>CF: "Cache & Optimize"
+    CF-->>U: "Final Response"
 ```
 
 ### **Authentication Flow**
@@ -734,21 +734,21 @@ sequenceDiagram
     C->>AG: Login Request
     AG->>AS: Route to Auth Service
     AS->>DB: Validate Credentials
-    DB-->>AS: User Data
-    AS->>SM: Get JWT Secret
-    SM-->>AS: Secret Key
-    AS->>AS: Generate JWT Token
-    AS->>DB: Create Session
-    AS-->>AG: Auth Response
-    AG-->>C: JWT Token + User Data
+    DB-->>AS: "User Data"
+    AS->>SM: "Get JWT Secret"
+    SM-->>AS: "Secret Key"
+    AS->>AS: "Generate JWT Token"
+    AS->>DB: "Create Session"
+    AS-->>AG: "Auth Response"
+    AG-->>C: "JWT Token + User Data"
     
     Note over C,DB: Subsequent Authenticated Requests
-    C->>AG: Request + JWT
-    AG->>AS: Verify Token
-    AS->>SM: Get JWT Secret
-    SM-->>AS: Secret Key
-    AS->>AS: Validate Token
-    AS-->>AG: User Context
+    C->>AG: "Request + JWT"
+    AG->>AS: "Verify Token"
+    AS->>SM: "Get JWT Secret"
+    SM-->>AS: "Secret Key"
+    AS->>AS: "Validate Token"
+    AS-->>AG: "User Context"
     AG->>L: Forward with User
 ```
 
@@ -905,8 +905,8 @@ graph TD
         Pipeline[⚙️ Automated Pipeline<br/>• Code Quality Checks<br/>• Security Scanning<br/>• Automated Testing<br/>• Deployment Automation<br/>• Rollback Capabilities]
     end
     
-    Dev -->|Promotion| Staging
-    Staging -->|Promotion| Prod
+    Dev -->|"Promotion"| Staging
+    Staging -->|"Promotion"| Prod
     Pipeline -.->|Manages| Dev
     Pipeline -.->|Manages| Staging
     Pipeline -.->|Manages| Prod

@@ -88,16 +88,16 @@ sequenceDiagram
     AuthAPI->>MFAService: Generate TOTP Secret
     MFAService->>MFAService: Create QR Code
     MFAService->>Database: Store Encrypted Secret
-    MFAService-->>AuthAPI: Return Setup Data
-    AuthAPI-->>Frontend: QR Code + Backup Codes
-    Frontend-->>User: Show QR Code & Instructions
+    MFAService-->>AuthAPI: "Return Setup Data"
+    AuthAPI-->>Frontend: "QR Code + Backup Codes"
+    Frontend-->>User: "Show QR Code & Instructions"
     
-    User->>Frontend: Scan QR Code + Enter Verification
-    Frontend->>AuthAPI: POST /auth/mfa/verify-setup
-    AuthAPI->>MFAService: Verify TOTP Code
-    MFAService-->>AuthAPI: Verification Result
-    AuthAPI->>Database: Mark MFA as Enabled
-    AuthAPI-->>Frontend: MFA Setup Complete
+    User->>Frontend: "Scan QR Code + Enter Verification"
+    Frontend->>AuthAPI: "POST /auth/mfa/verify-setup"
+    AuthAPI->>MFAService: "Verify TOTP Code"
+    MFAService-->>AuthAPI: "Verification Result"
+    AuthAPI->>Database: "Mark MFA as Enabled"
+    AuthAPI-->>Frontend: "MFA Setup Complete"
 ```
 
 #### **Admin MFA Enforcement**

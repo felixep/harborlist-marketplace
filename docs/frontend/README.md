@@ -139,11 +139,11 @@ sequenceDiagram
     U->>F: Login Request
     F->>A: POST /auth/login
     A->>D: Validate Credentials
-    D-->>A: User Data
-    A->>A: Generate JWT Token
-    A-->>F: Token + User Info
-    F->>F: Store in Context
-    F-->>U: Redirect to Dashboard
+    D-->>A: "User Data"
+    A->>A: "Generate JWT Token"
+    A-->>F: "Token + User Info"
+    F->>F: "Store in Context"
+    F-->>U: "Redirect to Dashboard"
 ```
 
 #### **Admin Authentication Flow**
@@ -159,15 +159,15 @@ sequenceDiagram
     A->>F: Admin Login
     F->>AS: POST /admin/login
     AS->>D: Validate Admin Credentials
-    D-->>AS: Admin Data
-    AS->>M: Require MFA
-    M-->>F: MFA Challenge
-    F-->>A: Show MFA Input
-    A->>F: MFA Code
-    F->>AS: Verify MFA
-    AS->>AS: Generate Admin JWT
-    AS-->>F: Admin Token + Permissions
-    F-->>A: Admin Dashboard Access
+    D-->>AS: "Admin Data"
+    AS->>M: "Require MFA"
+    M-->>F: "MFA Challenge"
+    F-->>A: "Show MFA Input"
+    A->>F: "MFA Code"
+    F->>AS: "Verify MFA"
+    AS->>AS: "Generate Admin JWT"
+    AS-->>F: "Admin Token + Permissions"
+    F-->>A: "Admin Dashboard Access"
 ```
 
 ### **Protected Routes Implementation**

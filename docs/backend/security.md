@@ -39,10 +39,10 @@ sequenceDiagram
     Client->>API: Login Request
     API->>Auth: Validate Credentials
     Auth->>DB: Check User Data
-    DB-->>Auth: User Information
-    Auth->>Auth: Generate JWT
-    Auth-->>API: Token + User Info
-    API-->>Client: Authentication Success
+    DB-->>Auth: "User Information"
+    Auth->>Auth: "Generate JWT"
+    Auth-->>API: "Token + User Info"
+    API-->>Client: "Authentication Success"
 ```
 
 ---

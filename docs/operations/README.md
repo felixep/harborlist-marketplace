@@ -64,10 +64,10 @@ graph TD
         StagingGate[Staging Gate<br/>✅ Integration Tests Pass<br/>✅ Performance Benchmarks<br/>✅ Security Validation<br/>✅ UAT Approval]
     end
     
-    Dev -->|Code Review & CI/CD| DevGate
-    DevGate -->|Automated Promotion| Staging
-    Staging -->|Manual Validation| StagingGate
-    StagingGate -->|Approved Release| Prod
+    Dev -->|"Code Review & CI/CD"| DevGate
+    DevGate -->|"Automated Promotion"| Staging
+    Staging -->|"Manual Validation"| StagingGate
+    StagingGate -->|"Approved Release"| Prod
     
     %% Rollback paths
     Staging -.->|Rollback if Issues| Dev
