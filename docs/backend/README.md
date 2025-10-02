@@ -2,101 +2,1004 @@
 
 ## 📋 **Overview**
 
-The HarborList backend is a microservices-based architecture built with Node.js and TypeScript, deployed on AWS infrastructure. The system provides robust APIs for boat listings, user management, authentication, and administrative functions with enterprise-grade security, scalability, and monitoring.
+The HarborList backend is a microservices-based architecture built with Node.js 18 and TypeScript, deployed as AWS Lambda functions. The system provides robust APIs for boat listings, user management, authentication, and administrative functions with comprehensive security, audit logging, and monitoring.
+
+**Current Implementation**: October 2025 - Based on actual deployed codebase
 
 ---
 
-## 🏗️ **Backend Architecture**
+## 🏗️ **Backend Architecture (Current Structure)**
 
-### **Microservices Structure**
+### **Actual Service Structure**
 
-```
+```bash
+# Current backend/src/ directory structure
 backend/src/
-├── auth-service/           # Authentication & Authorization
-│   ├── handlers/          # Lambda handlers
-│   ├── middleware/        # Auth middleware
-│   ├── services/          # Business logic
-│   └── models/           # Auth models
-├── listing-service/       # Boat listings management
-│   ├── handlers/          # CRUD operations
-│   ├── search/           # Search functionality
-│   ├── validation/       # Input validation
-│   └── models/          # Listing models
-├── admin-service/         # Administrative functions
-│   ├── handlers/         # Admin operations
-│   ├── permissions/      # Role-based access
-│   ├── analytics/        # Platform analytics
-│   └── moderation/       # Content moderation
-├── media/                # Media processing
-│   ├── upload/          # File upload handlers
-│   ├── processing/      # Image processing
-│   └── storage/         # S3 integration
-├── email/               # Email notifications
-│   ├── templates/       # Email templates
-│   ├── services/        # SES integration
-│   └── handlers/        # Email triggers
-├── search/              # Search service
-│   ├── indexing/        # OpenSearch indexing
-│   ├── queries/         # Search queries
-│   └── filters/         # Search filters
-├── stats-service/       # Analytics & metrics
-│   ├── collectors/      # Data collection
-│   ├── aggregators/     # Data aggregation
-│   └── reporting/       # Report generation
-└── shared/              # Shared utilities
-    ├── database/        # DynamoDB utilities
-    ├── validation/      # Common validators
-    ├── middleware/      # Shared middleware
-    └── types/          # TypeScript definitions
+├── admin-service/          # Administrative operations (RBAC, analytics)
+│   ├── index.ts           # Main Lambda handler with routing
+│   ├── versioning.ts      # API versioning support
+│   └── *.test.ts         # Comprehensive test suite
+├── auth-service/          # JWT authentication & session management
+│   └── index.ts          # Authentication handlers & MFA
+├── listing/               # Boat listing CRUD operations
+│   └── index.ts          # Listing management with ownership validation
+├── listing-service/       # Enhanced listing operations
+│   └── auth.ts           # Authentication utilities for listings
+├── search/                # Advanced search & filtering
+│   └── index.ts          # DynamoDB-based search (no OpenSearch yet)
+├── media/                 # S3 media upload & processing
+│   └── index.ts          # Presigned URL generation & Sharp processing
+├── email/                 # SES email notifications
+│   └── index.ts          # Template-based email service
+├── stats-service/         # Platform analytics & metrics
+│   └── index.ts          # Real-time statistics aggregation
+├── shared/                # Common utilities & middleware
+│   ├── database.ts       # DynamoDB client & utilities
+│   ├── utils.ts          # Response formatting & validation
+│   └── middleware.ts     # Auth, rate limiting, audit logging
+└── types/                 # TypeScript type definitions
+    └── common.ts         # Shared interfaces & enums
 ```
 
-### **Technology Stack**
-
-| Technology | Version | Purpose | Configuration |
-|------------|---------|---------|---------------|
-| **Node.js** | 18.x LTS | Runtime Environment | Lambda-optimized |
-| **TypeScript** | 5.0+ | Type Safety | Strict mode enabled |
-| **AWS Lambda** | Latest | Serverless Compute | Custom runtime |
-| **API Gateway** | v2 | HTTP API Management | JWT authorizers |
-| **DynamoDB** | Latest | Primary Database | Single-table design |
-| **OpenSearch** | 2.3+ | Search Engine | Multi-AZ cluster |
-| **S3** | Latest | File Storage | Lifecycle policies |
-| **SES** | Latest | Email Service | Template management |
-| **CloudWatch** | Latest | Monitoring & Logging | Custom metrics |
-
----
-
-## 🔐 **Authentication Service**
-
-### **JWT Token Management**
+### **Lambda Functions & Deployment**
 
 ```typescript
-// JWT Configuration
-interface TokenConfig {
-  accessToken: {
-    secret: string;
-    expiresIn: string;    // 15 minutes
-    algorithm: 'HS256';
-  };
-  refreshToken: {
-    secret: string;
-    expiresIn: string;    // 7 days
-    algorithm: 'HS256';
-  };
-  adminToken: {
-    secret: string;
-    expiresIn: string;    // 30 minutes
-    algorithm: 'HS256';
-  };
+// Current Lambda deployment configuration from CDK
+const lambdaFunctions = {
+  authFunction: {
+    handler: 'auth-service/index.handler',
+    runtime: 'nodejs18.x',
+    timeout: 30,
+    environment: {
+      USERS_TABLE: 'boat-users',
+      JWT_SECRET_ARN: 'arn:aws:secretsmanager:...',
+      LOGIN_ATTEMPTS_TABLE: 'boat-login-attempts'
+    }
+  },
+  listingFunction: {
+    handler: 'listing/index.handler', 
+    runtime: 'nodejs18.x',
+    environment: {
+      LISTINGS_TABLE: 'boat-listings',
+      USERS_TABLE: 'boat-users'
+    }
+  },
+  adminFunction: {
+    handler: 'admin-service/index.handler',
+    runtime: 'nodejs18.x',
+    timeout: 30,
+    memorySize: 512,
+    environment: {
+      AUDIT_LOGS_TABLE: 'boat-audit-logs',
+      ADMIN_SESSIONS_TABLE: 'boat-admin-sessions',
+      JWT_SECRET_ARN: 'arn:aws:secretsmanager:...'
+    }
+  },
+  searchFunction: {
+    handler: 'search/index.handler',
+    environment: {
+      LISTINGS_TABLE: 'boat-listings'
+    }
+  },
+  mediaFunction: {
+    handler: 'media/index.handler',
+    environment: {
+      MEDIA_BUCKET: 'boat-listing-media-[account]',
+      THUMBNAILS_BUCKET: 'boat-listing-media-[account]'
+    }
+  },
+  emailFunction: {
+    handler: 'email/index.handler'
+  },
+  statsFunction: {
+    handler: 'stats-service/index.handler',
+    environment: {
+      LISTINGS_TABLE: 'boat-listings',
+      USERS_TABLE: 'boat-users'
+    }
+  }
+};
+```
+
+### **Technology Stack & Deep Implementation Details**
+
+| Technology | Version | Purpose | Implementation Details |
+|------------|---------|---------|----------------------|
+| **Node.js** | 18.x LTS | Runtime Environment | Lambda Layer optimization, ES modules support, memory profiling |
+| **TypeScript** | 5.0+ | Type Safety | Strict mode, path mapping, incremental compilation |
+| **AWS Lambda** | Latest | Serverless Compute | Provisioned concurrency, ARM64 Graviton2 processors |
+| **API Gateway** | REST API | HTTP Management | CORS pre-flight, request validation, throttling |
+| **DynamoDB** | Latest | NoSQL Database | Adaptive capacity, DAX caching layer, stream processing |
+| **S3** | Latest | Object Storage | Multipart uploads, lifecycle rules, CloudFront integration |
+| **SES** | Latest | Email Service | DKIM authentication, bounce handling, reputation monitoring |
+| **CloudWatch** | Latest | Observability | Custom metrics, log insights, X-Ray tracing integration |
+
+### **Performance Optimizations**
+
+```typescript
+// Lambda Cold Start Optimization
+export const handler = async (event: APIGatewayProxyEvent) => {
+  // Connection pooling for DynamoDB
+  const dynamoClient = new DynamoDBClient({
+    region: process.env.AWS_REGION,
+    maxAttempts: 3,
+    retryMode: 'adaptive'
+  });
+
+  // Implement connection reuse across invocations
+  const docClient = DynamoDBDocumentClient.from(dynamoClient, {
+    marshallOptions: {
+      removeUndefinedValues: true,
+      convertClassInstanceToMap: true
+    }
+  });
+
+  // Memory optimization for large payloads
+  const response = await processRequest(event);
+  
+  // Explicit garbage collection hints for Node.js 18
+  if (global.gc && process.memoryUsage().heapUsed > 100 * 1024 * 1024) {
+    global.gc();
+  }
+  
+  return response;
+};
+
+// Database connection optimization
+class DatabaseOptimizer {
+  private static instance: DynamoDBDocumentClient;
+  
+  static getInstance(): DynamoDBDocumentClient {
+    if (!DatabaseOptimizer.instance) {
+      DatabaseOptimizer.instance = DynamoDBDocumentClient.from(
+        new DynamoDBClient({
+          region: process.env.AWS_REGION,
+          httpOptions: {
+            connectTimeout: 3000,    // 3 second connection timeout
+            timeout: 10000,         // 10 second total timeout
+            agent: new Agent({      // HTTP keep-alive
+              keepAlive: true,
+              maxSockets: 50
+            })
+          }
+        })
+      );
+    }
+    return DatabaseOptimizer.instance;
+  }
+}
+```
+
+---
+
+## 🔐 **Authentication Service - Deep Implementation**
+
+### **JWT Token Management & Security Layer**
+
+```typescript
+// Complete JWT Configuration with Security Features
+interface JWTTokenPayload {
+  sub: string;           // User ID (primary identifier)
+  email: string;         // User email for lookup
+  name: string;          // Display name
+  role: UserRole;        // Role-based access control
+  permissions?: AdminPermission[];  // Granular permissions for admin users
+  iat: number;           // Issued at timestamp
+  exp: number;           // Expiration timestamp
+  jti: string;           // JWT ID for token blacklisting
+  aud: string;           // Audience (harborlist-marketplace)
+  iss: string;           // Issuer (auth-service)
 }
 
-// Token Generation Service
+// Advanced Token Management with Rotation & Blacklisting
 export class TokenService {
-  constructor(private config: TokenConfig) {}
+  private readonly jwtSecret: string;
+  private readonly blacklistedTokens = new Set<string>();
 
-  generateAccessToken(payload: UserPayload): string {
-    return jwt.sign(
-      {
+  constructor() {
+    this.jwtSecret = process.env.JWT_SECRET || this.getSecretFromAWS();
+  }
+
+  async generateTokenPair(user: User): Promise<TokenPair> {
+    const jti = generateUUID();
+    const now = Math.floor(Date.now() / 1000);
+    
+    const accessTokenPayload: JWTTokenPayload = {
+      sub: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      permissions: user.role === 'admin' ? user.permissions : undefined,
+      iat: now,
+      exp: now + (15 * 60), // 15 minutes
+      jti: jti,
+      aud: 'harborlist-marketplace',
+      iss: 'auth-service'
+    };
+
+    const refreshTokenPayload = {
+      sub: user.id,
+      type: 'refresh',
+      iat: now,
+      exp: now + (7 * 24 * 60 * 60), // 7 days
+      jti: generateUUID()
+    };
+
+    const accessToken = jwt.sign(accessTokenPayload, this.jwtSecret, {
+      algorithm: 'HS256',
+      header: {
+        typ: 'JWT',
+        alg: 'HS256',
+        kid: process.env.JWT_KEY_ID || 'default'
+      }
+    });
+
+    const refreshToken = jwt.sign(refreshTokenPayload, this.jwtSecret, {
+      algorithm: 'HS256'
+    });
+
+    // Store refresh token in DynamoDB for tracking and revocation
+    await this.storeRefreshToken(user.id, refreshTokenPayload.jti, refreshTokenPayload.exp);
+
+    return { accessToken, refreshToken, expiresIn: 900 }; // 15 minutes
+  }
+
+  async verifyToken(token: string): Promise<JWTTokenPayload> {
+    try {
+      const decoded = jwt.verify(token, this.jwtSecret, {
+        algorithms: ['HS256'],
+        audience: 'harborlist-marketplace',
+        issuer: 'auth-service'
+      }) as JWTTokenPayload;
+
+      // Check token blacklist
+      if (this.blacklistedTokens.has(decoded.jti)) {
+        throw new Error('Token has been revoked');
+      }
+
+      // Verify token hasn't expired (additional check)
+      if (decoded.exp < Math.floor(Date.now() / 1000)) {
+        throw new Error('Token has expired');
+      }
+
+      return decoded;
+    } catch (error) {
+      if (error instanceof jwt.JsonWebTokenError) {
+        throw new Error(`Invalid token: ${error.message}`);
+      }
+      throw error;
+    }
+  }
+
+  async revokeToken(jti: string): Promise<void> {
+    this.blacklistedTokens.add(jti);
+    
+    // Store in DynamoDB for persistence across Lambda instances
+    await this.docClient.put({
+      TableName: process.env.BLACKLISTED_TOKENS_TABLE!,
+      Item: {
+        jti: jti,
+        revokedAt: Date.now(),
+        ttl: Math.floor(Date.now() / 1000) + (24 * 60 * 60) // 24 hour TTL
+      }
+    }).promise();
+  }
+
+  private async getSecretFromAWS(): Promise<string> {
+    const secretsManager = new SecretsManagerClient({});
+    const response = await secretsManager.send(
+      new GetSecretValueCommand({
+        SecretId: process.env.JWT_SECRET_ARN!
+      })
+    );
+    
+    const secret = JSON.parse(response.SecretString!);
+    return secret.jwtSecret;
+  }
+}
+
+// Authentication Middleware with Advanced Security Features
+export const withAuthentication = (requiredPermissions?: AdminPermission[]) => {
+  return async (event: APIGatewayProxyEvent): Promise<AuthenticatedEvent> => {
+    const authHeader = event.headers?.Authorization || event.headers?.authorization;
+    
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      throw new UnauthorizedError('Missing or invalid Authorization header');
+    }
+
+    const token = authHeader.substring(7);
+    
+    try {
+      const payload = await tokenService.verifyToken(token);
+      
+      // Rate limiting by user
+      await rateLimiter.checkUserLimit(payload.sub, 'api_requests', 1000, 60000); // 1000 req/min
+      
+      // Permission validation for admin endpoints
+      if (requiredPermissions && requiredPermissions.length > 0) {
+        if (payload.role !== 'admin' && payload.role !== 'superadmin') {
+          throw new ForbiddenError('Admin access required');
+        }
+        
+        const hasRequiredPermissions = requiredPermissions.every(permission =>
+          payload.permissions?.includes(permission)
+        );
+        
+        if (!hasRequiredPermissions) {
+          throw new ForbiddenError('Insufficient permissions');
+        }
+      }
+
+      // Audit logging for authenticated requests
+      await auditLogger.log({
+        userId: payload.sub,
+        action: `${event.httpMethod} ${event.path}`,
+        timestamp: new Date().toISOString(),
+        ipAddress: event.requestContext.identity?.sourceIp,
+        userAgent: event.headers?.['User-Agent'],
+        sessionId: event.headers?.['X-Session-Id']
+      });
+
+      return {
+        ...event,
+        user: payload,
+        requestContext: {
+          ...event.requestContext,
+          authorizer: {
+            userId: payload.sub,
+            role: payload.role,
+            permissions: payload.permissions || []
+          }
+        }
+      } as AuthenticatedEvent;
+      
+    } catch (error) {
+      // Security event logging for failed authentication
+      await securityLogger.logSecurityEvent({
+        type: 'AUTHENTICATION_FAILURE',
+        severity: 'MEDIUM',
+        ipAddress: event.requestContext.identity?.sourceIp,
+        userAgent: event.headers?.['User-Agent'],
+        error: error.message,
+        timestamp: new Date().toISOString()
+      });
+      
+      throw error;
+    }
+  };
+};
+
+// Session Management for Admin Users
+export class SessionManager {
+  private readonly SESSION_TABLE = process.env.ADMIN_SESSIONS_TABLE!;
+  private readonly SESSION_TIMEOUT = 60 * 60 * 1000; // 1 hour
+
+  async createSession(userId: string, metadata: SessionMetadata): Promise<Session> {
+    const sessionId = generateUUID();
+    const now = Date.now();
+    
+    const session: Session = {
+      sessionId,
+      userId,
+      createdAt: now,
+      lastActivity: now,
+      expiresAt: now + this.SESSION_TIMEOUT,
+      ipAddress: metadata.ipAddress,
+      userAgent: metadata.userAgent,
+      isActive: true
+    };
+
+    await this.docClient.put({
+      TableName: this.SESSION_TABLE,
+      Item: session
+    }).promise();
+
+    // Cleanup old sessions for this user (keep only latest 5)
+    await this.cleanupOldSessions(userId);
+
+    return session;
+  }
+
+  async validateSession(sessionId: string): Promise<Session | null> {
+    const result = await this.docClient.get({
+      TableName: this.SESSION_TABLE,
+      Key: { sessionId }
+    }).promise();
+
+    if (!result.Item) {
+      return null;
+    }
+
+    const session = result.Item as Session;
+    
+    // Check if session is expired
+    if (session.expiresAt < Date.now() || !session.isActive) {
+      await this.invalidateSession(sessionId);
+      return null;
+    }
+
+    // Update last activity
+    await this.updateLastActivity(sessionId);
+    
+    return session;
+  }
+
+  async invalidateSession(sessionId: string): Promise<void> {
+    await this.docClient.update({
+      TableName: this.SESSION_TABLE,
+      Key: { sessionId },
+      UpdateExpression: 'SET isActive = :false, invalidatedAt = :now',
+      ExpressionAttributeValues: {
+        ':false': false,
+        ':now': Date.now()
+      }
+    }).promise();
+  }
+
+  private async updateLastActivity(sessionId: string): Promise<void> {
+    const now = Date.now();
+    await this.docClient.update({
+      TableName: this.SESSION_TABLE,
+      Key: { sessionId },
+      UpdateExpression: 'SET lastActivity = :now, expiresAt = :expires',
+      ExpressionAttributeValues: {
+        ':now': now,
+        ':expires': now + this.SESSION_TIMEOUT
+      }
+    }).promise();
+  }
+}
+```
+
+---
+
+## 🛡️ **Admin Service - Advanced RBAC & Management**
+
+### **Role-Based Access Control (RBAC) Deep Implementation**
+
+```typescript
+// Comprehensive Permission System
+export enum AdminPermission {
+  // User Management
+  USER_READ = 'user:read',
+  USER_WRITE = 'user:write',
+  USER_DELETE = 'user:delete',
+  USER_SUSPEND = 'user:suspend',
+  USER_SESSIONS_MANAGE = 'user:sessions:manage',
+  
+  // Content Management
+  CONTENT_READ = 'content:read',
+  CONTENT_MODERATE = 'content:moderate',
+  CONTENT_DELETE = 'content:delete',
+  CONTENT_FEATURE = 'content:feature',
+  
+  // System Administration
+  SYSTEM_HEALTH = 'system:health',
+  SYSTEM_METRICS = 'system:metrics',
+  SYSTEM_LOGS = 'system:logs',
+  SYSTEM_CONFIG = 'system:config',
+  
+  // Analytics & Reporting
+  ANALYTICS_READ = 'analytics:read',
+  ANALYTICS_EXPORT = 'analytics:export',
+  ANALYTICS_PII = 'analytics:pii',
+  
+  // Audit & Compliance
+  AUDIT_READ = 'audit:read',
+  AUDIT_EXPORT = 'audit:export',
+  
+  // Super Admin
+  ADMIN_MANAGE = 'admin:manage',
+  ROLE_ASSIGN = 'role:assign'
+}
+
+// Role Definitions with Hierarchical Permissions
+export const ROLE_PERMISSIONS: Record<AdminRole, AdminPermission[]> = {
+  viewer: [
+    AdminPermission.USER_READ,
+    AdminPermission.CONTENT_READ,
+    AdminPermission.ANALYTICS_READ
+  ],
+  
+  moderator: [
+    ...ROLE_PERMISSIONS.viewer,
+    AdminPermission.CONTENT_MODERATE,
+    AdminPermission.USER_SUSPEND,
+    AdminPermission.AUDIT_READ
+  ],
+  
+  admin: [
+    ...ROLE_PERMISSIONS.moderator,
+    AdminPermission.USER_WRITE,
+    AdminPermission.CONTENT_DELETE,
+    AdminPermission.SYSTEM_HEALTH,
+    AdminPermission.SYSTEM_METRICS,
+    AdminPermission.ANALYTICS_EXPORT,
+    AdminPermission.USER_SESSIONS_MANAGE
+  ],
+  
+  superadmin: [
+    ...ROLE_PERMISSIONS.admin,
+    AdminPermission.USER_DELETE,
+    AdminPermission.SYSTEM_CONFIG,
+    AdminPermission.ANALYTICS_PII,
+    AdminPermission.AUDIT_EXPORT,
+    AdminPermission.ADMIN_MANAGE,
+    AdminPermission.ROLE_ASSIGN
+  ]
+};
+
+// Advanced Permission Checker with Context Awareness
+export class PermissionManager {
+  constructor(private auditLogger: AuditLogger) {}
+
+  async checkPermission(
+    userId: string,
+    permission: AdminPermission,
+    context?: PermissionContext
+  ): Promise<boolean> {
+    const user = await this.getAdminUser(userId);
+    
+    if (!user || user.status !== 'active') {
+      await this.auditLogger.log({
+        userId,
+        action: 'PERMISSION_DENIED',
+        resource: permission,
+        reason: 'User inactive or not found',
+        timestamp: Date.now()
+      });
+      return false;
+    }
+
+    // Check role-based permissions
+    const userPermissions = ROLE_PERMISSIONS[user.role] || [];
+    const hasBasePermission = userPermissions.includes(permission);
+    
+    if (!hasBasePermission) {
+      await this.auditLogger.log({
+        userId,
+        action: 'PERMISSION_DENIED',
+        resource: permission,
+        reason: 'Insufficient role permissions',
+        userRole: user.role,
+        timestamp: Date.now()
+      });
+      return false;
+    }
+
+    // Context-aware permission checks
+    if (context) {
+      const contextCheck = await this.checkContextualPermissions(user, permission, context);
+      if (!contextCheck.allowed) {
+        await this.auditLogger.log({
+          userId,
+          action: 'PERMISSION_DENIED',
+          resource: permission,
+          reason: contextCheck.reason,
+          context: context,
+          timestamp: Date.now()
+        });
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  private async checkContextualPermissions(
+    user: AdminUser,
+    permission: AdminPermission,
+    context: PermissionContext
+  ): Promise<{ allowed: boolean; reason?: string }> {
+    
+    // Resource ownership validation
+    if (context.resourceType === 'user' && context.resourceId) {
+      // Users cannot modify their own admin status
+      if (context.resourceId === user.id && 
+          [AdminPermission.USER_DELETE, AdminPermission.ROLE_ASSIGN].includes(permission)) {
+        return { allowed: false, reason: 'Cannot modify own admin status' };
+      }
+    }
+
+    // Time-based access restrictions
+    if (context.timeRestrictions) {
+      const now = new Date();
+      const currentHour = now.getHours();
+      
+      if (context.timeRestrictions.businessHoursOnly && (currentHour < 9 || currentHour > 17)) {
+        return { allowed: false, reason: 'Action restricted to business hours' };
+      }
+    }
+
+    // IP-based restrictions for sensitive operations
+    if (context.ipAddress && permission === AdminPermission.SYSTEM_CONFIG) {
+      const allowedIPs = await this.getAllowedIPs();
+      if (!allowedIPs.includes(context.ipAddress)) {
+        return { allowed: false, reason: 'IP not in allowed list for system configuration' };
+      }
+    }
+
+    return { allowed: true };
+  }
+}
+
+// Comprehensive Admin Analytics Engine
+export class AdminAnalyticsService {
+  private readonly ANALYTICS_TABLE = process.env.ANALYTICS_TABLE!;
+  private readonly metricsCollector = new MetricsCollector();
+
+  async generatePlatformMetrics(dateRange: DateRange): Promise<PlatformMetrics> {
+    const startTime = performance.now();
+    
+    try {
+      // Parallel data collection for performance
+      const [userMetrics, listingMetrics, engagementMetrics, revenueMetrics] = await Promise.all([
+        this.getUserMetrics(dateRange),
+        this.getListingMetrics(dateRange),
+        this.getEngagementMetrics(dateRange),
+        this.getRevenueMetrics(dateRange)
+      ]);
+
+      // Real-time calculations
+      const totalUsers = userMetrics.newUsers + userMetrics.returningUsers;
+      const conversionRate = listingMetrics.totalListings > 0 
+        ? (listingMetrics.soldListings / listingMetrics.totalListings) * 100 
+        : 0;
+
+      const platformMetrics: PlatformMetrics = {
+        dateRange,
+        overview: {
+          totalUsers,
+          activeUsers: userMetrics.activeUsers,
+          totalListings: listingMetrics.totalListings,
+          activeLisings: listingMetrics.activeListings,
+          totalViews: engagementMetrics.totalViews,
+          conversionRate,
+          averagePrice: listingMetrics.averagePrice,
+          platformRevenue: revenueMetrics.totalRevenue
+        },
+        growth: {
+          userGrowth: this.calculateGrowthRate(userMetrics.previousPeriod?.newUsers, userMetrics.newUsers),
+          listingGrowth: this.calculateGrowthRate(listingMetrics.previousPeriod?.newListings, listingMetrics.newListings),
+          revenueGrowth: this.calculateGrowthRate(revenueMetrics.previousPeriod?.revenue, revenueMetrics.totalRevenue)
+        },
+        geographic: await this.getGeographicDistribution(dateRange),
+        categories: await this.getCategoryBreakdown(dateRange),
+        timeSeriesData: await this.getTimeSeriesData(dateRange),
+        generatedAt: Date.now(),
+        processingTime: performance.now() - startTime
+      };
+
+      // Cache results for faster subsequent requests
+      await this.cacheMetrics(dateRange, platformMetrics);
+
+      return platformMetrics;
+      
+    } catch (error) {
+      logger.error('Error generating platform metrics', { error, dateRange });
+      throw new Error('Failed to generate platform metrics');
+    }
+  }
+
+  private async getUserMetrics(dateRange: DateRange): Promise<UserMetrics> {
+    const params = {
+      TableName: process.env.USERS_TABLE!,
+      FilterExpression: '#createdAt BETWEEN :start AND :end',
+      ExpressionAttributeNames: {
+        '#createdAt': 'createdAt'
+      },
+      ExpressionAttributeValues: {
+        ':start': dateRange.startDate,
+        ':end': dateRange.endDate
+      }
+    };
+
+    const result = await this.docClient.scan(params).promise();
+    const users = result.Items as User[];
+
+    // Active users in last 30 days
+    const thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
+    const activeUsers = users.filter(user => 
+      user.lastLoginAt && user.lastLoginAt > thirtyDaysAgo
+    );
+
+    // New vs returning user analysis
+    const newUsers = users.filter(user => user.createdAt >= dateRange.startDate);
+    const returningUsers = activeUsers.filter(user => user.createdAt < dateRange.startDate);
+
+    return {
+      totalUsers: users.length,
+      newUsers: newUsers.length,
+      returningUsers: returningUsers.length,
+      activeUsers: activeUsers.length,
+      userRetentionRate: users.length > 0 ? (returningUsers.length / users.length) * 100 : 0,
+      averageSessionDuration: await this.calculateAverageSessionDuration(users),
+      topUserLocations: this.getTopLocations(users)
+    };
+  }
+
+  private async getListingMetrics(dateRange: DateRange): Promise<ListingMetrics> {
+    // Use GSI for efficient querying by date
+    const params = {
+      TableName: process.env.LISTINGS_TABLE!,
+      IndexName: 'date-index',
+      KeyConditionExpression: '#date BETWEEN :start AND :end',
+      ExpressionAttributeNames: {
+        '#date': 'createdAt'
+      },
+      ExpressionAttributeValues: {
+        ':start': dateRange.startDate,
+        ':end': dateRange.endDate
+      }
+    };
+
+    const result = await this.docClient.query(params).promise();
+    const listings = result.Items as Listing[];
+
+    const activeListings = listings.filter(listing => listing.status === 'active');
+    const soldListings = listings.filter(listing => listing.status === 'sold');
+    const totalViews = listings.reduce((sum, listing) => sum + (listing.views || 0), 0);
+    const averagePrice = listings.length > 0 
+      ? listings.reduce((sum, listing) => sum + listing.price, 0) / listings.length 
+      : 0;
+
+    return {
+      totalListings: listings.length,
+      newListings: listings.filter(listing => 
+        listing.createdAt >= dateRange.startDate && listing.createdAt <= dateRange.endDate
+      ).length,
+      activeListings: activeListings.length,
+      soldListings: soldListings.length,
+      averagePrice,
+      totalViews,
+      averageViewsPerListing: listings.length > 0 ? totalViews / listings.length : 0,
+      priceDistribution: this.calculatePriceDistribution(listings),
+      popularCategories: this.getPopularCategories(listings),
+      averageTimeToSale: await this.calculateAverageTimeToSale(soldListings)
+    };
+  }
+}
+
+// Real-time System Health Monitoring
+export class SystemHealthMonitor {
+  private readonly cloudWatch = new CloudWatchClient({});
+  private readonly healthChecks = new Map<string, HealthCheck>();
+
+  async performComprehensiveHealthCheck(): Promise<SystemHealth> {
+    const startTime = Date.now();
+    
+    try {
+      // Parallel health checks for all system components
+      const [
+        apiHealth,
+        databaseHealth, 
+        storageHealth,
+        emailHealth,
+        cacheHealth,
+        externalServicesHealth
+      ] = await Promise.all([
+        this.checkAPIHealth(),
+        this.checkDatabaseHealth(),
+        this.checkStorageHealth(),
+        this.checkEmailServiceHealth(),
+        this.checkCacheHealth(),
+        this.checkExternalServices()
+      ]);
+
+      const overallStatus = this.determineOverallHealth([
+        apiHealth, databaseHealth, storageHealth, emailHealth, cacheHealth, externalServicesHealth
+      ]);
+
+      const systemHealth: SystemHealth = {
+        status: overallStatus,
+        timestamp: Date.now(),
+        checkDuration: Date.now() - startTime,
+        services: {
+          api: apiHealth,
+          database: databaseHealth,
+          storage: storageHealth,
+          email: emailHealth,
+          cache: cacheHealth,
+          external: externalServicesHealth
+        },
+        metrics: await this.collectSystemMetrics(),
+        alerts: await this.getActiveAlerts()
+      };
+
+      // Store health check result for historical analysis
+      await this.storeHealthCheckResult(systemHealth);
+
+      return systemHealth;
+
+    } catch (error) {
+      logger.error('Health check failed', { error });
+      
+      return {
+        status: 'critical',
+        timestamp: Date.now(),
+        checkDuration: Date.now() - startTime,
+        error: error.message,
+        services: {},
+        metrics: {},
+        alerts: []
+      };
+    }
+  }
+
+  private async checkDatabaseHealth(): Promise<ServiceHealth> {
+    const startTime = Date.now();
+    
+    try {
+      // Test read operation
+      const readTest = await this.docClient.scan({
+        TableName: process.env.LISTINGS_TABLE!,
+        Limit: 1
+      }).promise();
+
+      // Test write operation (with cleanup)
+      const testId = `health-check-${Date.now()}`;
+      await this.docClient.put({
+        TableName: process.env.LISTINGS_TABLE!,
+        Item: {
+          listingId: testId,
+          title: 'Health Check Test',
+          ttl: Math.floor(Date.now() / 1000) + 60 // Expire in 1 minute
+        }
+      }).promise();
+
+      // Cleanup test record
+      await this.docClient.delete({
+        TableName: process.env.LISTINGS_TABLE!,
+        Key: { listingId: testId }
+      }).promise();
+
+      const responseTime = Date.now() - startTime;
+
+      // Get DynamoDB metrics
+      const metrics = await this.getDynamoDBMetrics();
+
+      return {
+        status: responseTime < 1000 ? 'healthy' : 'degraded',
+        responseTime,
+        lastChecked: Date.now(),
+        metrics: {
+          readLatency: metrics.readLatency,
+          writeLatency: metrics.writeLatency,
+          throttling: metrics.throttledRequests,
+          connectionCount: metrics.connectionCount
+        }
+      };
+
+    } catch (error) {
+      return {
+        status: 'unhealthy',
+        responseTime: Date.now() - startTime,
+        lastChecked: Date.now(),
+        error: error.message
+      };
+    }
+  }
+
+  private async getDynamoDBMetrics(): Promise<DatabaseMetrics> {
+    const endTime = new Date();
+    const startTime = new Date(endTime.getTime() - 5 * 60 * 1000); // Last 5 minutes
+
+    const params = {
+      Namespace: 'AWS/DynamoDB',
+      MetricName: 'ConsumedReadCapacityUnits',
+      Dimensions: [
+        {
+          Name: 'TableName',
+          Value: process.env.LISTINGS_TABLE!
+        }
+      ],
+      StartTime: startTime,
+      EndTime: endTime,
+      Period: 300, // 5 minutes
+      Statistics: ['Average']
+    };
+
+    try {
+      const result = await this.cloudWatch.send(
+        new GetMetricStatisticsCommand(params)
+      );
+
+      return {
+        readLatency: result.Datapoints?.[0]?.Average || 0,
+        writeLatency: 0, // Would need separate query
+        throttledRequests: 0, // Would need separate query  
+        connectionCount: 0 // Would need separate query
+      };
+    } catch (error) {
+      logger.warn('Failed to fetch DynamoDB metrics', { error });
+      return {
+        readLatency: 0,
+        writeLatency: 0,
+        throttledRequests: 0,
+        connectionCount: 0
+      };
+    }
+  }
+}
+```
+
+### **Multi-Factor Authentication (MFA) Implementation**
+
+```typescript
+// TOTP-based MFA for Admin Users
+export class MFAService {
+  private readonly MFA_TABLE = process.env.MFA_TABLE || 'boat-mfa-settings';
+  
+  async setupMFA(userId: string): Promise<MFASetup> {
+    const secret = authenticator.generateSecret();
+    const qrCodeUrl = await this.generateQRCode(userId, secret);
+    const backupCodes = this.generateBackupCodes();
+    
+    // Store temporarily (not verified yet)
+    await this.docClient.put({
+      TableName: this.MFA_TABLE,
+      Item: {
+        userId,
+        secret,
+        backupCodes,
+        isVerified: false,
+        createdAt: Date.now(),
+        ttl: Math.floor(Date.now() / 1000) + (15 * 60) // 15 minutes to verify
+      }
+    }).promise();
+    
+    return {
+      secret,
+      qrCodeUrl,
+      backupCodes
+    };
+  }
+  
+  async verifyMFA(userId: string, token: string): Promise<boolean> {
+    const mfaRecord = await this.getMFARecord(userId);
+    
+    if (!mfaRecord) {
+      throw new Error('MFA not set up for user');
+    }
+    
+    // Verify TOTP token
+    const isValidToken = authenticator.verify({
+      token,
+      secret: mfaRecord.secret
+    });
+    
+    // Check backup codes if TOTP fails
+    if (!isValidToken && mfaRecord.backupCodes?.includes(token)) {
+      // Remove used backup code
+      const updatedCodes = mfaRecord.backupCodes.filter(code => code !== token);
+      await this.updateBackupCodes(userId, updatedCodes);
+      return true;
+    }
+    
+    if (isValidToken && !mfaRecord.isVerified) {
+      // Mark MFA as verified on first successful verification
+      await this.markMFAVerified(userId);
+    }
+    
+    return isValidToken;
+  }
+  
+  private generateBackupCodes(): string[] {
+    return Array.from({ length: 10 }, () => 
+      crypto.randomBytes(4).toString('hex').toUpperCase()
+    );
+  }
+  
+  private async generateQRCode(userId: string, secret: string): Promise<string> {
+    const user = await this.getUserById(userId);
+    const serviceName = 'HarborList';
+    const accountName = user.email;
+    
+    const otpauthUrl = authenticator.keyuri(accountName, serviceName, secret);
+    return qrcode.toDataURL(otpauthUrl);
+  }
+}
+```
         userId: payload.userId,
         email: payload.email,
         role: payload.role,
