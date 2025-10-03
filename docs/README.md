@@ -40,13 +40,19 @@ Welcome to the complete enterprise-grade documentation for HarborList Marketplac
 
 ## 🚀 **Getting Started**
 
-### [`🐳 Local Development Environment`](./LOCAL_DEVELOPMENT.md)
-- **Docker Setup**: Complete local development environment using Docker Compose
-- **Service Emulation**: Local AWS services (DynamoDB, S3, SES) using LocalStack
-- **Hot Reload**: Frontend and backend development with live code updates
-- **Database Management**: Local DynamoDB with admin UI for development
-- **Quick Start**: One-command setup for immediate productivity
-- **Developer Tools**: Integrated monitoring and debugging capabilities
+### [`☁️ Production Architecture`](./architecture/README.md)
+- **Serverless Infrastructure**: AWS Lambda microservices with API Gateway
+- **Global Distribution**: CloudFront CDN with S3 static hosting
+- **Database**: DynamoDB with GSI indexes for high-performance queries  
+- **Auto-scaling**: Automatic capacity management and cost optimization
+- **Security**: IAM roles, JWT authentication, and audit logging
+- **Monitoring**: CloudWatch dashboards with SNS alerting
+
+### [`🔧 Deployment & Operations`](./operations/README.md)
+- **Infrastructure as Code**: AWS CDK deployment and management
+- **Multi-Environment**: Production, staging, and development environments
+- **CI/CD Pipeline**: Automated testing and deployment workflows
+- **DevOps Tools**: 25+ automation scripts for operations and monitoring
 
 ---
 
@@ -60,25 +66,6 @@ Welcome to the complete enterprise-grade documentation for HarborList Marketplac
 
 ### [`🔧 Technical Specifications`](./architecture/technical-specifications.md)
 - **Technology Stack**: Comprehensive technology choices and rationale
-
----
-
-## 🐳 **Local Development**
-
-### [`🚀 Local Development Environment`](./deployment/local-development.md)
-- **Docker Setup**: Complete containerized development environment
-- **Service Architecture**: Local AWS services emulation with LocalStack
-- **Development Workflow**: Hot reload, debugging, and testing procedures
-- **Quick Start Guide**: 5-minute setup process for new developers
-
-### [`⚙️ Local Development Implementation`](./deployment/local-development-implementation.md)
-- **Technical Implementation**: Docker Compose configuration details
-- **Architecture Overview**: Local service communication patterns
-- **Development Commands**: Complete command reference and utilities
-- **Troubleshooting Guide**: Common issues and resolution procedures
-- **Database Schema**: DynamoDB table design and GSI patterns
-- **API Design**: RESTful API architecture and endpoints
-- **Security Architecture**: Authentication, authorization, and compliance
 
 ---
 
@@ -262,17 +249,33 @@ Welcome to the complete enterprise-grade documentation for HarborList Marketplac
 
 ---
 
-## 🔗 **Quick Navigation**
+## � **Local Development Resources** *(Development Only)*
+
+### [`🚀 Local Development Environment`](./deployment/local-development.md)
+- **Docker Setup**: Complete containerized development environment
+- **Service Emulation**: Local AWS services using LocalStack and DynamoDB Local
+- **Development Workflow**: Hot reload, debugging, and testing procedures
+- **Quick Start Guide**: 5-minute setup process for developers
+
+### [`⚙️ Local Development Implementation`](./deployment/local-development-implementation.md)
+- **Technical Implementation**: Docker Compose configuration details
+- **Architecture Overview**: Local service communication patterns
+- **Development Commands**: Complete command reference and utilities
+- **Troubleshooting Guide**: Common issues and resolution procedures
+
+---
+
+## �🔗 **Quick Navigation**
 
 | Category | Primary Documents | Quick Links |
 |----------|------------------|-------------|
 | **Architecture** | [System Design](./architecture/) | [Tech Stack](./architecture/technical-specifications.md) |
-| **Frontend** | [React App](./frontend/) | [Components](./frontend/components.md) |
 | **Backend** | [Services](./backend/) | [API Docs](./api/) |
+| **Frontend** | [React App](./frontend/) | [Components](./frontend/components.md) |
 | **Operations** | [Infrastructure](./operations/) | [Monitoring](./monitoring/) |
+| **Security** | [Security Framework](./security/) | [Auth Systems](./security/authentication.md) |
 | **DevOps Tools** | [Tools Suite](./tools/) | [Deployment Tools](./tools/deployment-scripts.md) |
 | **Testing** | [Test Strategy](./testing/) | [Performance](./performance/) |
-| **Security** | [Security Framework](./security/) | [Auth Systems](./security/authentication.md) |
 | **Deployment** | [Deploy Guide](./deployment/) | [Troubleshooting](./troubleshooting/) |
 | **Roadmap** | [Future Plans](./roadmap/) | [Enhancements](./roadmap/enhancements.md) |
 
