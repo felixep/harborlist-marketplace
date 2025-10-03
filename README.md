@@ -1,11 +1,6 @@
-# 🚢 HarborList Marketplace
+# 🚢 HarborList| **[🚀 Deployment](./docs/operations/README.md)** | Infrastructure management and deployment procedures |Marketplace
 
-A comprehensive **serverless boat marketplace platform** built on **AWS cloud infrastructure**   npm run deploy:prod
-   ```
-
-> 🛠️ **DevOps Tools**: Explore our [25+ automation scripts](./docs/tools/README.md) for deployment, monitoring, and maintenance tasks.
-
-> 🐳 **Local Development**: For development purposes, a [Docker-based local environment](./docs/LOCAL_DEVELOPMENT.md) is available that mirrors production services.orList connects boat buyers and sellers through a robust, scalable platform with separate interfaces for public users and platform administrators.
+A comprehensive **serverless boat marketplace platform** built on **AWS cloud infrastructure**. HarborList connects boat buyers and sellers through a robust, scalable platform with separate interfaces for public users and platform administrators.
 
 > 🏗️ **Production Architecture**: Enterprise-grade serverless platform deployed on AWS with microservices, auto-scaling, and multi-region support.
 
