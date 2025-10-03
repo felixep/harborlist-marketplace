@@ -26,6 +26,191 @@ npm run dev:admin       # Create admin user
 
 ---
 
+## ⚡ **Manual AWS Deployment (CLI)**
+
+For direct deployment to AWS environments using command line tools, follow these step-by-step procedures:
+
+### **Prerequisites**
+```bash
+# Required tools
+node --version    # Should be 18+
+npm --version     # Should be 8+
+aws --version     # Should be 2.0+
+cdk --version     # Should be 2.100+
+
+# AWS credentials configured
+aws sts get-caller-identity  # Verify AWS access
+```
+
+### **🔧 Development Environment Deployment**
+
+**Step 1: Prepare Infrastructure**
+```bash
+cd infrastructure
+npm install
+npm run build
+```
+
+**Step 2: Deploy Infrastructure**
+```bash
+# With custom domains (recommended)
+npm run deploy:dev
+
+# Without custom domains (testing only)
+npm run deploy:dev:no-domains
+```
+
+**Step 3: Build & Deploy Frontend**
+```bash
+cd ../frontend
+npm install
+npm run build:dev
+```
+
+**Step 4: Build & Deploy Backend**
+```bash
+cd ../backend
+npm install  
+npm run build
+```
+
+**Step 5: Verify Deployment**
+```bash
+cd ../tools/deployment
+./verify-deployment.sh dev
+```
+
+### **🧪 Staging Environment Deployment**
+
+**Step 1: Infrastructure Deployment**
+```bash
+cd infrastructure
+npm run deploy:staging
+```
+
+**Step 2: Application Builds**
+```bash
+# Frontend for staging
+cd ../frontend
+npm run build:staging
+
+# Backend for staging  
+cd ../backend
+npm run build
+```
+
+**Step 3: Post-Deployment Setup**
+```bash
+# Create admin user (if needed)
+npm run create-admin
+
+# Verify deployment
+cd ../tools/deployment
+./verify-deployment.sh staging
+```
+
+### **🚀 Production Environment Deployment**
+
+> **⚠️ WARNING**: Production deployments require extra validation and should follow change management procedures.
+
+**Step 1: Pre-Production Validation**
+```bash
+# Validate infrastructure changes
+cd infrastructure
+npm run diff:prod
+
+# Run all tests
+npm run validate:all
+```
+
+**Step 2: Production Deployment**
+```bash
+# Deploy with blue/green strategy (production only)
+npm run deploy:prod
+
+# Or deploy using deployment script for enhanced safety
+cd ../tools/deployment
+./deploy.sh prod --verify-only  # Dry run first
+./deploy.sh prod                # Actual deployment
+```
+
+**Step 3: Production Verification**
+```bash
+# Comprehensive production verification
+./verify-deployment.sh prod
+
+# Run smoke tests
+cd ../../backend
+npm run test:smoke:prod
+```
+
+### **🛠️ Alternative: Using Deployment Scripts**
+
+For enhanced safety and automated checks, use the deployment scripts:
+
+```bash
+# Navigate to deployment tools
+cd tools/deployment
+
+# Development deployment with full automation  
+./deploy.sh dev
+
+# Staging deployment
+./deploy.sh staging
+
+# Production deployment with safety checks
+./deploy.sh prod
+
+# Deployment verification
+./verify-deployment.sh [environment]
+```
+
+### **📋 Common Deployment Commands Reference**
+
+| Task | Development | Staging | Production |
+|------|-------------|---------|------------|
+| **Infrastructure** | `npm run deploy:dev` | `npm run deploy:staging` | `npm run deploy:prod` |
+| **No Domains** | `npm run deploy:dev:no-domains` | `npm run deploy:staging:no-domains` | Not recommended |
+| **Diff Preview** | `npm run diff:dev` | `npm run diff:staging` | `npm run diff:prod` |
+| **Synthesis** | `npm run synth:dev` | `npm run synth:staging` | `npm run synth:prod` |
+| **Verification** | `./verify-deployment.sh dev` | `./verify-deployment.sh staging` | `./verify-deployment.sh prod` |
+
+### **🔧 Troubleshooting Manual Deployments**
+
+**Common Issues & Solutions:**
+
+```bash
+# AWS credentials issues
+aws configure list
+aws sts get-caller-identity
+
+# CDK bootstrap issues
+cdk bootstrap aws://ACCOUNT-ID/REGION
+
+# Build failures
+npm run clean && npm install
+npm run build
+
+# Stack not found errors
+aws cloudformation list-stacks --region us-east-1
+
+# Permission issues
+aws iam get-user
+aws sts get-caller-identity
+```
+
+**Rollback Procedures:**
+```bash
+# Emergency rollback (if deployment fails)
+cd tools/deployment
+./rollback.sh [environment] --previous-version
+
+# Verify rollback
+./verify-deployment.sh [environment] --post-rollback
+```
+
+---
+
 ## 🏗️ **CI/CD Pipeline Architecture**
 
 ### **GitHub Actions Workflow**
