@@ -107,14 +107,16 @@ export class CloudflareSecurityConstruct extends Construct {
     });
 
     // Create a custom resource to trigger initial policy setup
-    // Temporarily disabled to resolve deployment issues
-    // const initialSetup = new cdk.CustomResource(this, 'InitialPolicySetup', {
-    //   serviceToken: this.ipSyncFunction.functionArn,
-    //   properties: {
-    //     TriggerType: 'INITIAL_SETUP',
-    //     Timestamp: Date.now(), // Force update on each deployment
-    //   },
-    // });
+    const initialSetup = new cdk.CustomResource(this, 'InitialPolicySetup', {
+      serviceToken: this.ipSyncFunction.functionArn,
+      properties: {
+        TriggerType: 'INITIAL_SETUP',
+        Timestamp: Date.now(), // Force update on each deployment
+      },
+    });
+
+    // Ensure the custom resource depends on the API Gateway being ready
+    initialSetup.node.addDependency(restApi);
 
     // Grant permissions for IP sync function
     this.grantIpSyncPermissions(props);
@@ -251,10 +253,52 @@ export class CloudflareSecurityConstruct extends Construct {
   }
 
   /**
-   * Note: API Gateway resource policy is applied via the Lambda function 
-   * to avoid circular dependencies. The policy will be set during the 
-   * first execution of the IP sync function.
+   * Applies initial API Gateway resource policy with Cloudflare IP restrictions
    */
+  private applyApiGatewayPolicy(restApi: apigateway.RestApi): void {
+    const cloudflareIps = this.getInitialCloudflareIps();
+    const allIps = [...cloudflareIps.ipv4Cidrs, ...cloudflareIps.ipv6Cidrs];
+
+    // Allow access only from Cloudflare IPs with correct secret header
+    const allowCloudflareStatement = new iam.PolicyStatement({
+      sid: 'CloudflareOriginAccess',
+      effect: iam.Effect.ALLOW,
+      principals: [new iam.AnyPrincipal()],
+      actions: ['execute-api:Invoke'],
+      resources: [`arn:aws:execute-api:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:${restApi.restApiId}/*`],
+      conditions: {
+        IpAddress: {
+          'aws:SourceIp': allIps,
+        },
+        StringEquals: {
+          'X-Auth-Secret': this.edgeSecret,
+        },
+      },
+    });
+
+    // Deny non-HTTPS requests
+    const denyInsecureStatement = new iam.PolicyStatement({
+      sid: 'DenyInsecureConnections',
+      effect: iam.Effect.DENY,
+      principals: [new iam.AnyPrincipal()],
+      actions: ['execute-api:Invoke'],
+      resources: [`arn:aws:execute-api:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:${restApi.restApiId}/*`],
+      conditions: {
+        Bool: {
+          'aws:SecureTransport': 'false',
+        },
+      },
+    });
+
+    // Apply the resource policy to API Gateway
+    const policyDocument = new iam.PolicyDocument({
+      statements: [allowCloudflareStatement, denyInsecureStatement],
+    });
+
+    // Use escape hatch to set the resource policy
+    const cfnRestApi = restApi.node.defaultChild as apigateway.CfnRestApi;
+    cfnRestApi.policy = policyDocument.toJSON();
+  }
 
   /**
    * Returns initial Cloudflare IP ranges (static snapshot)

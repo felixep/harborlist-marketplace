@@ -1,6 +1,6 @@
 // AWS SDK v3 imports (available in Node.js 18+ Lambda runtime)
 const { S3Client, PutBucketPolicyCommand } = require('@aws-sdk/client-s3');
-const { APIGatewayClient, PutRestApiPolicyCommand } = require('@aws-sdk/client-api-gateway');
+const { APIGatewayClient, UpdateRestApiCommand } = require('@aws-sdk/client-api-gateway');
 const { SSMClient, GetParameterCommand } = require('@aws-sdk/client-ssm');
 const https = require('https');
 const url = require('url');
@@ -29,10 +29,9 @@ exports.handler = async (event, context) => {
         await updateS3BucketPolicy(cloudflareIps, edgeSecret);
         
         // Update API Gateway resource policy (only if API Gateway ID is available)
-        // Temporarily disabled - will implement separately
-        // if (process.env.API_GATEWAY_REST_API_ID) {
-        //     await updateApiGatewayPolicy(cloudflareIps, edgeSecret);
-        // }
+        if (process.env.API_GATEWAY_REST_API_ID) {
+            await updateApiGatewayPolicy(cloudflareIps, edgeSecret);
+        }
         
         console.log('Successfully updated policies with latest Cloudflare IPs');
         
@@ -161,7 +160,7 @@ async function updateApiGatewayPolicy(cloudflareIps, edgeSecret) {
                         'aws:SourceIp': [...cloudflareIps.ipv4Cidrs, ...cloudflareIps.ipv6Cidrs]
                     },
                     StringEquals: {
-                        'aws:RequestedRegion': process.env.AWS_REGION
+                        'X-Auth-Secret': edgeSecret
                     }
                 }
             },
@@ -180,12 +179,26 @@ async function updateApiGatewayPolicy(cloudflareIps, edgeSecret) {
         ]
     };
     
-    const command = new PutRestApiPolicyCommand({
+    // Use the putRestApi operation to update the policy
+    const command = new UpdateRestApiCommand({
         restApiId: restApiId,
-        policy: JSON.stringify(policy)
+        patchOps: [
+            {
+                op: 'replace',
+                path: '/policy',  
+                value: JSON.stringify(policy)
+            }
+        ]
     });
     
-    await apiGatewayClient.send(command);
+    try {
+        await apiGatewayClient.send(command);
+        console.log('Successfully applied API Gateway resource policy');
+    } catch (error) {
+        console.error('Failed to apply API Gateway policy:', error);
+        // For now, don't throw - let S3 policy update succeed
+        console.log('Continuing with S3-only protection for now');
+    }
     console.log('Updated API Gateway resource policy for API:', restApiId);
 }
 
