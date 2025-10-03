@@ -7,7 +7,8 @@
 Our HarborList architecture documentation is organized into specialized sections for comprehensive understanding:
 
 #### **🏗️ Core Architecture**
-- **[System Overview](#system-architecture-overview)** - High-level system design and component relationships
+- **[📄 Architecture Migration 2025](./architecture-migration-2025.md)** - ⭐ **Latest: Serverless simplification and migration guide**
+- **[System Overview](#system-architecture-overview)** - High-level system design and component relationships  
 - **[📄 Shared Types Architecture](./shared-types.md)** - NPM workspaces, TypeScript definitions, and cross-service type safety
 - **[Microservices Deep Dive](#microservices-architecture-deep-dive)** - Detailed service architecture and interactions
 - **[Data Flow Patterns](#data-flow-architecture)** - End-to-end data movement and processing
@@ -61,59 +62,59 @@ HarborList is built on a modern, serverless-first architecture leveraging AWS se
 
 ```mermaid
 graph TB
-    subgraph "Frontend Layer"
-        UI[React 18 SPA]
-        PWA[Progressive Web App]
-        Admin[Admin Dashboard]
+    subgraph "User Layer"
+        Users[Users Worldwide]
+        Admin[Admin Users]
     end
     
-    subgraph "CDN & Security"
-        CF[Cloudflare CDN]
-        WAF[Web Application Firewall]
-        DDoS[DDoS Protection]
+    subgraph "Edge & CDN Layer"
+        CF[Cloudflare CDN<br/>- Global Edge Locations<br/>- WAF Protection<br/>- DDoS Mitigation<br/>- SSL Termination]
+        CFSec[Cloudflare Security<br/>- IP Restrictions<br/>- Secret Headers<br/>- Rate Limiting<br/>- Bot Protection]
     end
     
     subgraph "AWS Cloud Infrastructure"
-        subgraph "API Layer"
-            APIGW[API Gateway]
-            Auth[JWT Authentication]
+        subgraph "Frontend Layer"
+            S3Frontend[S3 Static Website<br/>- React 18 SPA<br/>- PWA Support<br/>- Admin Dashboard<br/>- Cloudflare-Only Access]
         end
         
-        subgraph "Compute Layer - Lambda Functions"
-            AuthLambda[Auth Service]
-            ListingLambda[Listing Service]  
-            SearchLambda[Search Service]
-            AdminLambda[Admin Service]
-            MediaLambda[Media Service]
-            EmailLambda[Email Service]
-            StatsLambda[Stats Service]
+        subgraph "API Layer"
+            APIGW[API Gateway REST<br/>- Custom Domain<br/>- CORS Configuration<br/>- Request/Response Transformation<br/>- Cloudflare IP Restriction]
+        end
+        
+        subgraph "Serverless Compute Layer"
+            AuthLambda[Auth Service<br/>- JWT Management<br/>- MFA Support<br/>- Session Tracking]
+            ListingLambda[Listing Service<br/>- CRUD Operations<br/>- Business Logic<br/>- Data Validation]  
+            SearchLambda[Search Service<br/>- Advanced Filtering<br/>- Geospatial Queries<br/>- Performance Optimization]
+            AdminLambda[Admin Service<br/>- User Management<br/>- Analytics Dashboard<br/>- Audit Logging]
+            MediaLambda[Media Service<br/>- Image Processing<br/>- S3 Integration<br/>- CDN Management]
+            EmailLambda[Email Service<br/>- SES Integration<br/>- Template Management<br/>- Delivery Tracking]
+            StatsLambda[Stats Service<br/>- Real-time Analytics<br/>- Business Intelligence<br/>- Performance Metrics]
+            IPSyncLambda[Cloudflare IP Sync<br/>- Daily IP Updates<br/>- Security Policy Updates<br/>- EventBridge Triggered]
         end
         
         subgraph "Data Layer"
-            DDB[DynamoDB Tables]
-            S3[S3 Storage]
-            Secrets[Secrets Manager]
+            DDB[DynamoDB Tables<br/>- Users & Sessions<br/>- Boat Listings<br/>- Audit Logs<br/>- Search Indexes]
+            S3Media[S3 Media Bucket<br/>- Image Storage<br/>- Video Files<br/>- Processed Media<br/>- Lifecycle Management]
+            Secrets[Secrets Manager<br/>- JWT Secrets<br/>- API Keys<br/>- Edge Secrets<br/>- Auto Rotation]
+            SSM[Systems Manager<br/>- Configuration<br/>- Cloudflare Secrets<br/>- Environment Variables]
         end
         
-        subgraph "Monitoring & Logging"
-            CW[CloudWatch]
-            SNS[SNS Alerts]
-            XRay[X-Ray Tracing]
+        subgraph "Monitoring & Security"
+            CW[CloudWatch<br/>- Custom Dashboards<br/>- Metrics & Alarms<br/>- Log Aggregation<br/>- Performance Insights]
+            SNS[SNS Notifications<br/>- Admin Alerts<br/>- Error Notifications<br/>- Performance Alerts]
+            EventBridge[EventBridge<br/>- Scheduled Events<br/>- IP Sync Triggers<br/>- Cross-Service Events]
         end
     end
     
     Users --> CF
-    CF --> WAF
-    WAF --> DDoS
-    DDoS --> UI
+    Admin --> CF
+    CF --> CFSec
+    CFSec --> S3Frontend
+    CFSec --> APIGW
     
-    UI --> APIGW
-    Admin --> APIGW
-    PWA --> APIGW
+    S3Frontend -.->|API Calls| APIGW
     
-    APIGW --> Auth
-    Auth --> AuthLambda
-    
+    APIGW --> AuthLambda
     APIGW --> ListingLambda
     APIGW --> SearchLambda
     APIGW --> AdminLambda
@@ -127,18 +128,27 @@ graph TB
     AdminLambda --> DDB
     StatsLambda --> DDB
     
-    MediaLambda --> S3
+    MediaLambda --> S3Media
     AuthLambda --> Secrets
+    AdminLambda --> Secrets
+    IPSyncLambda --> SSM
+    IPSyncLambda --> S3Frontend
+    IPSyncLambda --> APIGW
     
+    EventBridge --> IPSyncLambda
+    
+    AuthLambda --> CW
     ListingLambda --> CW
     AdminLambda --> CW
+    IPSyncLambda --> CW
     CW --> SNS
     
-    style UI fill:#e1f5fe
-    style Admin fill:#f3e5f5
-    style CF fill:#fff3e0
-    style DDB fill:#e8f5e8
-    style S3 fill:#fff8e1
+    style Users fill:#e3f2fd
+    style CF fill:#ff9800
+    style S3Frontend fill:#4caf50
+    style APIGW fill:#2196f3
+    style DDB fill:#9c27b0
+    style CW fill:#ff5722
 ```
 
 ### **Microservices Architecture Deep Dive**

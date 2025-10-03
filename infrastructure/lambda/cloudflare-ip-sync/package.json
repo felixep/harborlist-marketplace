@@ -1,0 +1,10 @@
+{
+  "name": "cloudflare-ip-sync",
+  "version": "1.0.0",
+  "main": "index.js",
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.450.0",
+    "@aws-sdk/client-api-gateway": "^3.450.0",
+    "@aws-sdk/client-ssm": "^3.450.0"
+  }
+}

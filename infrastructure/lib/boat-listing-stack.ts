@@ -52,8 +52,7 @@ import * as sns from 'aws-cdk-lib/aws-sns';
 import * as subscriptions from 'aws-cdk-lib/aws-sns-subscriptions';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import { Construct } from 'constructs';
-import { CloudflareTunnelConstruct } from './cloudflare-tunnel-construct';
-import { MonitoringConstruct } from './monitoring-construct';
+import { CloudflareSecurityConstruct } from './cloudflare-security-construct';
 
 /**
  * Configuration properties for the HarborList boat marketplace stack
@@ -511,27 +510,12 @@ export class BoatListingStack extends cdk.Stack {
       destinationBucket: frontendBucket,
     });
 
-    // Cloudflare Tunnel Infrastructure for secure S3 access
-    const cloudflareTunnel = new CloudflareTunnelConstruct(this, 'CloudflareTunnel', {
+    // Cloudflare Security Integration for origin protection
+    // Restricts access to S3 and API Gateway to only Cloudflare IPs with proper headers
+    const cloudflareSecurityConstruct = new CloudflareSecurityConstruct(this, 'CloudflareSecurity', {
+      environment: environment,
       frontendBucket: frontendBucket,
-      environment: environment,
-    });
-
-    // Temporarily allow public read access for S3 website hosting to work properly
-    // TODO: Investigate why VPC endpoint conditions don't work with S3 website hosting
-    frontendBucket.addToResourcePolicy(new iam.PolicyStatement({
-      sid: 'PublicWebsiteAccess',
-      effect: iam.Effect.ALLOW,
-      principals: [new iam.AnyPrincipal()],
-      actions: ['s3:GetObject'],
-      resources: [frontendBucket.arnForObjects('*')],
-    }));
-
-    // Add monitoring for the Cloudflare Tunnel infrastructure
-    const monitoring = new MonitoringConstruct(this, 'Monitoring', {
-      tunnelInstance: cloudflareTunnel.tunnelInstance,
-      environment: environment,
-      alertEmail: alertEmail,
+      restApi: api,
     });
 
     // Admin Service Monitoring
@@ -827,6 +811,22 @@ export class BoatListingStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'AdminDashboardUrl', {
       value: `https://${cdk.Stack.of(this).region}.console.aws.amazon.com/cloudwatch/home?region=${cdk.Stack.of(this).region}#dashboards:name=${adminDashboard.dashboardName}`,
       description: 'Admin Service CloudWatch Dashboard URL',
+    });
+
+    // Cloudflare Security Outputs
+    new cdk.CfnOutput(this, 'CloudflareEdgeSecret', {
+      value: cloudflareSecurityConstruct.edgeSecret,
+      description: 'Edge secret for Cloudflare configuration (store securely)',
+    });
+
+    new cdk.CfnOutput(this, 'EdgeSecretParameterName', {
+      value: cloudflareSecurityConstruct.edgeSecretParameter.parameterName,
+      description: 'SSM Parameter name containing the Cloudflare edge secret',
+    });
+
+    new cdk.CfnOutput(this, 'CloudflareIpSyncFunctionName', {
+      value: cloudflareSecurityConstruct.ipSyncFunction.functionName,
+      description: 'Lambda function that synchronizes Cloudflare IP ranges',
     });
   }
 }

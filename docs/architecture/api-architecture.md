@@ -1,6 +1,46 @@
 # 🔌 API Architecture Diagrams
 
-## 📡 **API Gateway Architecture**
+## �️ **Secure API Gateway Architecture with Cloudflare Integration**
+
+### **End-to-End Security Flow**
+
+```mermaid
+graph TB
+    subgraph "Global Edge Layer"
+        Users[Global Users]
+        CF[Cloudflare Edge Network<br/>- 300+ Global Locations<br/>- DDoS Protection<br/>- WAF Rules<br/>- SSL Termination]
+    end
+    
+    subgraph "Security Transformation"
+        Transform[Cloudflare Transform Rules<br/>- Add X-Auth-Secret Header<br/>- Value: 6147325cc5a60...db5ee<br/>- Applied to api-dev.harborlist.com]
+        
+        Firewall[Cloudflare Firewall<br/>- Bot Detection<br/>- Rate Limiting<br/>- Geographic Rules<br/>- Custom Security Policies]
+    end
+    
+    subgraph "AWS API Gateway Protection"
+        ResourcePolicy[API Gateway Resource Policy<br/>- Cloudflare IP Restrictions<br/>- X-Auth-Secret Validation<br/>- HTTPS Enforcement<br/>- CORS Configuration]
+        
+        APIGW[API Gateway REST API<br/>- ID: 8ehnomblal<br/>- Custom Domain: api-dev.harborlist.com<br/>- Stage: prod<br/>- Lambda Proxy Integration]
+    end
+    
+    subgraph "Serverless Backend"
+        Lambda[Lambda Functions<br/>- Node.js 20.x Runtime<br/>- JWT Authentication<br/>- Business Logic<br/>- Data Validation]
+    end
+    
+    Users --> CF
+    CF --> Transform
+    Transform --> Firewall
+    Firewall --> ResourcePolicy
+    ResourcePolicy --> APIGW
+    APIGW --> Lambda
+    
+    style CF fill:#ff9800
+    style ResourcePolicy fill:#f44336
+    style APIGW fill:#2196f3
+    style Lambda fill:#4caf50
+```
+
+## �📡 **API Gateway Architecture**
 
 ### **Current API Gateway Route Structure**
 

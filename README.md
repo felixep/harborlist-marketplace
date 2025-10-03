@@ -11,13 +11,13 @@ A comprehensive **serverless boat marketplace platform** built on **AWS cloud in
 | Documentation | Description |
 |---------------|-------------|
 | **[🏗️ Architecture](./docs/architecture/README.md)** | Complete system architecture with professional diagrams |
-| **[🚀 Deployment](./docs/operations/README.md)** | Infrastructure management and deployment procedures |
-| **[🔧 Backend Services](./docs/backend/README.md)** | Microservices documentation and API specifications |
 | **[⚛️ Frontend App](./docs/frontend/README.md)** | React application architecture and components |
+| **[🔧 Backend Services](./docs/backend/README.md)** | Microservices documentation and API specifications |
+| **[🔧 Development](./docs/deployment/README.md)** | Deployment procedures (local and AWS) |
 | **[� Operations](./docs/operations/README.md)** | Infrastructure management and deployment procedures |
 | **[🛡️ Security](./docs/security/README.md)** | Security framework and compliance documentation |
 | **[🛠️ DevOps Tools](./docs/tools/README.md)** | 25+ automation scripts and operational tools |
-| **[🔧 Development](./docs/deployment/README.md)** | Deployment procedures (local and AWS) |
+
 
 > 💡 **New to the project?** Start with the [Architecture Documentation](./docs/architecture/README.md) for a comprehensive overview, then explore the specific areas relevant to your role.
 

@@ -6,24 +6,28 @@ Welcome to the complete enterprise-grade documentation for HarborList Marketplac
 
 ## 🎯 **Project Overview**
 
-### **Current Architecture**
-- **Frontend**: React 18 + TypeScript + Vite + Tailwind CSS
-- **Backend**: AWS Lambda microservices (Node.js 18) 
+### **Current Architecture (Simplified Serverless - October 2025)**
+- **Frontend**: React 18 + TypeScript + Vite + Tailwind CSS (S3 Static Hosting)
+- **Backend**: AWS Lambda microservices (Node.js 20.x) with AWS SDK v3
 - **Database**: DynamoDB with GSI indexes for optimized queries
-- **Infrastructure**: AWS CDK (TypeScript) for Infrastructure as Code
-- **Storage**: S3 for media files and static hosting
-- **API**: API Gateway REST API with CORS support
-- **CDN**: Cloudflare integration with tunnel infrastructure
-- **Monitoring**: CloudWatch dashboards and SNS alerting
+- **Infrastructure**: AWS CDK v2 (TypeScript) for Infrastructure as Code
+- **Storage**: S3 for media files and static website hosting
+- **API**: API Gateway REST API with Cloudflare IP restrictions
+- **CDN**: Direct Cloudflare integration with automated security
+- **Monitoring**: CloudWatch dashboards, SNS alerting, and X-Ray tracing
+
+### **🚀 Recent Architecture Migration (October 2025)**
+The platform has undergone a major simplification, removing complex tunnel infrastructure in favor of a streamlined serverless-first approach with enhanced security. See [**Architecture Migration Guide**](./architecture/architecture-migration-2025.md) for complete details.
 
 ### **Core Services (Current Implementation)**
 - **🔐 Auth Service** - JWT authentication, admin MFA, session management
-- **📋 Listing Service** - Boat CRUD operations with ownership validation
+- **📋 Listing Service** - Boat CRUD operations with ownership validation  
 - **👤 Admin Service** - Administrative dashboard with RBAC permissions
-- **🔍 Search Service** - Advanced filtering and search functionality
-- **📸 Media Service** - Image/video upload with S3 presigned URLs
-- **📧 Email Service** - SES notifications and inquiries
-- **📊 Stats Service** - Platform analytics and reporting
+- **🔍 Search Service** - Advanced filtering and geospatial search
+- **📸 Media Service** - Image/video processing with S3 integration
+- **📧 Email Service** - SES transactional emails and notifications
+- **📊 Stats Service** - Real-time analytics and business intelligence
+- **🛡️ Security Service** - Automated Cloudflare IP sync and edge protection
 
 ### **Live Features**
 ✅ User registration and authentication  
