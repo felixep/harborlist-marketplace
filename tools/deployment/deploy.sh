@@ -197,6 +197,15 @@ deploy_local() {
     print_step "Checking service status..."
     docker-compose -f docker-compose.local.yml --profile "${COMPOSE_PROFILE}" ps
     
+    # Set up database tables
+    print_step "Setting up database tables..."
+    if [[ -f "${PROJECT_ROOT}/backend/scripts/setup-local-db.sh" ]]; then
+        "${PROJECT_ROOT}/backend/scripts/setup-local-db.sh"
+    else
+        print_warning "Database setup script not found. You may need to run it manually."
+        print_info "Run: ./backend/scripts/setup-local-db.sh"
+    fi
+    
     print_success "Local deployment completed!"
     
     # Display access information

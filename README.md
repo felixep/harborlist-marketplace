@@ -17,6 +17,7 @@ A comprehensive **serverless boat marketplace platform** built on **AWS cloud in
 | **[� Operations](./docs/operations/README.md)** | Infrastructure management and deployment procedures |
 | **[🛡️ Security](./docs/security/README.md)** | Security framework and compliance documentation |
 | **[🛠️ DevOps Tools](./docs/tools/README.md)** | 25+ automation scripts and operational tools |
+| **[🔧 Troubleshooting](./docs/troubleshooting/README.md)** | Common issues and resolution procedures |
 
 
 > 💡 **New to the project?** Start with the [Architecture Documentation](./docs/architecture/README.md) for a comprehensive overview, then explore the specific areas relevant to your role.

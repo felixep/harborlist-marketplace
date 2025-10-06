@@ -4,9 +4,15 @@
 
 This comprehensive troubleshooting guide provides systematic solutions for common issues encountered during development and deployment of the HarborList marketplace platform. Updated with recent architectural improvements including NPM workspaces, SSL-enabled local development, and DynamoDB Local configurations.
 
-## 🏠 **Local Development Troubleshooting** 
+## 📚 **Troubleshooting Categories**
 
-### **Frontend Issues**
+### 🏠 **Local Development Issues**
+For Docker-based local development issues including API 500 errors, database setup problems, and container failures:
+👉 **See [Local Development Troubleshooting](./local-development.md)**
+
+### 🔧 **Legacy Local Development Issues**
+
+#### **Frontend Issues**
 
 #### 🚫 **Blank Page on Load**
 **Symptoms**: Frontend loads but displays blank page

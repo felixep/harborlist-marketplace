@@ -1,7 +1,13 @@
 #!/bin/bash
 
 # HarborList Local Database Setup Script
-# Sets up DynamoDB tables for local development
+# Sets up DynamoDB tables and S3 buckets for local development
+#
+# This script has been consolidated from the previous setup-local-db-quick.sh
+# to provide a single, reliable database setup solution for local development.
+# 
+# Usage: ./setup-local-db.sh
+# Prerequisites: Docker Compose with DynamoDB Local and LocalStack running
 
 set -e
 
@@ -41,38 +47,26 @@ if [ $attempt -eq $max_attempts ]; then
     exit 1
 fi
 
-# Function to create table if it doesn't exist
-create_table_if_not_exists() {
+# Function to create simple table (no GSI for now)
+create_simple_table() {
     local table_name=$1
-    local key_schema=$2
-    local attribute_definitions=$3
-    local provisioned_throughput=${4:-"ReadCapacityUnits=5,WriteCapacityUnits=5"}
-    local global_secondary_indexes=$5
-
+    
     echo "📊 Creating table: $table_name"
     
     # Check if table exists
-    if aws dynamodb describe-table --table-name "$table_name" --endpoint-url "$DYNAMODB_ENDPOINT" --region "$AWS_REGION" > /dev/null 2>&1; then
+    if aws dynamodb describe-table --table-name "$table_name" --endpoint-url "$DYNAMODB_ENDPOINT" --region "$AWS_REGION" >/dev/null 2>&1; then
         echo "   ✅ Table $table_name already exists"
         return
     fi
 
-    # Build the create-table command
-    local cmd="aws dynamodb create-table \
-        --table-name $table_name \
-        --key-schema $key_schema \
-        --attribute-definitions $attribute_definitions \
-        --provisioned-throughput $provisioned_throughput \
-        --endpoint-url $DYNAMODB_ENDPOINT \
-        --region $AWS_REGION"
-
-    # Add GSI if provided
-    if [ -n "$global_secondary_indexes" ]; then
-        cmd="$cmd --global-secondary-indexes $global_secondary_indexes"
-    fi
-
-    # Execute command
-    eval $cmd > /dev/null 2>&1
+    # Create table with simple schema (id as primary key)
+    aws dynamodb create-table \
+        --table-name "$table_name" \
+        --key-schema AttributeName=id,KeyType=HASH \
+        --attribute-definitions AttributeName=id,AttributeType=S \
+        --provisioned-throughput ReadCapacityUnits=5,WriteCapacityUnits=5 \
+        --endpoint-url "$DYNAMODB_ENDPOINT" \
+        --region "$AWS_REGION" >/dev/null 2>&1
     
     if [ $? -eq 0 ]; then
         echo "   ✅ Table $table_name created successfully"
@@ -85,92 +79,23 @@ create_table_if_not_exists() {
 echo ""
 echo "🔧 Creating DynamoDB Tables..."
 
-# Users table
-create_table_if_not_exists \
-    "boat-users" \
-    "AttributeName=id,KeyType=HASH" \
-    "AttributeName=id,AttributeType=S AttributeName=email,AttributeType=S AttributeName=role,AttributeType=S" \
-    "ReadCapacityUnits=5,WriteCapacityUnits=5" \
-    '[
-        {
-            "IndexName": "EmailIndex",
-            "KeySchema": [{"AttributeName": "email", "KeyType": "HASH"}],
-            "Projection": {"ProjectionType": "ALL"},
-            "ProvisionedThroughput": {"ReadCapacityUnits": 5, "WriteCapacityUnits": 5}
-        },
-        {
-            "IndexName": "RoleIndex", 
-            "KeySchema": [{"AttributeName": "role", "KeyType": "HASH"}],
-            "Projection": {"ProjectionType": "ALL"},
-            "ProvisionedThroughput": {"ReadCapacityUnits": 5, "WriteCapacityUnits": 5}
-        }
-    ]'
+# Create essential tables based on backend requirements
+create_simple_table "boat-users"
+create_simple_table "harborlist-listings"
+create_simple_table "boat-sessions"
+create_simple_table "boat-login-attempts"
+create_simple_table "boat-audit-logs"
+create_simple_table "boat-reviews"
+create_simple_table "boat-admin-sessions"
+create_simple_table "boat-analytics"
 
-# Listings table
-create_table_if_not_exists \
-    "boat-listings" \
-    "AttributeName=id,KeyType=HASH" \
-    "AttributeName=id,AttributeType=S AttributeName=userId,AttributeType=S AttributeName=status,AttributeType=S AttributeName=createdAt,AttributeType=S" \
-    "ReadCapacityUnits=5,WriteCapacityUnits=5" \
-    '[
-        {
-            "IndexName": "UserIndex",
-            "KeySchema": [{"AttributeName": "userId", "KeyType": "HASH"}],
-            "Projection": {"ProjectionType": "ALL"},
-            "ProvisionedThroughput": {"ReadCapacityUnits": 5, "WriteCapacityUnits": 5}
-        },
-        {
-            "IndexName": "StatusIndex",
-            "KeySchema": [{"AttributeName": "status", "KeyType": "HASH"}, {"AttributeName": "createdAt", "KeyType": "RANGE"}],
-            "Projection": {"ProjectionType": "ALL"},
-            "ProvisionedThroughput": {"ReadCapacityUnits": 5, "WriteCapacityUnits": 5}
-        }
-    ]'
-
-# Sessions table (for JWT blacklist/session management)
-create_table_if_not_exists \
-    "boat-sessions" \
-    "AttributeName=id,KeyType=HASH" \
-    "AttributeName=id,AttributeType=S AttributeName=userId,AttributeType=S" \
-    "ReadCapacityUnits=5,WriteCapacityUnits=5" \
-    '[
-        {
-            "IndexName": "UserIndex",
-            "KeySchema": [{"AttributeName": "userId", "KeyType": "HASH"}],
-            "Projection": {"ProjectionType": "ALL"},
-            "ProvisionedThroughput": {"ReadCapacityUnits": 5, "WriteCapacityUnits": 5}
-        }
-    ]'
-
-# Analytics/Stats table
-create_table_if_not_exists \
-    "boat-analytics" \
-    "AttributeName=id,KeyType=HASH" \
-    "AttributeName=id,AttributeType=S AttributeName=date,AttributeType=S AttributeName=type,AttributeType=S" \
-    "ReadCapacityUnits=5,WriteCapacityUnits=5" \
-    '[
-        {
-            "IndexName": "DateIndex",
-            "KeySchema": [{"AttributeName": "date", "KeyType": "HASH"}, {"AttributeName": "type", "KeyType": "RANGE"}],
-            "Projection": {"ProjectionType": "ALL"},
-            "ProvisionedThroughput": {"ReadCapacityUnits": 5, "WriteCapacityUnits": 5}
-        }
-    ]'
-
-# Admin audit logs table
-create_table_if_not_exists \
-    "boat-audit-logs" \
-    "AttributeName=id,KeyType=HASH" \
-    "AttributeName=id,AttributeType=S AttributeName=adminId,AttributeType=S AttributeName=timestamp,AttributeType=S" \
-    "ReadCapacityUnits=5,WriteCapacityUnits=5" \
-    '[
-        {
-            "IndexName": "AdminIndex",
-            "KeySchema": [{"AttributeName": "adminId", "KeyType": "HASH"}, {"AttributeName": "timestamp", "KeyType": "RANGE"}],
-            "Projection": {"ProjectionType": "ALL"},
-            "ProvisionedThroughput": {"ReadCapacityUnits": 5, "WriteCapacityUnits": 5}
-        }
-    ]'
+# Admin-specific tables
+create_simple_table "boat-platform-settings"
+create_simple_table "boat-settings-audit"
+create_simple_table "boat-support-tickets"
+create_simple_table "boat-support-responses"
+create_simple_table "boat-announcements"
+create_simple_table "boat-support-templates"
 
 echo ""
 echo "🎯 Setting up LocalStack S3 Buckets..."
