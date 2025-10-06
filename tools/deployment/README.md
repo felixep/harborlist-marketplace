@@ -5,6 +5,7 @@ This directory contains automated deployment tools for the HarborList marketplac
 ## 📁 Contents
 
 - `deploy.sh` - Main deployment automation script
+- `cleanup.sh` - Environment cleanup and resource destruction script
 - `verify-deployment.sh` - Deployment verification and health checks
 - `README.md` - This documentation file
 
@@ -145,6 +146,78 @@ docker-compose -f docker-compose.local.yml --profile enhanced down
 # Verify all deployments
 ./verify-deployment.sh
 ```
+
+## 🧹 Environment Cleanup
+
+### Cleanup Script (`cleanup.sh`)
+⚠️ **DESTRUCTIVE OPERATION** - Use with extreme caution!
+
+The cleanup script provides complete environment destruction for both local and AWS environments.
+
+#### Basic Usage
+```bash
+# Clean up local development environment
+./cleanup.sh local
+
+# Clean up AWS environments
+./cleanup.sh dev       # Development environment
+./cleanup.sh staging   # Staging environment  
+./cleanup.sh prod      # Production environment (requires extra confirmation)
+```
+
+#### Force Mode (Skip Confirmations)
+```bash
+# Skip all confirmation prompts
+./cleanup.sh dev --force
+./cleanup.sh staging --force
+
+# Production still requires confirmation even in force mode
+./cleanup.sh prod --force
+```
+
+#### What Gets Destroyed
+
+**Local Environment:**
+- ✅ All Docker containers and images
+- ✅ All Docker volumes and networks  
+- ✅ Local SSL certificates
+- ✅ Development data directories
+- ✅ Log files
+
+**AWS Environments:**
+- ✅ All CDK stacks and resources
+- ✅ S3 buckets and ALL their contents
+- ✅ DynamoDB tables
+- ✅ Lambda functions
+- ✅ API Gateway APIs
+- ✅ CloudWatch Log Groups
+- ✅ CloudFormation stacks
+
+#### Safety Features
+- **Multi-level confirmations** (especially for production)
+- **Comprehensive logging** with timestamped log files
+- **Resource validation** before destruction
+- **Environment-specific safety checks**
+- **Prerequisites validation**
+
+#### Production Safeguards
+Production cleanup requires typing `DESTROY PRODUCTION` (case-sensitive) to confirm the destructive operation.
+
+#### Cleanup Examples
+```bash
+# Safe local cleanup with confirmation
+./cleanup.sh local
+
+# AWS development cleanup with logging
+./cleanup.sh dev
+# Creates: cleanup_YYYYMMDD_HHMMSS.log
+
+# Emergency production cleanup (still requires confirmation)
+./cleanup.sh prod --force
+```
+
+#### Post-Cleanup Verification
+The script automatically verifies resource destruction and provides a comprehensive summary of cleaned resources.
 
 ## 🔧 Configuration
 

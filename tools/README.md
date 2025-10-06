@@ -19,6 +19,7 @@ harborlist-marketplace/
 ├── tools/                                    # All operational tools and scripts
 │   ├── deployment/                           # Deployment automation
 │   │   ├── deploy.sh                        # Main deployment script
+│   │   ├── cleanup.sh                       # Environment cleanup and resource destruction
 │   │   ├── verify-deployment.sh             # Post-deployment validation
 │   │   └── README.md                        # Deployment tools documentation
 │   ├── monitoring/                           # System monitoring tools
