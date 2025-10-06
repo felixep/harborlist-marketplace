@@ -54,6 +54,9 @@ harborlist-marketplace/
 │   │   ├── update-cloudflare-config.js      # Configuration updates
 │   │   ├── purge-cloudflare-cache.js        # Cache management
 │   │   └── README.md                        # Cloudflare tools documentation
+│   ├── operations/                           # System operations & user management
+│   │   ├── create-admin-user.sh             # Multi-environment admin user creation
+│   │   └── README.md                        # Operations tools documentation
 │   ├── utilities/                            # General utility tools
 │   │   ├── update-cost-tracking.js          # Cost data maintenance
 │   │   ├── data-migration.sh                # Data migration utilities
@@ -207,6 +210,7 @@ This tools directory is fully documented as part of the HarborList enterprise do
 
 ### **📋 Tool Category Documentation**  
 - **[Deployment Scripts](../docs/tools/deployment-scripts.md)**: Infrastructure deployment automation
+- **[Operations Scripts](../docs/tools/operations-scripts.md)**: User management and system operations
 - **[Monitoring Scripts](../docs/tools/monitoring-scripts.md)**: Health and performance monitoring
 - **[Cost Management Scripts](../docs/tools/cost-management-scripts.md)**: Cost optimization tools
 - **[Performance Scripts](../docs/tools/performance-scripts.md)**: Load testing and benchmarks
@@ -238,8 +242,11 @@ cd ../monitoring && ./setup-monitoring.sh dev
 
 ### **For Operations Teams**  
 ```bash  
+# Create admin users
+cd tools/operations && ./create-admin-user.sh --help
+
 # Daily health check
-cd tools/monitoring && node dev-environment-status-report.js
+cd ../monitoring && node dev-environment-status-report.js
 
 # Cost monitoring
 cd ../cost-management && node aws-billing-monitor.js
