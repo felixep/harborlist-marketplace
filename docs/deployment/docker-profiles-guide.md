@@ -29,7 +29,7 @@ npm run dev:start                # Start basic environment
 npm run dev:start:bg            # Start basic environment in background
 
 # Enhanced Environment  
-npm run dev:setup:enhanced      # Setup enhanced environment
+npm run dev:deploy:local        # Deploy full enhanced environment (recommended)
 npm run dev:start:enhanced      # Start enhanced environment
 npm run dev:start:enhanced:bg   # Start enhanced environment in background
 

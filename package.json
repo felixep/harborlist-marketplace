@@ -9,7 +9,7 @@
   ],
   "scripts": {
     "dev:setup": "echo '🚀 Setting up HarborList local development environment...' && docker-compose -f docker-compose.local.yml up -d dynamodb-local localstack && sleep 10 && cd backend && npm run dev:setup-db",
-    "dev:setup:enhanced": "echo '🔥 Setting up enhanced environment with SSL + Traefik...' && ./setup-enhanced-local.sh",
+    "dev:deploy:local": "echo '🔥 Deploying enhanced local environment...' && ./tools/deployment/deploy.sh local",
     "dev:setup:ssl": "echo '🔒 Generating SSL certificates...' && ./scripts/generate-ssl-certs.sh",
     "dev:start": "echo '🌊 Starting HarborList development environment...' && docker-compose --profile basic -f docker-compose.local.yml up",
     "dev:start:enhanced": "echo '🔥 Starting enhanced environment with Traefik...' && docker-compose --profile enhanced -f docker-compose.local.yml up",
