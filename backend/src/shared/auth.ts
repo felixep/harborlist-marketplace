@@ -47,6 +47,139 @@ export const AUTH_CONFIG = {
   USER_SESSION_TIMEOUT: 24 * 60, // minutes
 };
 
+/**
+ * Deployment context information for environment-aware behavior
+ */
+export interface DeploymentContext {
+  isDocker: boolean;
+  isAWS: boolean;
+  environment: string;
+  deploymentTarget: 'docker' | 'aws';
+}
+
+/**
+ * Enhanced environment detection for deployment-target-aware behavior
+ * 
+ * Determines whether running in Docker container vs AWS Lambda
+ * and provides appropriate configuration for each context
+ * 
+ * @returns DeploymentContext Information about current deployment context
+ */
+export function getDeploymentContext(): DeploymentContext {
+  // AWS Lambda has this environment variable
+  const isLambda = !!process.env.AWS_LAMBDA_FUNCTION_NAME;
+  
+  // Docker containers can set this explicitly, or we infer from Lambda detection
+  const deploymentTarget = process.env.DEPLOYMENT_TARGET || (isLambda ? 'aws' : 'docker');
+  
+  const environment = process.env.ENVIRONMENT || 'local';
+  
+  return {
+    isDocker: deploymentTarget === 'docker',
+    isAWS: deploymentTarget === 'aws',
+    environment,
+    deploymentTarget: deploymentTarget as 'docker' | 'aws'
+  };
+}
+
+/**
+ * Configuration service with deployment-target-aware behavior
+ * 
+ * Provides unified interface for configuration across Docker and AWS environments
+ * while using the appropriate backend for each deployment target
+ */
+export class ConfigService {
+  private static jwtSecretCache: string | null = null;
+
+  /**
+   * Retrieve JWT secret based on deployment context
+   * 
+   * Docker: Uses environment variables (fast, no network calls)
+   * AWS: Uses AWS Secrets Manager (secure, centrally managed)
+   * 
+   * @returns Promise<string> The JWT secret
+   */
+  static async getJwtSecret(): Promise<string> {
+    if (this.jwtSecretCache) {
+      return this.jwtSecretCache;
+    }
+
+    const context = getDeploymentContext();
+    
+    // Docker environment - use environment variables
+    if (context.isDocker) {
+      this.jwtSecretCache = process.env.JWT_SECRET || 'local-dev-secret-harborlist-2025';
+      return this.jwtSecretCache;
+    }
+    
+    // AWS environment - use Secrets Manager
+    if (context.isAWS) {
+      return await this.getSecretFromAWS();
+    }
+    
+    throw new Error(`Unknown deployment target: ${context.deploymentTarget}`);
+  }
+
+  /**
+   * Retrieve JWT secret from AWS Secrets Manager
+   * Private method for AWS-specific secret retrieval
+   */
+  private static async getSecretFromAWS(): Promise<string> {
+    const secretArn = process.env.JWT_SECRET_ARN;
+    if (!secretArn) {
+      console.warn('JWT_SECRET_ARN not configured for non-local environment, falling back to environment variable');
+      this.jwtSecretCache = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+      return this.jwtSecretCache;
+    }
+    
+    try {
+      // Import AWS SDK dynamically to avoid issues in local development
+      const { SecretsManagerClient, GetSecretValueCommand } = await import('@aws-sdk/client-secrets-manager');
+      
+      const secretsClient = new SecretsManagerClient({ 
+        region: process.env.AWS_REGION || 'us-east-1' 
+      });
+      
+      const command = new GetSecretValueCommand({ SecretId: secretArn });
+      const response = await secretsClient.send(command);
+      
+      if (!response.SecretString) {
+        throw new Error('Secret value is empty');
+      }
+      
+      const secret = JSON.parse(response.SecretString);
+      this.jwtSecretCache = secret.password; // The generated password from Secrets Manager
+      return this.jwtSecretCache || 'fallback-secret';
+    } catch (error) {
+      console.error('Failed to retrieve JWT secret from Secrets Manager:', error);
+      // Fallback to environment variable
+      this.jwtSecretCache = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+      return this.jwtSecretCache;
+    }
+  }
+}
+
+/**
+ * Legacy function for backward compatibility
+ * @deprecated Use ConfigService.getJwtSecret() instead
+ */
+export async function getJwtSecret(): Promise<string> {
+  return ConfigService.getJwtSecret();
+}
+
+/**
+ * Get authentication configuration with dynamically retrieved JWT secret
+ * 
+ * @returns Promise<typeof AUTH_CONFIG & { JWT_SECRET: string }>
+ */
+export async function getAuthConfig() {
+  const jwtSecret = await ConfigService.getJwtSecret();
+  return {
+    ...AUTH_CONFIG,
+    JWT_SECRET: jwtSecret,
+  };
+}
+
 export function extractTokenFromEvent(event: APIGatewayProxyEvent): string | null {
   const authHeader = event.headers.Authorization || event.headers.authorization;
   
@@ -361,4 +494,64 @@ export function createAdminUser(userData: {
     createdAt: now,
     updatedAt: now,
   };
+}
+
+// Async JWT functions using dynamic secret retrieval
+
+/**
+ * Async version of verifyToken that uses dynamic JWT secret retrieval
+ * 
+ * @param token JWT token to verify
+ * @returns Promise<JWTPayload> Verified token payload
+ */
+export async function verifyTokenAsync(token: string): Promise<JWTPayload> {
+  const authConfig = await getAuthConfig();
+  return verifyToken(token, authConfig.JWT_SECRET);
+}
+
+/**
+ * Async version of createAccessToken that uses dynamic JWT secret retrieval
+ * 
+ * @param user User object
+ * @param sessionId Session identifier
+ * @param deviceId Device identifier
+ * @returns Promise<string> Signed JWT token
+ */
+export async function createAccessTokenAsync(user: User, sessionId: string, deviceId: string): Promise<string> {
+  const authConfig = await getAuthConfig();
+  
+  const payload = {
+    sub: user.id,
+    email: user.email,
+    role: user.role,
+    permissions: user.permissions,
+    sessionId,
+    deviceId,
+    type: 'access',
+    iat: Math.floor(Date.now() / 1000),
+    exp: Math.floor(Date.now() / 1000) + (15 * 60), // 15 minutes
+  };
+
+  return jwt.sign(payload, authConfig.JWT_SECRET);
+}
+
+/**
+ * Async version of createRefreshToken that uses dynamic JWT secret retrieval
+ * 
+ * @param userId User identifier
+ * @param sessionId Session identifier
+ * @returns Promise<string> Signed JWT refresh token
+ */
+export async function createRefreshTokenAsync(userId: string, sessionId: string): Promise<string> {
+  const authConfig = await getAuthConfig();
+  
+  const payload = {
+    sub: userId,
+    sessionId,
+    type: 'refresh',
+    iat: Math.floor(Date.now() / 1000),
+    exp: Math.floor(Date.now() / 1000) + (7 * 24 * 60 * 60), // 7 days
+  };
+
+  return jwt.sign(payload, authConfig.JWT_SECRET);
 }

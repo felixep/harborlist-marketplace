@@ -100,6 +100,8 @@ services:
       - /workspace/packages/shared-types/node_modules
     environment:
       - NODE_ENV=development
+      - ENVIRONMENT=local
+      - DEPLOYMENT_TARGET=docker
       - DYNAMODB_ENDPOINT=http://dynamodb-local:8000
       - S3_ENDPOINT=http://localstack:4566
       - SES_ENDPOINT=http://localstack:4566

@@ -66,8 +66,8 @@ import { StandardSecurityConstruct } from './standard-security-construct';
  * @extends cdk.StackProps
  */
 interface HarborListStackProps extends cdk.StackProps {
-  /** Deployment environment (dev/staging/prod) */
-  environment: 'dev' | 'staging' | 'prod';
+  /** Deployment environment (local/dev/staging/prod) */
+  environment: 'local' | 'dev' | 'staging' | 'prod';
   /** Custom domain name for frontend (e.g., app.harborlist.com) */
   domainName?: string;
   /** Custom domain name for API (e.g., api.harborlist.com) */
@@ -254,17 +254,38 @@ export class HarborListStack extends cdk.Stack {
     //   type: 'SEARCH',
     // });
 
-    // JWT Secret for authentication
-    const jwtSecret = new secretsmanager.Secret(this, 'AdminJwtSecret', {
-      secretName: `harborlist-admin-jwt-${environment}`,
-      description: 'JWT secret for authentication services',
-      generateSecretString: {
-        secretStringTemplate: JSON.stringify({ username: 'admin' }),
-        generateStringKey: 'password',
-        passwordLength: 32,
-        excludeCharacters: '"@/\\',
-      },
-    });
+    // JWT Secret for authentication - Environment-conditional approach
+    // For local development: use hardcoded secrets (no AWS costs)
+    // For dev/staging/prod: use AWS Secrets Manager (secure)
+    const jwtSecret = environment === 'local' 
+      ? undefined // Skip creating Secrets Manager for local development
+      : new secretsmanager.Secret(this, 'AdminJwtSecret', {
+          secretName: `harborlist-admin-jwt-${environment}`,
+          description: 'JWT secret for authentication services',
+          generateSecretString: {
+            secretStringTemplate: JSON.stringify({ username: 'admin' }),
+            generateStringKey: 'password',
+            passwordLength: 32,
+            excludeCharacters: '"@/\\',
+          },
+        });
+
+    // JWT Configuration helper function
+    const getJwtConfig = () => {
+      if (environment === 'local') {
+        return {
+          JWT_SECRET: 'local-dev-secret-harborlist-2025',
+          JWT_SECRET_ARN: '',
+        };
+      } else {
+        return {
+          JWT_SECRET: '', // Empty - will retrieve from Secrets Manager at runtime
+          JWT_SECRET_ARN: jwtSecret?.secretArn || '',
+        };
+      }
+    };
+
+    const jwtConfig = getJwtConfig();
 
     // Lambda Functions
     const authFunction = new lambda.Function(this, 'AuthFunction', {
@@ -273,10 +294,13 @@ export class HarborListStack extends cdk.Stack {
       code: lambda.Code.fromAsset('../backend/dist/packages/auth-service.zip'),
       environment: {
         USERS_TABLE: usersTable.tableName,
-        JWT_SECRET: 'harborlist-development-secret-2024',
+        JWT_SECRET: jwtConfig.JWT_SECRET,
+        JWT_SECRET_ARN: jwtConfig.JWT_SECRET_ARN,
         SESSIONS_TABLE: adminSessionsTable.tableName,
         AUDIT_LOGS_TABLE: auditLogsTable.tableName,
         LOGIN_ATTEMPTS_TABLE: loginAttemptsTable.tableName,
+        ENVIRONMENT: environment,
+        DEPLOYMENT_TARGET: 'aws',
       },
     });
 
@@ -287,7 +311,10 @@ export class HarborListStack extends cdk.Stack {
       environment: {
         LISTINGS_TABLE: listingsTable.tableName,
         USERS_TABLE: usersTable.tableName,
-        JWT_SECRET: 'harborlist-development-secret-2024',
+        JWT_SECRET: jwtConfig.JWT_SECRET,
+        JWT_SECRET_ARN: jwtConfig.JWT_SECRET_ARN,
+        ENVIRONMENT: environment,
+        DEPLOYMENT_TARGET: 'aws',
       },
     });
 
@@ -298,6 +325,8 @@ export class HarborListStack extends cdk.Stack {
       environment: {
         LISTINGS_TABLE: listingsTable.tableName,
         USERS_TABLE: usersTable.tableName,
+        ENVIRONMENT: environment,
+        DEPLOYMENT_TARGET: 'aws',
         // OPENSEARCH_ENDPOINT: searchCollection.attrCollectionEndpoint, // Commented out
       },
     });
@@ -309,6 +338,8 @@ export class HarborListStack extends cdk.Stack {
       environment: {
         MEDIA_BUCKET: mediaBucket.bucketName,
         THUMBNAILS_BUCKET: mediaBucket.bucketName, // Using same bucket for thumbnails
+        ENVIRONMENT: environment,
+        DEPLOYMENT_TARGET: 'aws',
       },
     });
 
@@ -316,6 +347,10 @@ export class HarborListStack extends cdk.Stack {
       runtime: lambda.Runtime.NODEJS_18_X,
       handler: 'email/index.handler',
       code: lambda.Code.fromAsset('../backend/dist/packages/email.zip'),
+      environment: {
+        ENVIRONMENT: environment,
+        DEPLOYMENT_TARGET: 'aws',
+      },
     });
 
     const statsFunction = new lambda.Function(this, 'StatsFunction', {
@@ -326,6 +361,8 @@ export class HarborListStack extends cdk.Stack {
         LISTINGS_TABLE: listingsTable.tableName,
         USERS_TABLE: usersTable.tableName,
         REVIEWS_TABLE: 'harborlist-reviews', // This table will be created later when we add reviews
+        ENVIRONMENT: environment,
+        DEPLOYMENT_TARGET: 'aws',
       },
     });
 
@@ -342,8 +379,10 @@ export class HarborListStack extends cdk.Stack {
         AUDIT_LOGS_TABLE: auditLogsTable.tableName,
         ADMIN_SESSIONS_TABLE: adminSessionsTable.tableName,
         LOGIN_ATTEMPTS_TABLE: loginAttemptsTable.tableName,
-        JWT_SECRET_ARN: jwtSecret.secretArn,
+        JWT_SECRET: jwtConfig.JWT_SECRET,
+        JWT_SECRET_ARN: jwtConfig.JWT_SECRET_ARN,
         ENVIRONMENT: environment,
+        DEPLOYMENT_TARGET: 'aws',
         NODE_ENV: environment === 'prod' ? 'production' : 'development',
         LOG_LEVEL: environment === 'prod' ? 'warn' : 'debug',
         SESSION_TIMEOUT_MINUTES: '60',
@@ -409,17 +448,17 @@ export class HarborListStack extends cdk.Stack {
       ],
     }));
 
-    // Grant admin function access to JWT secret
-    jwtSecret.grantRead(adminFunction);
+    // Grant Lambda functions access to JWT secret (only for non-local environments)
+    if (jwtSecret) {
+      jwtSecret.grantRead(adminFunction);
+      jwtSecret.grantRead(authFunction);
+      jwtSecret.grantRead(listingFunction);
+    }
 
-    // Grant auth function access to JWT secret and tables
-    jwtSecret.grantRead(authFunction);
+    // Grant auth function access to tables
     auditLogsTable.grantReadWriteData(authFunction);
     adminSessionsTable.grantReadWriteData(authFunction);
     loginAttemptsTable.grantReadWriteData(authFunction);
-
-    // Grant listing function access to JWT secret
-    jwtSecret.grantRead(listingFunction);
 
     // Grant admin function CloudWatch permissions for metrics and logging
     adminFunction.addToRolePolicy(new iam.PolicyStatement({
@@ -844,10 +883,13 @@ export class HarborListStack extends cdk.Stack {
       description: 'Login Attempts DynamoDB Table Name',
     });
 
-    new cdk.CfnOutput(this, 'AdminJwtSecretArn', {
-      value: jwtSecret.secretArn,
-      description: 'Admin JWT Secret ARN',
-    });
+    // JWT Secret ARN output (only for non-local environments)
+    if (jwtSecret) {
+      new cdk.CfnOutput(this, 'AdminJwtSecretArn', {
+        value: jwtSecret.secretArn,
+        description: 'Admin JWT Secret ARN',
+      });
+    }
 
     new cdk.CfnOutput(this, 'AdminAlertTopicArn', {
       value: adminAlertTopic.topicArn,

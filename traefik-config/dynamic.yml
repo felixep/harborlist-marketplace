@@ -70,42 +70,5 @@ http:
         service: "error-page-service"
         query: "/{status}.html"
 
-  routers:
-    # API routes with path-based routing
-    api-auth:
-      rule: "Host(`api.local.harborlist.com`) && PathPrefix(`/api/auth`)"
-      service: "backend"
-      middlewares:
-        - "security-headers"
-        - "api-auth-rate"
-        - "compression"
-    
-    api-listings:
-      rule: "Host(`api.local.harborlist.com`) && PathPrefix(`/api/listings`)"
-      service: "backend"
-      middlewares:
-        - "security-headers"
-        - "public-api-rate"
-        - "compression"
-    
-    api-admin:
-      rule: "Host(`api.local.harborlist.com`) && PathPrefix(`/api/admin`)"
-      service: "backend"
-      middlewares:
-        - "security-headers"
-        - "admin-api-rate"
-        - "compression"
-    
-    # Static assets with aggressive caching
-    static-assets:
-      rule: "Host(`local.harborlist.com`) && (PathPrefix(`/assets`) || PathPrefix(`/images`) || PathPrefix(`/css`) || PathPrefix(`/js`))"
-      service: "frontend"
-      middlewares:
-        - "cache-headers"
-        - "compression"
-
-  services:
-    error-page-service:
-      loadBalancer:
-        servers:
-          - url: "http://nginx-errors:80"
+  # Routes and services are defined via Docker Compose labels
+  # This file only contains middlewares for reuse

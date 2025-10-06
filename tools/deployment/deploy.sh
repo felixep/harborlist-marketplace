@@ -1,141 +1,127 @@
 #!/bin/bash
 
-/**
- * @fileoverview HarborList Complete Deployment Automation Script
- * 
- * This comprehensive deployment script orchestrates the entire deployment process
- * for the HarborList boat marketplace platform. It handles environment validation,
- * prerequisite checking, building, infrastructure deployment, and verification
- * in a single automated workflow.
- * 
- * Deployment Architecture:
- * - Serverless backend with AWS Lambda functions
- * - React frontend with S3 static hosting
- * - DynamoDB for data persistence
- * - Cloudflare for CDN and security
- * - CloudWatch for monitoring and alerting
- * 
- * Key Features:
- * - Comprehensive prerequisite validation
- * - Multi-environment deployment support
- * - Flexible domain configuration management
- * - Automated build and deployment pipeline
- * - Post-deployment verification and testing
- * - Detailed deployment reporting and guidance
- * 
- * Security Features:
- * - Production domain requirement enforcement
- * - AWS credential validation
- * - Environment-specific security configurations
- * - Audit logging and compliance checking
- * 
- * Performance Optimizations:
- * - Parallel build processes where possible
- * - CDN configuration for global performance
- * - Lambda function optimization
- * - Database query pattern optimization
- * 
- * Error Handling:
- * - Comprehensive error detection and reporting
- * - Rollback guidance for failed deployments
- * - Detailed troubleshooting information
- * - Recovery procedures for common issues
- * 
- * Usage Examples:
- * ```bash
- * # Standard development deployment
- * ./deploy.sh dev
- * 
- * # Production deployment with all features
- * ./deploy.sh prod
- * 
- * # Development without custom domains
- * ./deploy.sh dev --no-domains
- * 
- * # Skip build for faster deployment iteration
- * ./deploy.sh staging --skip-build
- * 
- * # Verify existing deployment
- * ./deploy.sh prod --verify-only
- * ```
- * 
- * Environment Requirements:
- * - dev: Minimal requirements, suitable for development and testing
- * - staging: Production-like environment for pre-deployment validation
- * - prod: Full production requirements with all security and performance features
- * 
- * @author HarborList Development Team
- * @version 2.0.0
- * @since 2024-01-01
- * @requires bash >=4.0
- * @requires node >=18.0
- * @requires npm >=8.0
- * @requires aws-cli >=2.0
- * @requires aws-cdk >=2.0
- * @requires curl (for verification)
- */
+# HarborList Complete Deployment Automation Script
+#
+# Description:
+#   Unified deployment script for HarborList marketplace across multiple environments.
+#   Supports Docker Compose local development with Traefik reverse proxy and custom domains,
+#   as well as AWS CDK deployments for cloud environments.
+#
+# Features:
+#   - Enhanced profile by default with Traefik routing
+#   - Custom domain support (local.harborlist.com, local-api.harborlist.com)
+#   - SSL certificate management for local development
+#   - Deployment-target-aware authentication system
+#   - Comprehensive logging and error handling
+#   - Docker prerequisite validation
+#   - Service health checks and status monitoring
+#
+# Usage:
+#   ./deploy.sh <environment>
+#
+# Environments:
+#   local    - Docker Compose development environment (enhanced profile with Traefik)
+#   dev      - AWS development environment
+#   staging  - AWS staging environment  
+#   prod     - AWS production environment
+#
+# Prerequisites:
+#   For local deployment:
+#   - Docker and Docker Compose installed
+#   - Host file entries configured:
+#     127.0.0.1 local.harborlist.com
+#     127.0.0.1 local-api.harborlist.com
+#     127.0.0.1 traefik.local.harborlist.com
+#   - SSL certificates in certs/local/ directory
+#
+#   For AWS deployments:
+#   - AWS CLI configured
+#   - CDK installed and bootstrapped
+#   - Appropriate AWS credentials and permissions
+#
+# Examples:
+#   ./deploy.sh local                    # Deploy local development environment
+#   ./deploy.sh dev                      # Deploy to AWS development
+#   ./deploy.sh prod                     # Deploy to AWS production
+#
+# Local Environment Access:
+#   Frontend (Custom Domain):  https://local.harborlist.com
+#   Backend API (Custom Domain): https://local-api.harborlist.com
+#   Frontend (Direct):         http://localhost:3000
+#   Backend API (Direct):      http://localhost:3001
+#   Traefik Dashboard:         http://localhost:8088
+#   DynamoDB Local:           http://localhost:8000
+#   DynamoDB Admin:           http://localhost:8001
+#
+# Logging:
+#   All deployment activities are logged to deployment_YYYYMMDD_HHMMSS.log
+#
+# Author: HarborList Team
+# Version: 2.0 (Enhanced Profile)
+# Last Updated: October 2025
 
 set -e
+set -u
 
-/**
- * ANSI color codes for enhanced terminal output
- * 
- * Provides consistent, colored output for better user experience
- * and easier identification of different message types during deployment.
- */
+# Color codes for output formatting
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 PURPLE='\033[0;35m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
-/**
- * Print formatted status messages with appropriate colors and icons
- * 
- * Provides consistent, visually appealing output for deployment progress,
- * errors, warnings, and informational messages. Each message type uses
- * distinct colors and icons for immediate recognition.
- * 
- * @param {string} status - Message type (SUCCESS|ERROR|WARNING|INFO|STEP)
- * @param {string} message - The message content to display
- * 
- * @example
- * print_status "SUCCESS" "Deployment completed successfully"
- * print_status "ERROR" "Failed to connect to AWS"
- * print_status "WARNING" "Custom domains not configured"
- * print_status "INFO" "Using development environment"
- * print_status "STEP" "Building frontend application"
- */
-print_status() {
-    local status=$1
-    local message=$2
-    case $status in
-        "SUCCESS")
-            echo -e "${GREEN}✅ $message${NC}"
+# Script configuration
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+LOG_FILE="${PROJECT_ROOT}/deployment_${TIMESTAMP}.log"
+
+# Initialize logging
+exec > >(tee -a "${LOG_FILE}")
+exec 2>&1
+
+echo -e "${BLUE}=== HarborList Deployment Script Started ===${NC}"
+echo "Timestamp: $(date)"
+echo "Environment: ${1:-'not specified'}"
+echo "Project Root: ${PROJECT_ROOT}"
+echo "Log File: ${LOG_FILE}"
+echo ""
+
+# Function to print colored status messages
+print_success() { echo -e "${GREEN}✅ $1${NC}"; }
+print_error() { echo -e "${RED}❌ $1${NC}"; }
+print_warning() { echo -e "${YELLOW}⚠️  $1${NC}"; }
+print_info() { echo -e "${BLUE}ℹ️  $1${NC}"; }
+print_step() { echo -e "${PURPLE}🔄 $1${NC}"; }
+
+# Function to validate environment parameter
+validate_environment() {
+    local env=$1
+    
+    case "$env" in
+        "local"|"dev"|"staging"|"prod")
+            print_success "Environment '$env' is valid"
+            return 0
             ;;
-        "ERROR")
-            echo -e "${RED}❌ $message${NC}"
-            ;;
-        "WARNING")
-            echo -e "${YELLOW}⚠️  $message${NC}"
-            ;;
-        "INFO")
-            echo -e "${BLUE}ℹ️  $message${NC}"
-            ;;
-        "STEP")
-            echo -e "${PURPLE}🚀 $message${NC}"
+        *)
+            print_error "Invalid environment: '$env'"
+            echo "Valid environments: local, dev, staging, prod"
+            echo ""
+            echo "Usage: $0 <environment>"
+            echo "Environments:"
+            echo "  local    - Docker Compose development environment (enhanced profile with Traefik)"
+            echo "  dev      - AWS development environment"
+            echo "  staging  - AWS staging environment"
+            echo "  prod     - AWS production environment"
+            echo ""
+            echo "Local environment provides:"
+            echo "  - Custom domains: https://local.harborlist.com, https://local-api.harborlist.com"
+            echo "  - SSL termination via Traefik"
+            echo "  - Full service stack with monitoring tools"
+            exit 1
             ;;
     esac
-}
-
-# Function to print section headers
-print_header() {
-    echo ""
-    echo "=================================="
-    echo "$1"
-    echo "=================================="
-    echo ""
 }
 
 # Function to check if command exists
@@ -143,307 +129,138 @@ command_exists() {
     command -v "$1" >/dev/null 2>&1
 }
 
-# Show usage
-show_usage() {
-    echo "🚤 HarborList Deployment Script"
-    echo ""
-    echo "Usage: $0 [ENVIRONMENT] [OPTIONS]"
-    echo ""
-    echo "Environments:"
-    echo "  dev        - Development environment (default)"
-    echo "  staging    - Staging environment"
-    echo "  prod       - Production environment"
-    echo ""
-    echo "Options:"
-    echo "  --no-domains     Deploy without custom domains (development only)"
-    echo "  --skip-build     Skip building backend and frontend"
-    echo "  --verify-only    Only run deployment verification"
-    echo "  --help           Show this help message"
-    echo ""
-    echo "Examples:"
-    echo "  $0                           # Deploy to dev with custom domains"
-    echo "  $0 prod                      # Deploy to production with custom domains"
-    echo "  $0 dev --no-domains          # Deploy to dev without custom domains"
-    echo "  $0 staging --skip-build      # Deploy to staging without rebuilding"
-    echo "  $0 prod --verify-only        # Only verify production deployment"
-    echo ""
-    echo "🌐 Custom Domains:"
-    echo "  Custom domains are REQUIRED for production deployments."
-    echo "  See docs/DOMAIN_SETUP.md for complete setup instructions."
-    echo ""
+# Function to check Docker prerequisites
+check_docker_prerequisites() {
+    print_step "Checking Docker prerequisites..."
+    
+    local missing_deps=()
+    
+    if ! command_exists docker; then
+        missing_deps+=("docker")
+    fi
+    
+    if ! command_exists docker-compose; then
+        missing_deps+=("docker-compose")
+    fi
+    
+    # Check if Docker daemon is running
+    if command_exists docker && ! docker info >/dev/null 2>&1; then
+        print_error "Docker daemon is not running"
+        print_info "Please start Docker Desktop or Docker daemon"
+        exit 1
+    fi
+    
+    if [ ${#missing_deps[@]} -ne 0 ]; then
+        print_error "Missing Docker dependencies: ${missing_deps[*]}"
+        print_info "Please install Docker Desktop: https://www.docker.com/products/docker-desktop"
+        exit 1
+    fi
+    
+    print_success "All Docker prerequisites are available"
 }
 
-# Parse command line arguments
-ENVIRONMENT="dev"
-USE_CUSTOM_DOMAINS="true"
-SKIP_BUILD="false"
-VERIFY_ONLY="false"
-
-while [[ $# -gt 0 ]]; do
-    case $1 in
-        dev|staging|prod)
-            ENVIRONMENT="$1"
-            shift
-            ;;
-        --no-domains)
-            USE_CUSTOM_DOMAINS="false"
-            shift
-            ;;
-        --skip-build)
-            SKIP_BUILD="true"
-            shift
-            ;;
-        --verify-only)
-            VERIFY_ONLY="true"
-            shift
-            ;;
-        --help)
-            show_usage
-            exit 0
-            ;;
-        *)
-            echo "Unknown option: $1"
-            show_usage
-            exit 1
-            ;;
-    esac
-done
-
-# Validate environment
-if [[ ! "$ENVIRONMENT" =~ ^(dev|staging|prod)$ ]]; then
-    print_status "ERROR" "Invalid environment: $ENVIRONMENT"
-    show_usage
-    exit 1
-fi
-
-# Warning for production without custom domains
-if [ "$ENVIRONMENT" = "prod" ] && [ "$USE_CUSTOM_DOMAINS" = "false" ]; then
-    print_status "ERROR" "Production deployments REQUIRE custom domains for security and performance"
-    print_status "INFO" "See docs/DOMAIN_SETUP.md for setup instructions"
-    exit 1
-fi
-
-print_header "🚤 HarborList Deployment"
-
-print_status "INFO" "Environment: $ENVIRONMENT"
-print_status "INFO" "Custom Domains: $USE_CUSTOM_DOMAINS"
-print_status "INFO" "Skip Build: $SKIP_BUILD"
-print_status "INFO" "Verify Only: $VERIFY_ONLY"
-
-# If verify only, run verification and exit
-if [ "$VERIFY_ONLY" = "true" ]; then
-    print_header "🔍 Running Deployment Verification"
-    ./scripts/verify-deployment.sh "$ENVIRONMENT"
-    exit 0
-fi
-
-# Check prerequisites
-print_header "🔍 Checking Prerequisites"
-
-if ! command_exists node; then
-    print_status "ERROR" "Node.js is not installed"
-    exit 1
-fi
-print_status "SUCCESS" "Node.js is installed"
-
-if ! command_exists npm; then
-    print_status "ERROR" "npm is not installed"
-    exit 1
-fi
-print_status "SUCCESS" "npm is installed"
-
-if ! command_exists aws; then
-    print_status "ERROR" "AWS CLI is not installed"
-    exit 1
-fi
-print_status "SUCCESS" "AWS CLI is installed"
-
-if ! command_exists cdk; then
-    print_status "ERROR" "AWS CDK is not installed"
-    print_status "INFO" "Install with: npm install -g aws-cdk"
-    exit 1
-fi
-print_status "SUCCESS" "AWS CDK is installed"
-
-# Check AWS credentials
-if ! aws sts get-caller-identity >/dev/null 2>&1; then
-    print_status "ERROR" "AWS credentials not configured"
-    print_status "INFO" "Run: aws configure"
-    exit 1
-fi
-print_status "SUCCESS" "AWS credentials are configured"
-
-# Get current directory and project root
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-INFRASTRUCTURE_DIR="$PROJECT_ROOT/infrastructure"
-BACKEND_DIR="$PROJECT_ROOT/backend"
-FRONTEND_DIR="$PROJECT_ROOT/frontend"
-
-print_status "INFO" "Project root: $PROJECT_ROOT"
-
-# Custom domains warning
-if [ "$USE_CUSTOM_DOMAINS" = "true" ]; then
-    print_header "🌐 Custom Domains Configuration"
+# Function to deploy with Docker Compose
+deploy_local() {
+    print_step "Starting local Docker Compose deployment..."
     
-    if [ "$ENVIRONMENT" = "prod" ]; then
-        print_status "INFO" "Production deployment requires:"
-        echo "   • Domain: harborlist.com"
-        echo "   • API Domain: api.harborlist.com"
-    elif [ "$ENVIRONMENT" = "staging" ]; then
-        print_status "INFO" "Staging deployment requires:"
-        echo "   • Domain: staging.harborlist.com"
-        echo "   • API Domain: api-staging.harborlist.com"
-    else
-        print_status "INFO" "Development deployment requires:"
-        echo "   • Domain: dev.harborlist.com"
-        echo "   • API Domain: api-dev.harborlist.com"
-    fi
+    cd "${PROJECT_ROOT}"
     
-    echo ""
-    print_status "WARNING" "Ensure custom domains are configured before proceeding"
-    print_status "INFO" "See docs/DOMAIN_SETUP.md for complete setup instructions"
-    
-    echo ""
-    read -p "Have you configured custom domains? (y/N): " -n 1 -r
-    echo ""
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        print_status "ERROR" "Please configure custom domains first"
-        print_status "INFO" "See docs/DOMAIN_SETUP.md for instructions"
-        exit 1
-    fi
-fi
-
-# Build backend and frontend
-if [ "$SKIP_BUILD" = "false" ]; then
-    print_header "🔨 Building Backend Services"
-    
-    cd "$BACKEND_DIR"
-    
-    if [ ! -d "node_modules" ]; then
-        print_status "STEP" "Installing backend dependencies..."
-        npm install
-    fi
-    
-    print_status "STEP" "Building backend services..."
-    npm run build
-    
-    if [ -d "dist" ] && [ "$(ls -A dist)" ]; then
-        print_status "SUCCESS" "Backend build completed"
-        print_status "INFO" "Built services: $(ls dist/*.zip | wc -l) Lambda packages"
-    else
-        print_status "ERROR" "Backend build failed - no dist files found"
+    # Check for Docker Compose file
+    if [[ ! -f "docker-compose.local.yml" ]]; then
+        print_error "docker-compose.local.yml not found in project root"
         exit 1
     fi
     
-    print_header "🎨 Building Frontend Application"
+    print_step "Building and starting Docker services..."
     
-    cd "$FRONTEND_DIR"
+    # Use enhanced profile by default for Traefik routing and custom domains
+    COMPOSE_PROFILE="enhanced"
+    print_info "Deploying with enhanced profile (includes Traefik for custom domains)"
     
-    if [ ! -d "node_modules" ]; then
-        print_status "STEP" "Installing frontend dependencies..."
-        npm install
-    fi
+    # Stop any existing services
+    print_step "Stopping existing services..."
+    docker-compose -f docker-compose.local.yml --profile "${COMPOSE_PROFILE}" down --remove-orphans || true
     
-    print_status "STEP" "Building frontend application..."
-    npm run build
+    # Pull latest images and build
+    print_step "Building services..."
+    docker-compose -f docker-compose.local.yml --profile "${COMPOSE_PROFILE}" build --no-cache
     
-    if [ -d "dist" ] && [ "$(ls -A dist)" ]; then
-        print_status "SUCCESS" "Frontend build completed"
-        print_status "INFO" "Built assets ready for deployment"
-    else
-        print_status "ERROR" "Frontend build failed - no dist files found"
+    # Start services
+    print_step "Starting services..."
+    docker-compose -f docker-compose.local.yml --profile "${COMPOSE_PROFILE}" up -d
+    
+    # Wait for services to be ready
+    print_step "Waiting for services to start..."
+    sleep 10
+    
+    # Show service status
+    print_step "Checking service status..."
+    docker-compose -f docker-compose.local.yml --profile "${COMPOSE_PROFILE}" ps
+    
+    print_success "Local deployment completed!"
+    
+    # Display access information
+    echo ""
+    print_info "Local Environment Access Information:"
+    echo "  Frontend (Custom Domain): https://local.harborlist.com"
+    echo "  Backend API (Custom Domain): https://local-api.harborlist.com"
+    echo "  Frontend (Direct): http://localhost:3000"
+    echo "  Backend API (Direct): http://localhost:3001"
+    echo "  Traefik Dashboard: http://localhost:8088"
+    echo "  DynamoDB Local: http://localhost:8000"
+    echo "  DynamoDB Admin: http://localhost:8001"
+    
+    echo ""
+    print_info "Useful Docker Compose commands:"
+    echo "  View logs: docker-compose -f docker-compose.local.yml --profile ${COMPOSE_PROFILE} logs -f"
+    echo "  Stop services: docker-compose -f docker-compose.local.yml --profile ${COMPOSE_PROFILE} down"
+    echo "  Rebuild: docker-compose -f docker-compose.local.yml --profile ${COMPOSE_PROFILE} up --build -d"
+    
+    echo ""
+    print_warning "Note: For custom domains to work, add these entries to your /etc/hosts file:"
+    echo "  127.0.0.1 local.harborlist.com"
+    echo "  127.0.0.1 local-api.harborlist.com"
+    echo "  127.0.0.1 traefik.local.harborlist.com"
+}
+
+# Main execution logic
+main() {
+    # Check if environment parameter is provided
+    if [[ $# -eq 0 ]]; then
+        print_error "Environment parameter is required"
+        echo ""
+        echo "Usage: $0 <environment>"
+        echo ""
+        echo "Environments:"
+        echo "  local    - Docker Compose development environment (enhanced profile with Traefik)"
+        echo "  dev      - AWS development environment"
+        echo "  staging  - AWS staging environment"
+        echo "  prod     - AWS production environment"
+        echo ""
+        echo "Example: $0 local"
+        echo ""
+        echo "For more information, see the script header documentation."
         exit 1
     fi
-else
-    print_status "INFO" "Skipping build step"
-fi
+    
+    local environment=$1
+    
+    # Validate environment
+    validate_environment "${environment}"
+    
+    # Check prerequisites based on deployment target
+    if [[ "${environment}" == "local" ]]; then
+        check_docker_prerequisites
+        deploy_local
+    else
+        print_error "AWS deployment not implemented in this simplified version"
+        print_info "For AWS deployment, use the CDK directly from the infrastructure folder"
+        exit 1
+    fi
+    
+    print_success "Deployment process completed successfully!"
+    print_info "Log file saved to: ${LOG_FILE}"
+}
 
-# Deploy infrastructure
-print_header "🏗️  Deploying Infrastructure"
-
-cd "$INFRASTRUCTURE_DIR"
-
-if [ ! -d "node_modules" ]; then
-    print_status "STEP" "Installing infrastructure dependencies..."
-    npm install
-fi
-
-# Build CDK app
-print_status "STEP" "Building CDK application..."
-npm run build
-
-# Prepare deployment command
-if [ "$USE_CUSTOM_DOMAINS" = "true" ]; then
-    DEPLOY_COMMAND="npm run deploy:$ENVIRONMENT"
-    print_status "INFO" "Deploying with custom domains enabled"
-else
-    DEPLOY_COMMAND="npm run deploy:$ENVIRONMENT:no-domains"
-    print_status "INFO" "Deploying without custom domains (development only)"
-fi
-
-print_status "STEP" "Running CDK deployment..."
-print_status "INFO" "Command: $DEPLOY_COMMAND"
-
-# Run deployment
-if eval "$DEPLOY_COMMAND"; then
-    print_status "SUCCESS" "Infrastructure deployment completed"
-else
-    print_status "ERROR" "Infrastructure deployment failed"
-    exit 1
-fi
-
-# Verify deployment
-print_header "✅ Verifying Deployment"
-
-if ./scripts/verify-deployment.sh "$ENVIRONMENT"; then
-    print_status "SUCCESS" "Deployment verification passed"
-else
-    print_status "WARNING" "Deployment verification had issues"
-fi
-
-# Get deployment outputs
-print_header "📋 Deployment Summary"
-
-STACK_NAME="BoatListingStack-$ENVIRONMENT"
-FRONTEND_URL=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query 'Stacks[0].Outputs[?OutputKey==`FrontendUrl`].OutputValue' --output text 2>/dev/null || echo "Not found")
-API_URL=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query 'Stacks[0].Outputs[?OutputKey==`ApiUrl`].OutputValue' --output text 2>/dev/null || echo "Not found")
-
-print_status "SUCCESS" "🚤 HarborList deployment completed successfully!"
-echo ""
-echo "🔗 Access URLs:"
-echo "   Frontend: $FRONTEND_URL"
-echo "   API: $API_URL"
-echo ""
-
-if [ "$USE_CUSTOM_DOMAINS" = "true" ]; then
-    print_status "INFO" "Custom domains are configured"
-    echo ""
-    echo "🌐 Next Steps for Custom Domains:"
-    echo "   1. Configure DNS records in Cloudflare (see deployment outputs)"
-    echo "   2. Wait for DNS propagation (up to 24 hours)"
-    echo "   3. Test custom domain URLs"
-else
-    print_status "WARNING" "Deployed without custom domains (development only)"
-    echo ""
-    echo "⚠️  Production Recommendations:"
-    echo "   1. Set up custom domains for production use"
-    echo "   2. See docs/DOMAIN_SETUP.md for instructions"
-    echo "   3. Redeploy with custom domains enabled"
-fi
-
-echo ""
-echo "🎯 Additional Next Steps:"
-echo "   1. Create admin users: cd backend && npm run create-admin"
-echo "   2. Test the application functionality"
-echo "   3. Monitor CloudWatch logs for any issues"
-echo "   4. Set up monitoring and alerting"
-
-if [ "$ENVIRONMENT" = "prod" ]; then
-    echo "   5. Configure backup and disaster recovery"
-    echo "   6. Set up performance monitoring"
-    echo "   7. Review security settings"
-fi
-
-echo ""
-print_status "SUCCESS" "🎉 Deployment complete! Your boat listing platform is ready!"
+# Execute main function with all arguments
+main "$@"
