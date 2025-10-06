@@ -457,7 +457,7 @@ jobs:
           
           # Check CloudWatch log groups
           echo "Checking CloudWatch log groups..."
-          LOG_GROUPS=$(aws logs describe-log-groups --query 'logGroups[?contains(logGroupName, `boat-listing`) || contains(logGroupName, `boatlisting`)].logGroupName' --output text || echo "")
+          LOG_GROUPS=$(aws logs describe-log-groups --query 'logGroups[?contains(logGroupName, `harborlist`) || contains(logGroupName, `HarborList`)].logGroupName' --output text || echo "")
           
           if [ -n "$LOG_GROUPS" ]; then
             echo "✅ CloudWatch log groups found: $LOG_GROUPS"

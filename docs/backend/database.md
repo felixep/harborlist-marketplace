@@ -30,7 +30,7 @@ interface User {
 - `email-index`: PK: email (for login lookups)
 - `role-index`: PK: role, SK: createdAt (for admin filtering)
 
-#### **Listings Table (boat-listings)**
+#### **Listings Table (harborlist-listings)**
 ```typescript
 interface Listing {
   listingId: string;       // Primary Key

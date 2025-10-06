@@ -41,7 +41,7 @@
 
 import 'source-map-support/register';
 import * as cdk from 'aws-cdk-lib';
-import { BoatListingStack } from '../lib/boat-listing-stack';
+import { HarborListStack } from '../lib/harborlist-stack';
 
 /**
  * Environment-specific domain configuration interface
@@ -148,7 +148,7 @@ const config: EnvironmentConfig = envConfigs[environment];
  * - AWS account and region from environment variables
  * - Cost optimization through environment-appropriate resource sizing
  */
-new BoatListingStack(app, `BoatListingStack-${environment}`, {
+new HarborListStack(app, `HarborListStack-${environment}`, {
   environment,
   // Conditionally include domain configuration
   ...(useCustomDomains && config && {

@@ -1,5 +1,5 @@
 {
-  "name": "boat-listing-infrastructure",
+  "name": "harborlist-infrastructure",
   "version": "1.0.0",
   "scripts": {
     "build": "tsc",

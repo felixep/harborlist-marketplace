@@ -36,7 +36,7 @@ const dynamoClient = new DynamoDBClient({
 });
 const docClient = DynamoDBDocumentClient.from(dynamoClient);
 
-const LISTINGS_TABLE = process.env.LISTINGS_TABLE || 'boat-listings';
+const LISTINGS_TABLE = process.env.LISTINGS_TABLE || 'harborlist-listings';
 const REVIEWS_TABLE = process.env.REVIEWS_TABLE || 'boat-reviews';
 
 interface PlatformStats {

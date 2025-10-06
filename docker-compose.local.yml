@@ -110,7 +110,7 @@ services:
       - CORS_ORIGINS=https://local.harborlist.com,http://localhost:3000
       - API_BASE_URL=https://local-api.harborlist.com
       - FRONTEND_URL=https://local.harborlist.com
-      - LISTINGS_TABLE=boat-listings
+      - LISTINGS_TABLE=harborlist-listings
       - USERS_TABLE=boat-users
       - REVIEWS_TABLE=boat-reviews
       - SESSIONS_TABLE=boat-sessions
