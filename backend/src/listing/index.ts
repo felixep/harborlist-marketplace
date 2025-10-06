@@ -59,10 +59,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     const method = event.httpMethod;
     const pathParameters = event.pathParameters || {};
 
-    // Handle CORS preflight requests
-    if (method === 'OPTIONS') {
-      return createResponse(200, {});
-    }
+    // CORS preflight requests are handled by API Gateway
 
     switch (method) {
       case 'GET':

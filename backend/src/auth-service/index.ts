@@ -104,17 +104,20 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
   const clientInfo = getClientInfo(event);
 
   try {
-    // Handle CORS preflight requests
-    if (event.httpMethod === 'OPTIONS') {
-      return createResponse(200, {});
-    }
+    // CORS preflight requests are handled by API Gateway
 
     const path = event.path;
     const method = event.httpMethod;
     const body = JSON.parse(event.body || '{}');
 
     // Route handling
-    if (path.endsWith('/login') && method === 'POST') {
+    if (path.endsWith('/health') && method === 'GET') {
+      return createResponse(200, { 
+        status: 'healthy', 
+        timestamp: new Date().toISOString(),
+        service: 'auth-service'
+      });
+    } else if (path.endsWith('/login') && method === 'POST') {
       return await handleLogin(body, requestId, clientInfo);
     } else if (path.endsWith('/admin/login') && method === 'POST') {
       return await handleAdminLogin(body, requestId, clientInfo);

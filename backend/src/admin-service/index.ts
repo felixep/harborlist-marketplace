@@ -136,10 +136,7 @@ export const handler = withApiVersioning(async (event: APIGatewayProxyEvent, ver
   const requestId = event.requestContext.requestId;
 
   try {
-    // Handle CORS preflight requests
-    if (event.httpMethod === 'OPTIONS') {
-      return createResponse(200, {});
-    }
+    // CORS preflight requests are handled by API Gateway
 
     const path = event.path;
     const method = event.httpMethod;

@@ -5,7 +5,7 @@
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc && npm run package",
-    "package": "cd dist && mkdir -p packages && zip -r packages/auth-service.zip auth-service/ shared/ types/ && zip -r packages/listing.zip listing/ shared/ types/ && zip -r packages/search.zip search/ shared/ types/ && zip -r packages/media.zip media/ shared/ types/ && zip -r packages/email.zip email/ shared/ types/ && zip -r packages/stats-service.zip stats-service/ shared/ types/ && zip -r packages/admin-service.zip admin-service/ shared/ types/",
+    "package": "cd dist && mkdir -p packages && cp -r ../node_modules . && zip -r packages/auth-service.zip auth-service/ shared/ types/ node_modules/ && zip -r packages/listing.zip listing/ shared/ types/ node_modules/ && zip -r packages/search.zip search/ shared/ types/ node_modules/ && zip -r packages/media.zip media/ shared/ types/ node_modules/ && zip -r packages/email.zip email/ shared/ types/ node_modules/ && zip -r packages/stats-service.zip stats-service/ shared/ types/ node_modules/ && zip -r packages/admin-service.zip admin-service/ shared/ types/ node_modules/",
     "watch": "tsc -w",
     "test": "jest",
     "lint": "eslint src --ext .ts",

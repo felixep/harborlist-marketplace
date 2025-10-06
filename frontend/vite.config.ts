@@ -7,7 +7,7 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      '@harborlist/shared-types': '/workspace/packages/shared-types/src/index.ts',
+      '@harborlist/shared-types': '../packages/shared-types/src/index.ts',
     },
   },
   optimizeDeps: {

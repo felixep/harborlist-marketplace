@@ -291,3 +291,20 @@ Dockerfile.local
 !*.example
 !*.template
 !*-template.*
+
+# Secrets
+secrets/
+
+# =============================================================================
+# Cloudflare and CDN
+# =============================================================================
+# Wrangler (Cloudflare Workers)
+.wrangler/
+wrangler.toml
+
+# Cloudflare credentials and tokens
+cloudflare-token
+*.cloudflare
+
+## Others
+backup-comparison/

@@ -46,13 +46,13 @@
  * 
  * Security Considerations:
  * - Production deployments enforce custom domain requirements
- * - SSL/TLS certificates managed through Cloudflare
+ * - SSL/TLS certificates managed through AWS Certificate Manager
  * - Environment-specific security configurations
  * - Audit logging and compliance features enabled in production
  * 
  * Performance Optimization:
  * - Environment-specific build optimizations
- * - CDN configuration through Cloudflare
+ * - Direct S3 website hosting for optimal performance
  * - Lambda function cold start optimization
  * - Database query pattern optimization
  * 
@@ -149,7 +149,7 @@ echo "📋 Next Steps:"
 if [ "$USE_DOMAINS" = "true" ]; then
     echo "1. Ensure custom domains are configured (see docs/DOMAIN_SETUP.md)"
     echo "2. Deploy infrastructure: npm run deploy:$ENVIRONMENT"
-    echo "3. Configure DNS records in Cloudflare"
+    echo "3. Configure DNS records with your DNS provider"
     echo "4. Verify deployment: ./scripts/verify-deployment.sh $ENVIRONMENT"
     echo "5. Create admin user: cd ../backend && npm run create-admin"
 else

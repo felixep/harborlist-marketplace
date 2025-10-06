@@ -83,12 +83,12 @@ const environment: Environment = (app.node.tryGetContext('environment') || 'dev'
 /**
  * Check if custom domains should be enabled
  * 
- * Custom domains are enabled by default but can be disabled for testing
- * or development scenarios where domain configuration is not required.
+ * Custom domains are disabled by default and must be explicitly enabled
+ * to prevent SSL/CORS issues during development and testing.
  * 
  * @type {boolean}
  */
-const useCustomDomains: boolean = app.node.tryGetContext('useCustomDomains') !== 'false';
+const useCustomDomains: boolean = app.node.tryGetContext('useCustomDomains') === 'true';
 
 /**
  * Environment-specific domain configurations

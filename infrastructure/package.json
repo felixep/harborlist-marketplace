@@ -26,16 +26,17 @@
     "validate": "npm run build && npm run test && npm run synth:dev",
     "validate:all": "npm run validate && npm run synth:staging && npm run synth:prod"
   },
+  "dependencies": {
+    "aws-cdk-lib": "^2.100.0",
+    "constructs": "^10.0.0"
+  },
   "devDependencies": {
     "@types/node": "^20.0.0",
     "aws-cdk": "^2.100.0",
     "typescript": "^5.0.0",
     "jest": "^29.0.0",
     "@types/jest": "^29.0.0",
-    "ts-jest": "^29.0.0"
-  },
-  "dependencies": {
-    "aws-cdk-lib": "^2.100.0",
-    "constructs": "^10.0.0"
+    "ts-jest": "^29.0.0",
+    "ts-node": "^10.0.0"
   }
 }

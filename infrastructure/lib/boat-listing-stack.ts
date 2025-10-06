@@ -18,7 +18,7 @@
  * - Session management with automatic expiration
  * 
  * Networking & CDN:
- * - Cloudflare integration for CDN and security
+ * - Direct S3 website hosting with public access
  * - Custom domain support with SSL certificates
  * - CORS configuration for cross-origin requests
  * 
@@ -52,7 +52,8 @@ import * as sns from 'aws-cdk-lib/aws-sns';
 import * as subscriptions from 'aws-cdk-lib/aws-sns-subscriptions';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import { Construct } from 'constructs';
-import { CloudflareSecurityConstruct } from './cloudflare-security-construct';
+// Cloudflare security construct removed - using standard security instead
+import { StandardSecurityConstruct } from './standard-security-construct';
 
 /**
  * Configuration properties for the HarborList boat marketplace stack
@@ -79,7 +80,7 @@ interface BoatListingStackProps extends cdk.StackProps {
  * API endpoints, monitoring, and security components.
  * 
  * Architecture Overview:
- * - Frontend: React SPA hosted on S3 with Cloudflare CDN
+ * - Frontend: React SPA hosted on S3 with direct public access
  * - Backend: Node.js Lambda functions with API Gateway
  * - Database: DynamoDB with optimized GSI indexes
  * - Storage: S3 for media files and static assets
@@ -102,12 +103,12 @@ export class BoatListingStack extends cdk.Stack {
 
     const { environment, domainName, apiDomainName, alertEmail } = props;
 
-    // Cloudflare Origin Certificate - imported into ACM
+    // SSL Certificate - imported from ACM
     let certificate: certificatemanager.ICertificate | undefined;
     
     if (domainName && apiDomainName) {
       certificate = certificatemanager.Certificate.fromCertificateArn(
-        this, 'CloudflareOriginCertificate', 
+        this, 'SSLCertificate', 
         'arn:aws:acm:us-east-1:676032292155:certificate/93fe820b-e1bc-445c-8ab2-5a994cd95ed7'
       );
     }
@@ -217,9 +218,11 @@ export class BoatListingStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
-    // Frontend S3 Bucket configured for website hosting
+    // Frontend S3 Bucket configured for website hosting with custom domain
+    // Using S3 website endpoint + Cloudflare Flexible SSL for user-facing HTTPS
+    const frontendBucketName = domainName || `boat-listing-frontend-${this.account}`;
     const frontendBucket = new s3.Bucket(this, 'FrontendBucket', {
-      bucketName: `boat-listing-frontend-${this.account}`,
+      bucketName: frontendBucketName,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
       websiteIndexDocument: 'index.html',
       websiteErrorDocument: 'index.html', // SPA routing support
@@ -234,16 +237,28 @@ export class BoatListingStack extends cdk.Stack {
         allowedOrigins: ['*'],
         allowedHeaders: ['*'],
       }],
+      publicReadAccess: true, // Enable public read access
     });
 
-    // Note: Bucket policy will be updated after VPC endpoint is created
-    // to only allow access from the VPC endpoint
+    // Note: S3 bucket policies are now managed by StandardSecurityConstruct
 
     // OpenSearch Collection (commented out for initial deployment)
     // const searchCollection = new opensearch.CfnCollection(this, 'SearchCollection', {
     //   name: 'boat-listings',
     //   type: 'SEARCH',
     // });
+
+    // JWT Secret for authentication
+    const jwtSecret = new secretsmanager.Secret(this, 'AdminJwtSecret', {
+      secretName: `boat-listing-admin-jwt-${environment}`,
+      description: 'JWT secret for authentication services',
+      generateSecretString: {
+        secretStringTemplate: JSON.stringify({ username: 'admin' }),
+        generateStringKey: 'password',
+        passwordLength: 32,
+        excludeCharacters: '"@/\\',
+      },
+    });
 
     // Lambda Functions
     const authFunction = new lambda.Function(this, 'AuthFunction', {
@@ -252,7 +267,10 @@ export class BoatListingStack extends cdk.Stack {
       code: lambda.Code.fromAsset('../backend/dist/packages/auth-service.zip'),
       environment: {
         USERS_TABLE: usersTable.tableName,
-        JWT_SECRET: 'your-jwt-secret-key', // Use AWS Secrets Manager in production
+        JWT_SECRET: 'boat-listing-development-secret-2024',
+        SESSIONS_TABLE: adminSessionsTable.tableName,
+        AUDIT_LOGS_TABLE: auditLogsTable.tableName,
+        LOGIN_ATTEMPTS_TABLE: loginAttemptsTable.tableName,
       },
     });
 
@@ -263,7 +281,7 @@ export class BoatListingStack extends cdk.Stack {
       environment: {
         LISTINGS_TABLE: listingsTable.tableName,
         USERS_TABLE: usersTable.tableName,
-        JWT_SECRET: 'your-jwt-secret-key',
+        JWT_SECRET: 'boat-listing-development-secret-2024',
       },
     });
 
@@ -302,18 +320,6 @@ export class BoatListingStack extends cdk.Stack {
         LISTINGS_TABLE: listingsTable.tableName,
         USERS_TABLE: usersTable.tableName,
         REVIEWS_TABLE: 'boat-reviews', // This table will be created later when we add reviews
-      },
-    });
-
-    // JWT Secret for admin authentication
-    const jwtSecret = new secretsmanager.Secret(this, 'AdminJwtSecret', {
-      secretName: `boat-listing-admin-jwt-${environment}`,
-      description: 'JWT secret for admin authentication',
-      generateSecretString: {
-        secretStringTemplate: JSON.stringify({ username: 'admin' }),
-        generateStringKey: 'password',
-        excludeCharacters: '"@/\\',
-        passwordLength: 32,
       },
     });
 
@@ -400,6 +406,15 @@ export class BoatListingStack extends cdk.Stack {
     // Grant admin function access to JWT secret
     jwtSecret.grantRead(adminFunction);
 
+    // Grant auth function access to JWT secret and tables
+    jwtSecret.grantRead(authFunction);
+    auditLogsTable.grantReadWriteData(authFunction);
+    adminSessionsTable.grantReadWriteData(authFunction);
+    loginAttemptsTable.grantReadWriteData(authFunction);
+
+    // Grant listing function access to JWT secret
+    jwtSecret.grantRead(listingFunction);
+
     // Grant admin function CloudWatch permissions for metrics and logging
     adminFunction.addToRolePolicy(new iam.PolicyStatement({
       actions: [
@@ -432,7 +447,13 @@ export class BoatListingStack extends cdk.Stack {
       },
     });
 
-    const listings = api.root.addResource('listings');
+    const listings = api.root.addResource('listings', {
+      defaultCorsPreflightOptions: {
+        allowOrigins: apigateway.Cors.ALL_ORIGINS,
+        allowMethods: apigateway.Cors.ALL_METHODS,
+        allowHeaders: apigateway.Cors.DEFAULT_HEADERS.concat(['Authorization']),
+      }
+    });
     listings.addMethod('GET', new apigateway.LambdaIntegration(listingFunction));
     listings.addMethod('POST', new apigateway.LambdaIntegration(listingFunction));
 
@@ -441,7 +462,13 @@ export class BoatListingStack extends cdk.Stack {
     listing.addMethod('PUT', new apigateway.LambdaIntegration(listingFunction));
     listing.addMethod('DELETE', new apigateway.LambdaIntegration(listingFunction));
 
-    const search = api.root.addResource('search');
+    const search = api.root.addResource('search', {
+      defaultCorsPreflightOptions: {
+        allowOrigins: apigateway.Cors.ALL_ORIGINS,
+        allowMethods: apigateway.Cors.ALL_METHODS,
+        allowHeaders: apigateway.Cors.DEFAULT_HEADERS.concat(['Authorization']),
+      }
+    });
     search.addMethod('POST', new apigateway.LambdaIntegration(searchFunction));
 
     const media = api.root.addResource('media');
@@ -471,6 +498,16 @@ export class BoatListingStack extends cdk.Stack {
     const logout = auth.addResource('logout');
     logout.addMethod('POST', new apigateway.LambdaIntegration(authFunction));
 
+    // Health endpoint
+    const health = api.root.addResource('health', {
+      defaultCorsPreflightOptions: {
+        allowOrigins: apigateway.Cors.ALL_ORIGINS,
+        allowMethods: apigateway.Cors.ALL_METHODS,
+        allowHeaders: apigateway.Cors.DEFAULT_HEADERS,
+      }
+    });
+    health.addMethod('GET', new apigateway.LambdaIntegration(authFunction));
+
     // Admin API routes
     const admin = api.root.addResource('admin');
     admin.addMethod('GET', new apigateway.LambdaIntegration(adminFunction));
@@ -483,7 +520,7 @@ export class BoatListingStack extends cdk.Stack {
 
 
 
-    // API Gateway Custom Domain with Cloudflare Origin Certificate
+    // API Gateway Custom Domain with SSL Certificate
     let apiDomainNameResource: apigateway.DomainName | undefined;
     
     if (certificate && apiDomainName) {
@@ -501,8 +538,8 @@ export class BoatListingStack extends cdk.Stack {
 
 
 
-    // DNS Records - managed externally via Cloudflare
-    // Point your Cloudflare DNS to the CloudFront distribution domain and API Gateway URL
+    // DNS Records - managed externally
+    // Point your DNS to the S3 website endpoint and API Gateway URL
 
     // Deploy frontend build to S3 website hosting
     new s3deploy.BucketDeployment(this, 'FrontendDeployment', {
@@ -510,13 +547,16 @@ export class BoatListingStack extends cdk.Stack {
       destinationBucket: frontendBucket,
     });
 
-    // Cloudflare Security Integration for origin protection
-    // Restricts access to S3 and API Gateway to only Cloudflare IPs with proper headers
-    const cloudflareSecurityConstruct = new CloudflareSecurityConstruct(this, 'CloudflareSecurity', {
+    // Standard Security Integration
+    // Implements basic security controls with public access
+    const standardSecurityConstruct = new StandardSecurityConstruct(this, 'StandardSecurity', {
       environment: environment,
       frontendBucket: frontendBucket,
       restApi: api,
     });
+
+    // Using direct S3 website + Cloudflare Flexible SSL
+    // No CloudFront needed - Cloudflare handles HTTPS termination
 
     // Admin Service Monitoring
     const adminAlertTopic = new sns.Topic(this, 'AdminServiceAlerts', {
@@ -748,7 +788,7 @@ export class BoatListingStack extends cdk.Stack {
     if (apiDomainNameResource && domainName) {
       new cdk.CfnOutput(this, 'FrontendUrl', {
         value: `https://${domainName}`,
-        description: 'Frontend URL (via Cloudflare)',
+        description: 'Frontend URL (custom domain)',
       });
       
       new cdk.CfnOutput(this, 'CustomApiUrl', {
@@ -759,7 +799,7 @@ export class BoatListingStack extends cdk.Stack {
 
     new cdk.CfnOutput(this, 'S3WebsiteUrl', {
       value: frontendBucket.bucketWebsiteUrl,
-      description: 'S3 Website Hosting URL',
+      description: 'S3 Website URL (proxied through Cloudflare with Flexible SSL)',
     });
 
     new cdk.CfnOutput(this, 'MediaBucketName', {
@@ -813,20 +853,6 @@ export class BoatListingStack extends cdk.Stack {
       description: 'Admin Service CloudWatch Dashboard URL',
     });
 
-    // Cloudflare Security Outputs
-    new cdk.CfnOutput(this, 'CloudflareEdgeSecret', {
-      value: cloudflareSecurityConstruct.edgeSecret,
-      description: 'Edge secret for Cloudflare configuration (store securely)',
-    });
-
-    new cdk.CfnOutput(this, 'EdgeSecretParameterName', {
-      value: cloudflareSecurityConstruct.edgeSecretParameter.parameterName,
-      description: 'SSM Parameter name containing the Cloudflare edge secret',
-    });
-
-    new cdk.CfnOutput(this, 'CloudflareIpSyncFunctionName', {
-      value: cloudflareSecurityConstruct.ipSyncFunction.functionName,
-      description: 'Lambda function that synchronizes Cloudflare IP ranges',
-    });
+    // Security outputs now handled by StandardSecurityConstruct
   }
 }
