@@ -74,7 +74,7 @@ Browser → HTTPS (443) → Traefik → HTTP (internal) → Services
 npm run dev:setup:ssl
 
 # Or generate manually
-./scripts/generate-ssl-certs.sh
+./tools/ssl/generate-ssl-certs.sh
 ```
 
 ### Trust Installation

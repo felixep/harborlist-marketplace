@@ -57,6 +57,9 @@ harborlist-marketplace/
 │   ├── operations/                           # System operations & user management
 │   │   ├── create-admin-user.sh             # Multi-environment admin user creation
 │   │   └── README.md                        # Operations tools documentation
+│   ├── ssl/                                  # SSL certificate management
+│   │   ├── generate-ssl-certs.sh            # Local development SSL certificate generation
+│   │   └── README.md                        # SSL tools documentation
 │   ├── utilities/                            # General utility tools
 │   │   ├── update-cost-tracking.js          # Cost data maintenance
 │   │   ├── data-migration.sh                # Data migration utilities

@@ -69,7 +69,7 @@ docker-compose -f docker-compose.local.yml --profile enhanced up -d --build
 2. **Generate or verify SSL certificates:**
 ```bash
 # Generate local SSL certificates if missing
-./scripts/generate-ssl-certs.sh
+./tools/ssl/generate-ssl-certs.sh
 ```
 
 3. **Check Traefik status:**
