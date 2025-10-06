@@ -100,11 +100,11 @@ const docClient = DynamoDBDocumentClient.from(client);
  * data access and management. Environment variables allow for different
  * configurations across development, staging, and production environments.
  */
-const USERS_TABLE = process.env.USERS_TABLE || 'boat-users';
-const LISTINGS_TABLE = process.env.LISTINGS_TABLE || 'boat-listings';
-const SESSIONS_TABLE = process.env.SESSIONS_TABLE || 'boat-sessions';
-const AUDIT_LOGS_TABLE = process.env.AUDIT_LOGS_TABLE || 'boat-audit-logs';
-const LOGIN_ATTEMPTS_TABLE = process.env.LOGIN_ATTEMPTS_TABLE || 'boat-login-attempts';
+const USERS_TABLE = process.env.USERS_TABLE || 'harborlist-users';
+const LISTINGS_TABLE = process.env.LISTINGS_TABLE || 'harborlist-listings';
+const SESSIONS_TABLE = process.env.SESSIONS_TABLE || 'harborlist-sessions';
+const AUDIT_LOGS_TABLE = process.env.AUDIT_LOGS_TABLE || 'harborlist-audit-logs';
+const LOGIN_ATTEMPTS_TABLE = process.env.LOGIN_ATTEMPTS_TABLE || 'harborlist-login-attempts';
 
 /**
  * Main Lambda handler for admin service operations with API versioning support
@@ -2504,8 +2504,8 @@ function generateDailyData(startDate: Date, endDate: Date, items: any[], dateFie
   return dailyData;
 }
 // Platform Settings Handlers
-const SETTINGS_TABLE = process.env.SETTINGS_TABLE || 'boat-platform-settings';
-const SETTINGS_AUDIT_TABLE = process.env.SETTINGS_AUDIT_TABLE || 'boat-settings-audit';
+const SETTINGS_TABLE = process.env.SETTINGS_TABLE || 'harborlist-platform-settings';
+const SETTINGS_AUDIT_TABLE = process.env.SETTINGS_AUDIT_TABLE || 'harborlist-settings-audit';
 
 const handleGetPlatformSettings = async (event: AuthenticatedEvent): Promise<APIGatewayProxyResult> => {
   const requestId = event.requestContext.requestId;
@@ -3003,10 +3003,10 @@ async function getSettingsAuditLog(params: {
   }
 }
 // Support and Communication Handlers
-const SUPPORT_TICKETS_TABLE = process.env.SUPPORT_TICKETS_TABLE || 'boat-support-tickets';
-const SUPPORT_RESPONSES_TABLE = process.env.SUPPORT_RESPONSES_TABLE || 'boat-support-responses';
-const ANNOUNCEMENTS_TABLE = process.env.ANNOUNCEMENTS_TABLE || 'boat-announcements';
-const SUPPORT_TEMPLATES_TABLE = process.env.SUPPORT_TEMPLATES_TABLE || 'boat-support-templates';
+const SUPPORT_TICKETS_TABLE = process.env.SUPPORT_TICKETS_TABLE || 'harborlist-support-tickets';
+const SUPPORT_RESPONSES_TABLE = process.env.SUPPORT_RESPONSES_TABLE || 'harborlist-support-responses';
+const ANNOUNCEMENTS_TABLE = process.env.ANNOUNCEMENTS_TABLE || 'harborlist-announcements';
+const SUPPORT_TEMPLATES_TABLE = process.env.SUPPORT_TEMPLATES_TABLE || 'harborlist-support-templates';
 
 const handleGetSupportTickets = async (event: AuthenticatedEvent): Promise<APIGatewayProxyResult> => {
   const requestId = event.requestContext.requestId;

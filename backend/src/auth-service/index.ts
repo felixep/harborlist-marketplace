@@ -71,10 +71,10 @@ const docClient = DynamoDBDocumentClient.from(client);
 /**
  * Environment-based table name configuration with fallback defaults
  */
-const USERS_TABLE = process.env.USERS_TABLE || 'boat-users';
-const SESSIONS_TABLE = process.env.SESSIONS_TABLE || 'boat-sessions';
-const LOGIN_ATTEMPTS_TABLE = process.env.LOGIN_ATTEMPTS_TABLE || 'boat-login-attempts';
-const AUDIT_LOGS_TABLE = process.env.AUDIT_LOGS_TABLE || 'boat-audit-logs';
+const USERS_TABLE = process.env.USERS_TABLE || 'harborlist-users';
+const SESSIONS_TABLE = process.env.SESSIONS_TABLE || 'harborlist-sessions';
+const LOGIN_ATTEMPTS_TABLE = process.env.LOGIN_ATTEMPTS_TABLE || 'harborlist-login-attempts';
+const AUDIT_LOGS_TABLE = process.env.AUDIT_LOGS_TABLE || 'harborlist-audit-logs';
 
 /**
  * Main Lambda handler for authentication service endpoints
