@@ -47,7 +47,136 @@ sequenceDiagram
 
 ---
 
-## 🛡️ **Authorization Middleware**
+## � **JWT Secret Management**
+
+### **Environment-Conditional Secret Handling**
+
+HarborList implements a flexible approach to JWT secret management that adapts based on the deployment environment:
+
+#### **Local Development Environment**
+```typescript
+// For local development (environment: 'local')
+const JWT_SECRET = 'local-dev-secret-harborlist-2025';
+```
+
+**Benefits:**
+- ✅ Fast development iteration (no AWS API calls)
+- ✅ No AWS costs for local development
+- ✅ Offline development capability
+- ✅ Simplified debugging and testing
+
+#### **AWS Environments (dev/staging/prod)**
+```typescript
+// For AWS deployments
+const jwtSecret = new secretsmanager.Secret(this, 'AdminJwtSecret', {
+  secretName: `harborlist-admin-jwt-${environment}`,
+  description: 'JWT secret for authentication services',
+  generateSecretString: {
+    passwordLength: 32,
+    excludeCharacters: '"@/\\',
+  },
+});
+```
+
+**Benefits:**
+- ✅ Enhanced security with AWS Secrets Manager
+- ✅ Automatic secret rotation capability
+- ✅ Encrypted storage and transmission
+- ✅ IAM-based access control
+- ✅ Audit trail for secret access
+
+### **Dynamic Secret Retrieval**
+
+#### **Runtime Secret Resolution**
+```typescript
+/**
+ * Dynamically retrieve JWT secret based on environment
+ */
+export async function getJwtSecret(): Promise<string> {
+  const environment = process.env.ENVIRONMENT || 'local';
+  
+  if (environment === 'local') {
+    return process.env.JWT_SECRET || 'local-dev-secret-harborlist-2025';
+  }
+  
+  // For AWS environments, retrieve from Secrets Manager
+  const secretArn = process.env.JWT_SECRET_ARN;
+  const secretsClient = new SecretsManagerClient({ 
+    region: process.env.AWS_REGION || 'us-east-1' 
+  });
+  
+  const command = new GetSecretValueCommand({ SecretId: secretArn });
+  const response = await secretsClient.send(command);
+  const secret = JSON.parse(response.SecretString || '{}');
+  
+  return secret.password;
+}
+```
+
+#### **Async Authentication Functions**
+```typescript
+// Updated JWT functions with dynamic secret retrieval
+export async function verifyTokenAsync(token: string): Promise<JWTPayload> {
+  const authConfig = await getAuthConfig();
+  return verifyToken(token, authConfig.JWT_SECRET);
+}
+
+export async function createAccessTokenAsync(
+  user: User, 
+  sessionId: string, 
+  deviceId: string
+): Promise<string> {
+  const authConfig = await getAuthConfig();
+  
+  const payload = {
+    sub: user.id,
+    email: user.email,
+    role: user.role,
+    permissions: user.permissions,
+    sessionId,
+    deviceId,
+    type: 'access',
+    exp: Math.floor(Date.now() / 1000) + (15 * 60), // 15 minutes
+  };
+
+  return jwt.sign(payload, authConfig.JWT_SECRET);
+}
+```
+
+### **Environment Configuration**
+
+#### **Infrastructure Deployment**
+```typescript
+// CDK Stack configuration
+const jwtSecret = environment === 'local' 
+  ? undefined // Skip Secrets Manager for local
+  : new secretsmanager.Secret(this, 'AdminJwtSecret', {
+      secretName: `harborlist-admin-jwt-${environment}`,
+    });
+
+const jwtConfig = {
+  JWT_SECRET: environment === 'local' 
+    ? 'local-dev-secret-harborlist-2025'
+    : '',
+  JWT_SECRET_ARN: environment === 'local' 
+    ? '' 
+    : jwtSecret?.secretArn || '',
+};
+```
+
+#### **Lambda Environment Variables**
+```typescript
+environment: {
+  JWT_SECRET: jwtConfig.JWT_SECRET,           // Hardcoded for local
+  JWT_SECRET_ARN: jwtConfig.JWT_SECRET_ARN,   // ARN for AWS environments
+  ENVIRONMENT: environment,                    // 'local' | 'dev' | 'staging' | 'prod'
+  // ... other variables
+}
+```
+
+---
+
+## �🛡️ **Authorization Middleware**
 
 ### **Role-Based Access Control (RBAC)**
 

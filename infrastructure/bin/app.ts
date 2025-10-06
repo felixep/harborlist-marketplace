@@ -31,7 +31,7 @@
  * - CDK_DEFAULT_REGION: AWS region for deployment (recommended: us-east-1 for CloudFront)
  * 
  * Context Parameters:
- * - environment: Target deployment environment (dev|staging|prod)
+ * - environment: Target deployment environment (local|dev|staging|prod)
  * - useCustomDomains: Enable/disable custom domain configuration (default: true)
  * 
  * @author HarborList Development Team
@@ -58,9 +58,9 @@ interface EnvironmentConfig {
 /**
  * Supported deployment environments
  * 
- * @type {('dev' | 'staging' | 'prod')}
+ * @type {('local' | 'dev' | 'staging' | 'prod')}
  */
-type Environment = 'dev' | 'staging' | 'prod';
+type Environment = 'local' | 'dev' | 'staging' | 'prod';
 
 /**
  * Main CDK application instance
@@ -98,6 +98,7 @@ const useCustomDomains: boolean = app.node.tryGetContext('useCustomDomains') ===
  * to the appropriate AWS resources.
  * 
  * Domain Strategy:
+ * - local: Local development environment (localhost)
  * - dev: Development environment with dev subdomain
  * - staging: Pre-production environment with staging subdomain  
  * - prod: Production environment with apex domain
@@ -105,6 +106,10 @@ const useCustomDomains: boolean = app.node.tryGetContext('useCustomDomains') ===
  * @type {Record<Environment, EnvironmentConfig>}
  */
 const envConfigs: Record<Environment, EnvironmentConfig> = {
+  local: {
+    domainName: 'localhost:3000',
+    apiDomainName: 'localhost:3001',
+  },
   dev: {
     domainName: 'dev.harborlist.com',
     apiDomainName: 'api-dev.harborlist.com',

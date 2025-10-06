@@ -42,7 +42,60 @@ cdk --version     # Should be 2.100+
 aws sts get-caller-identity  # Verify AWS access
 ```
 
-### **🔧 Development Environment Deployment**
+### **� Environment-Specific JWT Secret Configuration**
+
+HarborList implements flexible JWT secret management that adapts to different deployment environments:
+
+#### **Environment Types**
+
+| Environment | JWT Secret Source | AWS Costs | Use Case |
+|-------------|------------------|-----------|----------|
+| `local` | Hardcoded Environment Variable | ❌ None | Local development |
+| `dev` | AWS Secrets Manager | ✅ Minimal | Development testing |
+| `staging` | AWS Secrets Manager | ✅ Production-like | Pre-production validation |
+| `prod` | AWS Secrets Manager | ✅ Production | Live production |
+
+#### **Local Development**
+```bash
+# No AWS resources created
+export JWT_SECRET="local-dev-secret-harborlist-2025"
+export ENVIRONMENT="local"
+
+# Deploy infrastructure (skips Secrets Manager)
+cdk deploy --context environment=local
+```
+
+#### **AWS Environments**
+```bash
+# Creates AWS Secrets Manager resources
+export ENVIRONMENT="dev"  # or staging/prod
+
+# Deploy with Secrets Manager
+cdk deploy --context environment=dev
+```
+
+#### **Runtime Behavior**
+```typescript
+// Backend automatically detects environment
+const environment = process.env.ENVIRONMENT || 'local';
+
+if (environment === 'local') {
+  // Uses hardcoded secret - fast, no AWS calls
+  const secret = process.env.JWT_SECRET;
+} else {
+  // Retrieves from AWS Secrets Manager - secure
+  const secret = await getSecretFromSecretsManager();
+}
+```
+
+**Benefits:**
+- **Local**: Fast development, no AWS costs, offline capability
+- **AWS**: Enhanced security, secret rotation, audit trails
+- **Flexibility**: Seamless transition between environments
+
+---
+
+### **�🔧 Development Environment Deployment**
 
 **Step 1: Prepare Infrastructure**
 ```bash

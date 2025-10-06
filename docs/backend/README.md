@@ -244,13 +244,37 @@ interface JWTTokenPayload {
   iss: string;           // Issuer (auth-service)
 }
 
-// Advanced Token Management with Rotation & Blacklisting
+// Advanced Token Management with Environment-Conditional Secrets
 export class TokenService {
-  private readonly jwtSecret: string;
+  private jwtSecret: string | null = null;
   private readonly blacklistedTokens = new Set<string>();
 
   constructor() {
-    this.jwtSecret = process.env.JWT_SECRET || this.getSecretFromAWS();
+    // JWT secret is now retrieved dynamically based on environment
+  }
+
+  /**
+   * Environment-conditional JWT secret retrieval
+   * Local: Hardcoded secret (fast, no AWS costs)
+   * AWS: Secrets Manager (secure, encrypted)
+   */
+  private async getJwtSecret(): Promise<string> {
+    if (this.jwtSecret) {
+      return this.jwtSecret;
+    }
+
+    const environment = process.env.ENVIRONMENT || 'local';
+    
+    if (environment === 'local') {
+      // Local development - use hardcoded secret
+      this.jwtSecret = process.env.JWT_SECRET || 'local-dev-secret-harborlist-2025';
+    } else {
+      // AWS environments - retrieve from Secrets Manager
+      const authConfig = await getAuthConfig();
+      this.jwtSecret = authConfig.JWT_SECRET;
+    }
+    
+    return this.jwtSecret;
   }
 
   async generateTokenPair(user: User): Promise<TokenPair> {
