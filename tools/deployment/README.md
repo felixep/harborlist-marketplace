@@ -210,7 +210,7 @@ Production cleanup requires typing `DESTROY PRODUCTION` (case-sensitive) to conf
 
 # AWS development cleanup with logging
 ./cleanup.sh dev
-# Creates: cleanup_YYYYMMDD_HHMMSS.log
+# Creates: logs/cleanup_YYYYMMDD_HHMMSS.log
 
 # Emergency production cleanup (still requires confirmation)
 ./cleanup.sh prod --force
@@ -242,7 +242,12 @@ The Traefik configuration enables:
 ### Logs
 All deployment activities are logged to:
 ```
-deployment_YYYYMMDD_HHMMSS.log
+logs/deployment_YYYYMMDD_HHMMSS.log
+```
+
+All cleanup activities are logged to:
+```
+logs/cleanup_YYYYMMDD_HHMMSS.log
 ```
 
 ### Health Checks

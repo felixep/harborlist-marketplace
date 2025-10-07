@@ -54,7 +54,7 @@
 #   DynamoDB Admin:           http://localhost:8001
 #
 # Logging:
-#   All deployment activities are logged to deployment_YYYYMMDD_HHMMSS.log
+#   All deployment activities are logged to logs/deployment_YYYYMMDD_HHMMSS.log
 #
 # Author: HarborList Team
 # Version: 2.0 (Enhanced Profile)
@@ -75,7 +75,10 @@ NC='\033[0m'
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-LOG_FILE="${PROJECT_ROOT}/deployment_${TIMESTAMP}.log"
+
+# Create logs directory if it doesn't exist
+mkdir -p "${PROJECT_ROOT}/logs"
+LOG_FILE="${PROJECT_ROOT}/logs/deployment_${TIMESTAMP}.log"
 
 # Initialize logging
 exec > >(tee -a "${LOG_FILE}")

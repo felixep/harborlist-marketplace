@@ -56,7 +56,10 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-LOG_FILE="${PROJECT_ROOT}/cleanup_${TIMESTAMP}.log"
+
+# Create logs directory if it doesn't exist
+mkdir -p "${PROJECT_ROOT}/logs"
+LOG_FILE="${PROJECT_ROOT}/logs/cleanup_${TIMESTAMP}.log"
 
 # Colors for output
 RED='\033[0;31m'
