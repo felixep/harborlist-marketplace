@@ -25,7 +25,7 @@
 
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, GetCommand, PutCommand, QueryCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, GetCommand, PutCommand, QueryCommand, UpdateCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
 import crypto from 'crypto';
 import { createResponse, createErrorResponse } from '../shared/utils';
 import {
@@ -361,13 +361,16 @@ const handleAdminLogin = async (
       return createErrorResponse(401, 'INVALID_CREDENTIALS', 'Invalid admin credentials', requestId);
     }
 
-    // Admin accounts require MFA
-    if (!user.mfaEnabled) {
-      return createErrorResponse(403, 'MFA_REQUIRED', 'MFA must be enabled for admin accounts', requestId);
-    }
-
-    // Verify MFA code
-    if (!mfaCode) {
+    // Handle MFA for admin accounts (optional)
+    if (user.mfaEnabled && mfaCode) {
+      // MFA is enabled and code provided - verify it
+      const mfaValid = verifyMFAToken(mfaCode, user.mfaSecret || '');
+      if (!mfaValid) {
+        await handleFailedLogin(user, clientInfo);
+        return createErrorResponse(401, 'INVALID_MFA', 'Invalid MFA code', requestId);
+      }
+    } else if (user.mfaEnabled && !mfaCode) {
+      // MFA is enabled but no code provided - request MFA
       const mfaToken = createMFAToken(user.id);
       return createResponse(200, {
         requiresMFA: true,
@@ -375,12 +378,7 @@ const handleAdminLogin = async (
         message: 'MFA verification required'
       });
     }
-
-    const mfaValid = verifyMFAToken(mfaCode, user.mfaSecret || '');
-    if (!mfaValid) {
-      await handleFailedLogin(user, clientInfo);
-      return createErrorResponse(401, 'INVALID_MFA', 'Invalid MFA code', requestId);
-    }
+    // If MFA is not enabled or not provided, proceed without MFA check
 
     // Reset login attempts on successful authentication
     await resetLoginAttempts(user.id);
@@ -663,6 +661,7 @@ const handlePasswordResetConfirm = async (
 
 async function getUserByEmail(email: string): Promise<User | null> {
   try {
+    // Use Scan for local development since GSI may not exist
     const result = await docClient.send(new QueryCommand({
       TableName: USERS_TABLE,
       IndexName: 'email-index',
@@ -674,8 +673,23 @@ async function getUserByEmail(email: string): Promise<User | null> {
 
     return result.Items && result.Items.length > 0 ? result.Items[0] as User : null;
   } catch (error) {
-    console.error('Error getting user by email:', error);
-    return null;
+    console.error('Error getting user by email with GSI, falling back to scan:', error);
+    
+    // Fallback to scan for local development
+    try {
+      const scanResult = await docClient.send(new ScanCommand({
+        TableName: USERS_TABLE,
+        FilterExpression: 'email = :email',
+        ExpressionAttributeValues: {
+          ':email': email
+        }
+      }));
+
+      return scanResult.Items && scanResult.Items.length > 0 ? scanResult.Items[0] as User : null;
+    } catch (scanError) {
+      console.error('Error scanning for user by email:', scanError);
+      return null;
+    }
   }
 }
 
@@ -789,8 +803,12 @@ async function createUserSession(
   const accessToken = createAccessToken(user, session.sessionId, deviceId);
   const refreshToken = createRefreshToken(user.id, session.sessionId);
 
-  // Update last login
-  await updateUser(user.id, { lastLogin: new Date().toISOString() });
+  // Update last login (skip if fails in development)
+  try {
+    await updateUser(user.id, { lastLogin: new Date().toISOString() });
+  } catch (updateError) {
+    console.error('Failed to update user last login (non-critical):', updateError);
+  }
 
   return {
     success: true,

@@ -113,11 +113,11 @@ services:
       - API_BASE_URL=https://local-api.harborlist.com
       - FRONTEND_URL=https://local.harborlist.com
       - LISTINGS_TABLE=harborlist-listings
-      - USERS_TABLE=boat-users
-      - REVIEWS_TABLE=boat-reviews
-      - SESSIONS_TABLE=boat-sessions
-      - LOGIN_ATTEMPTS_TABLE=boat-login-attempts
-      - AUDIT_LOGS_TABLE=boat-audit-logs
+      - USERS_TABLE=harborlist-users
+      - REVIEWS_TABLE=harborlist-reviews
+      - SESSIONS_TABLE=harborlist-sessions
+      - LOGIN_ATTEMPTS_TABLE=harborlist-login-attempts
+      - AUDIT_LOGS_TABLE=harborlist-audit-logs
     depends_on:
       - dynamodb-local
       - localstack
@@ -157,12 +157,13 @@ services:
     environment:
       - SERVICES=s3,ses,cloudwatch,logs
       - DEBUG=1
-      - DATA_DIR=/tmp/localstack/data
+      - DATA_DIR=/var/lib/localstack
       - LAMBDA_EXECUTOR=local
       - DOCKER_HOST=unix:///var/run/docker.sock
-      - HOST_TMP_FOLDER=/tmp/localstack
+      - PERSISTENCE=1
+      - SKIP_INFRA_DOWNLOADS=1
     volumes:
-      - localstack_data:/tmp/localstack
+      - localstack_data:/var/lib/localstack
       - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - harborlist-local

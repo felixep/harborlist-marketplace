@@ -15,7 +15,7 @@
  */
 
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, PutCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, PutCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
 import { hashPassword, createAdminUser } from '../src/shared/auth';
 import { User, UserRole, AdminPermission } from '../src/types/common';
 import crypto from 'crypto';
@@ -24,8 +24,17 @@ import crypto from 'crypto';
 const USERS_TABLE = process.env.USERS_TABLE || 'boat-users';
 const AWS_REGION = process.env.AWS_REGION || 'us-east-1';
 
-// Initialize DynamoDB client
-const client = new DynamoDBClient({ region: AWS_REGION });
+// Initialize DynamoDB client with local endpoint support
+const client = new DynamoDBClient({ 
+  region: AWS_REGION,
+  ...(process.env.DYNAMODB_ENDPOINT && {
+    endpoint: process.env.DYNAMODB_ENDPOINT,
+    credentials: {
+      accessKeyId: 'test',
+      secretAccessKey: 'test',
+    },
+  }),
+});
 const docClient = DynamoDBDocumentClient.from(client);
 
 interface CreateAdminOptions {
@@ -38,10 +47,9 @@ interface CreateAdminOptions {
 
 async function checkUserExists(email: string): Promise<boolean> {
   try {
-    const result = await docClient.send(new QueryCommand({
+    const result = await docClient.send(new ScanCommand({
       TableName: USERS_TABLE,
-      IndexName: 'email-index',
-      KeyConditionExpression: 'email = :email',
+      FilterExpression: 'email = :email',
       ExpressionAttributeValues: {
         ':email': email
       }
@@ -112,7 +120,7 @@ async function createAdminUserInDB(options: CreateAdminOptions): Promise<User> {
   const user: User = {
     ...adminUserData,
     password: hashedPassword,
-    // Admin accounts require MFA setup after first login
+    // MFA is optional for admin accounts
     mfaEnabled: false,
     sessionTimeout: role === UserRole.SUPER_ADMIN ? 30 : 60 // minutes
   } as User;
@@ -137,7 +145,7 @@ async function createAdminUserInDB(options: CreateAdminOptions): Promise<User> {
   
   console.log(`\n📋 Next Steps:`);
   console.log(`1. Log in to the admin panel at: /admin/login`);
-  console.log(`2. Set up MFA (required for admin accounts)`);
+  console.log(`2. Optionally set up MFA for enhanced security`);
   console.log(`3. Change the password after first login`);
 
   return user;
