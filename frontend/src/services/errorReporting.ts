@@ -229,11 +229,20 @@ class ErrorReportingService {
   private async sendErrors(errors: ErrorReport[]): Promise<void> {
     const token = localStorage.getItem('adminAuthToken');
     
+    // Don't send to admin endpoint if no auth token is available
+    if (!token) {
+      // For now, just log to console in development and skip sending
+      if (config.isDevelopment) {
+        console.warn('Skipping error report submission - no admin auth token available');
+      }
+      return;
+    }
+    
     const response = await fetch(`${config.apiUrl}/admin/error-reports`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(token && { Authorization: `Bearer ${token}` })
+        Authorization: `Bearer ${token}`
       },
       body: JSON.stringify({ errors })
     });
@@ -249,12 +258,16 @@ class ErrorReportingService {
   ): Promise<ErrorMetrics> {
     const token = localStorage.getItem('adminAuthToken');
     
+    if (!token) {
+      throw new Error('Admin authentication required to fetch error metrics');
+    }
+    
     const response = await fetch(
       `${config.apiUrl}/admin/error-reports/metrics?startDate=${startDate}&endDate=${endDate}`,
       {
         headers: {
           'Content-Type': 'application/json',
-          ...(token && { Authorization: `Bearer ${token}` })
+          Authorization: `Bearer ${token}`
         }
       }
     );
@@ -278,6 +291,11 @@ class ErrorReportingService {
     } = {}
   ): Promise<{ reports: ErrorReport[]; total: number }> {
     const token = localStorage.getItem('adminAuthToken');
+    
+    if (!token) {
+      throw new Error('Admin authentication required to fetch error reports');
+    }
+    
     const query = new URLSearchParams(
       Object.entries(filters).reduce((acc, [key, value]) => {
         if (value !== undefined) {
@@ -292,7 +310,7 @@ class ErrorReportingService {
       {
         headers: {
           'Content-Type': 'application/json',
-          ...(token && { Authorization: `Bearer ${token}` })
+          Authorization: `Bearer ${token}`
         }
       }
     );
