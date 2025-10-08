@@ -837,67 +837,291 @@ export class AdminAnalyticsService {
   }
 }
 
-// Real-time System Health Monitoring
-export class SystemHealthMonitor {
-  private readonly cloudWatch = new CloudWatchClient({});
-  private readonly healthChecks = new Map<string, HealthCheck>();
-
-  async performComprehensiveHealthCheck(): Promise<SystemHealth> {
+// AWS-Aware System Health Monitoring
+export class AWSHealthService {
+  private cloudwatch: AWS.CloudWatch;
+  private dynamodb: AWS.DynamoDB;
+  private isAWS: boolean;
+  
+  constructor() {
+    this.isAWS = !!process.env.AWS_LAMBDA_FUNCTION_NAME;
+    if (this.isAWS) {
+      this.cloudwatch = new AWS.CloudWatch();
+      this.dynamodb = new AWS.DynamoDB();
+    }
+  }
+  
+  async getComprehensiveHealth(): Promise<SystemHealthReport> {
     const startTime = Date.now();
     
+    // Environment-aware health checks
+    const healthChecks = this.isAWS ? 
+      await this.getAWSHealthChecks() : 
+      await this.getLocalHealthChecks();
+    
+    const overallStatus = this.calculateOverallStatus(healthChecks);
+    const performance = await this.getPerformanceMetrics();
+    const alerts = await this.generateAlerts(healthChecks);
+    
+    const healthReport: SystemHealthReport = {
+      status: overallStatus,
+      timestamp: new Date().toISOString(),
+      environment: {
+        type: this.isAWS ? 'aws' : 'local',
+        region: process.env.AWS_REGION || 'local',
+        runtime: process.version,
+        version: process.env.npm_package_version || '1.0.0',
+        functionName: process.env.AWS_LAMBDA_FUNCTION_NAME
+      },
+      services: healthChecks,
+      performance,
+      alerts,
+      responseTime: Date.now() - startTime,
+      lastCheck: new Date().toISOString()
+    };
+    
+    // Publish metrics to CloudWatch if in AWS
+    if (this.isAWS) {
+      await this.publishHealthMetrics(healthReport);
+    }
+    
+    return healthReport;
+  }
+  
+  private async getAWSHealthChecks(): Promise<ServiceHealthMap> {
+    const [dynamoHealth, lambdaHealth, apiGatewayHealth] = await Promise.all([
+      this.checkDynamoDBHealth(),
+      this.checkLambdaHealth(),
+      this.checkAPIGatewayHealth()
+    ]);
+    
+    return {
+      database: dynamoHealth,
+      compute: lambdaHealth,
+      api: apiGatewayHealth
+    };
+  }
+  
+  private async checkDynamoDBHealth(): Promise<ServiceHealth> {
     try {
-      // Parallel health checks for all system components
-      const [
-        apiHealth,
-        databaseHealth, 
-        storageHealth,
-        emailHealth,
-        cacheHealth,
-        externalServicesHealth
-      ] = await Promise.all([
-        this.checkAPIHealth(),
-        this.checkDatabaseHealth(),
-        this.checkStorageHealth(),
-        this.checkEmailServiceHealth(),
-        this.checkCacheHealth(),
-        this.checkExternalServices()
-      ]);
-
-      const overallStatus = this.determineOverallHealth([
-        apiHealth, databaseHealth, storageHealth, emailHealth, cacheHealth, externalServicesHealth
-      ]);
-
-      const systemHealth: SystemHealth = {
-        status: overallStatus,
-        timestamp: Date.now(),
-        checkDuration: Date.now() - startTime,
-        services: {
-          api: apiHealth,
-          database: databaseHealth,
-          storage: storageHealth,
-          email: emailHealth,
-          cache: cacheHealth,
-          external: externalServicesHealth
-        },
-        metrics: await this.collectSystemMetrics(),
-        alerts: await this.getActiveAlerts()
-      };
-
-      // Store health check result for historical analysis
-      await this.storeHealthCheckResult(systemHealth);
-
-      return systemHealth;
-
-    } catch (error) {
-      logger.error('Health check failed', { error });
+      const tableNames = [
+        process.env.USERS_TABLE || 'harborlist-users',
+        process.env.LISTINGS_TABLE || 'harborlist-listings',
+        process.env.SESSIONS_TABLE || 'harborlist-admin-sessions'
+      ];
+      
+      const tableHealthChecks = await Promise.all(
+        tableNames.map(async (tableName) => {
+          const startTime = Date.now();
+          
+          // Check table status and throttling metrics
+          const [tableDescription, throttleMetrics] = await Promise.all([
+            this.dynamodb.describeTable({ TableName: tableName }).promise(),
+            this.getTableThrottlingMetrics(tableName)
+          ]);
+          
+          const responseTime = Date.now() - startTime;
+          const isHealthy = tableDescription.Table?.TableStatus === 'ACTIVE' && 
+                           throttleMetrics.throttledRequests < 10;
+          
+          return {
+            tableName,
+            displayName: this.getTableDisplayName(tableName),
+            status: tableDescription.Table?.TableStatus || 'UNKNOWN',
+            responseTime,
+            healthy: isHealthy,
+            throttledRequests: throttleMetrics.throttledRequests,
+            consumedCapacity: throttleMetrics.consumedCapacity,
+            itemCount: await this.getApproximateItemCount(tableName)
+          };
+        })
+      );
+      
+      const allHealthy = tableHealthChecks.every(check => check.healthy);
+      const avgResponseTime = tableHealthChecks.reduce((sum, check) => 
+        sum + check.responseTime, 0) / tableHealthChecks.length;
       
       return {
-        status: 'critical',
-        timestamp: Date.now(),
-        checkDuration: Date.now() - startTime,
-        error: error.message,
-        services: {},
-        metrics: {},
+        status: allHealthy ? 'healthy' : 'unhealthy',
+        responseTime: avgResponseTime,
+        message: `${tableHealthChecks.filter(c => c.healthy).length}/${tableHealthChecks.length} tables healthy`,
+        details: tableHealthChecks
+      };
+    } catch (error) {
+      return {
+        status: 'unhealthy',
+        responseTime: 0,
+        message: `DynamoDB health check failed: ${error.message}`,
+        error: error.message
+      };
+    }
+  }
+  
+  private async checkLambdaHealth(): Promise<ServiceHealth> {
+    try {
+      const functionName = process.env.AWS_LAMBDA_FUNCTION_NAME;
+      if (!functionName) {
+        return { 
+          status: 'healthy', 
+          responseTime: 0, 
+          message: 'Not running in Lambda environment' 
+        };
+      }
+      
+      // Get Lambda performance metrics from CloudWatch
+      const [errorMetrics, durationMetrics, concurrencyMetrics] = await Promise.all([
+        this.getLambdaErrorMetrics(functionName),
+        this.getLambdaDurationMetrics(functionName),
+        this.getLambdaConcurrencyMetrics(functionName)
+      ]);
+      
+      const isHealthy = errorMetrics.errorRate < 0.05 && // Less than 5% error rate
+                       durationMetrics.averageDuration < 30000 && // Less than 30s average
+                       concurrencyMetrics.currentConcurrency < 900; // Less than 90% of limit
+      
+      return {
+        status: isHealthy ? 'healthy' : 'degraded',
+        responseTime: durationMetrics.averageDuration,
+        message: isHealthy ? 'Lambda performing normally' : 'Lambda performance degraded',
+        details: {
+          errorRate: errorMetrics.errorRate,
+          averageDuration: durationMetrics.averageDuration,
+          concurrency: concurrencyMetrics.currentConcurrency,
+          coldStarts: await this.getColdStartMetrics(functionName)
+        }
+      };
+    } catch (error) {
+      return {
+        status: 'unhealthy',
+        responseTime: 0,
+        message: `Lambda health check failed: ${error.message}`,
+        error: error.message
+      };
+    }
+  }
+  
+  private async publishHealthMetrics(healthData: SystemHealthReport): Promise<void> {
+    if (!this.isAWS) return;
+    
+    const metricData = [
+      {
+        MetricName: 'SystemHealth',
+        Value: healthData.status === 'healthy' ? 1 : 0,
+        Unit: 'Count',
+        Dimensions: [
+          { Name: 'Environment', Value: process.env.NODE_ENV || 'development' },
+          { Name: 'Service', Value: 'AdminAPI' }
+        ]
+      },
+      {
+        MetricName: 'DatabaseHealth',
+        Value: healthData.services.database?.status === 'healthy' ? 1 : 0,
+        Unit: 'Count',
+        Dimensions: [{ Name: 'Service', Value: 'DynamoDB' }]
+      },
+      {
+        MetricName: 'APIResponseTime',
+        Value: healthData.responseTime,
+        Unit: 'Milliseconds',
+        Dimensions: [{ Name: 'Endpoint', Value: 'HealthCheck' }]
+      }
+    ];
+    
+    await this.cloudwatch.putMetricData({
+      Namespace: 'HarborList/HealthMonitoring',
+      MetricData: metricData
+    }).promise();
+  }
+  
+  private async getLocalHealthChecks(): Promise<ServiceHealthMap> {
+    // Local development health checks
+    const [databaseHealth] = await Promise.all([
+      this.checkLocalDatabaseHealth()
+    ]);
+    
+    return {
+      database: databaseHealth,
+      api: {
+        status: 'healthy',
+        responseTime: 0,
+        message: 'Local API responding normally'
+      }
+    };
+  }
+  
+  private async checkLocalDatabaseHealth(): Promise<ServiceHealth> {
+    try {
+      const tableNames = [
+        process.env.USERS_TABLE || 'harborlist-users',
+        process.env.LISTINGS_TABLE || 'harborlist-listings', 
+        process.env.SESSIONS_TABLE || 'harborlist-admin-sessions'
+      ];
+      
+      const tableHealthChecks = await Promise.all(
+        tableNames.map(async (tableName) => {
+          const startTime = Date.now();
+          
+          try {
+            // Simple connectivity test for local DynamoDB
+            await docClient.send(new ScanCommand({
+              TableName: tableName,
+              Limit: 1
+            }));
+            
+            const responseTime = Date.now() - startTime;
+            
+            return {
+              table: tableName,
+              displayName: this.getTableDisplayName(tableName),
+              healthy: true,
+              responseTime,
+              status: 'ACTIVE',
+              itemCount: 0 // Not counting items in local for performance
+            };
+          } catch (error) {
+            return {
+              table: tableName,
+              displayName: this.getTableDisplayName(tableName),
+              healthy: false,
+              responseTime: Date.now() - startTime,
+              status: 'ERROR',
+              itemCount: 0,
+              error: error.message
+            };
+          }
+        })
+      );
+      
+      const healthyTables = tableHealthChecks.filter(check => check.healthy).length;
+      const totalTables = tableHealthChecks.length;
+      const avgResponseTime = tableHealthChecks.reduce((sum, check) => 
+        sum + check.responseTime, 0) / totalTables;
+      
+      return {
+        status: healthyTables === totalTables ? 'healthy' : 'unhealthy',
+        responseTime: avgResponseTime,
+        message: `${healthyTables}/${totalTables} tables healthy`,
+        details: tableHealthChecks
+      };
+    } catch (error) {
+      return {
+        status: 'unhealthy',
+        responseTime: 0,
+        message: `Local database health check failed: ${error.message}`,
+        error: error.message
+      };
+    }
+  }
+  
+  private getTableDisplayName(tableName: string): string {
+    const nameMap: Record<string, string> = {
+      'harborlist-users': 'Users',
+      'harborlist-listings': 'Listings', 
+      'harborlist-admin-sessions': 'Sessions',
+      'harborlist-sessions': 'Sessions'
+    };
+    return nameMap[tableName] || tableName;
+  }
         alerts: []
       };
     }

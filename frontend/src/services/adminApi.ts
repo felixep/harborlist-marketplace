@@ -63,6 +63,7 @@ class AdminApiService {
 
   // Admin dashboard endpoints
   async getDashboardMetrics(): Promise<any> {
+    // Call the enhanced dashboard metrics endpoint that includes system health
     return this.request('/admin/dashboard/metrics', {}, 
       { component: 'Dashboard', action: 'GetMetrics' });
   }

@@ -112,6 +112,42 @@ create_sessions_table() {
     fi
 }
 
+# Function to create admin sessions table with sessionId as primary key (to match production)
+create_admin_sessions_table() {
+    local table_name="harborlist-admin-sessions"
+    
+    echo "📊 Creating admin sessions table: $table_name"
+    
+    # Check if table exists
+    if aws dynamodb describe-table --table-name "$table_name" --endpoint-url "$DYNAMODB_ENDPOINT" --region "$AWS_REGION" >/dev/null 2>&1; then
+        echo "   ✅ Table $table_name already exists"
+        return
+    fi
+
+    # Create admin sessions table with sessionId as primary key (matches production)
+    aws dynamodb create-table \
+        --table-name "$table_name" \
+        --key-schema AttributeName=sessionId,KeyType=HASH \
+        --attribute-definitions AttributeName=sessionId,AttributeType=S AttributeName=userId,AttributeType=S \
+        --provisioned-throughput ReadCapacityUnits=5,WriteCapacityUnits=5 \
+        --global-secondary-indexes \
+        '[{
+            "IndexName": "user-index",
+            "KeySchema": [{"AttributeName": "userId", "KeyType": "HASH"}],
+            "Projection": {"ProjectionType": "ALL"},
+            "ProvisionedThroughput": {"ReadCapacityUnits": 5, "WriteCapacityUnits": 5}
+        }]' \
+        --endpoint-url "$DYNAMODB_ENDPOINT" \
+        --region "$AWS_REGION" >/dev/null 2>&1
+    
+    if [ $? -eq 0 ]; then
+        echo "   ✅ Admin sessions table $table_name created successfully with user-index GSI"
+    else
+        echo "   ❌ Failed to create admin sessions table $table_name"
+        return 1
+    fi
+}
+
 echo ""
 echo "🔧 Creating DynamoDB Tables..."
 
@@ -122,7 +158,7 @@ create_sessions_table  # Use specialized function for sessions table to match pr
 create_simple_table "harborlist-login-attempts"
 create_simple_table "harborlist-audit-logs"
 create_simple_table "harborlist-reviews"
-create_simple_table "harborlist-admin-sessions"
+create_admin_sessions_table  # Use specialized function for admin sessions table to match production
 create_simple_table "harborlist-analytics"
 
 # Admin-specific tables

@@ -1,5 +1,84 @@
 # 📊 Performance & Monitoring Architecture
 
+## 🏥 **System Health Monitoring**
+
+### **Environment-Aware Health Checks**
+
+The HarborList system includes comprehensive health monitoring that adapts to both local development and AWS production environments:
+
+#### **Environment Detection & Adaptation**
+```typescript
+// Automatic environment detection
+const isAWS = !!process.env.AWS_LAMBDA_FUNCTION_NAME;
+const isLocal = !isAWS;
+
+// Environment-specific health metrics
+environment: {
+  type: isAWS ? 'aws' : 'local',
+  region: process.env.AWS_REGION || 'local',
+  runtime: process.version,
+  version: packageJson.version
+}
+```
+
+#### **Local Development Health Checks**
+- **Database**: DynamoDB Local table accessibility and response times
+- **Memory**: Container memory usage and availability
+- **CPU**: Process CPU utilization
+- **Services**: Basic service connectivity tests
+
+#### **AWS Production Health Checks**
+- **Lambda Metrics**: Cold starts, concurrent executions, duration, memory utilization
+- **DynamoDB**: Table capacity, throttling, read/write metrics via CloudWatch
+- **API Gateway**: Request rates, error rates, latency percentiles
+- **CloudWatch Integration**: Custom metrics publishing and alarm integration
+- **SNS Alerting**: Critical system alerts via configured SNS topics
+
+#### **AWS Service Health Integration**
+```typescript
+async function checkAWSServicesHealth() {
+  const [dynamoHealth, lambdaHealth, apiGatewayHealth] = await Promise.all([
+    checkDynamoDBThrottling(),
+    checkLambdaConcurrency(), 
+    checkAPIGatewayMetrics()
+  ]);
+  
+  return {
+    dynamodb: dynamoHealth,
+    lambda: lambdaHealth,
+    apigateway: apiGatewayHealth
+  };
+}
+```
+
+#### **CloudWatch Metrics Publishing**
+```typescript
+// Publish custom health metrics to CloudWatch
+await cloudwatch.putMetricData({
+  Namespace: 'HarborList/HealthMonitoring',
+  MetricData: [
+    {
+      MetricName: 'DatabaseHealth',
+      Value: healthData.services.database.status === 'healthy' ? 1 : 0,
+      Unit: 'Count'
+    },
+    {
+      MetricName: 'APIResponseTime',
+      Value: healthData.performance.responseTime,
+      Unit: 'Milliseconds'
+    }
+  ]
+});
+```
+
+#### **Frontend Health Dashboard**
+The admin dashboard provides real-time system health visualization:
+- **Environment Awareness**: Displays current environment (Local/AWS) and region
+- **Service Status**: Visual indicators for all system components
+- **Performance Metrics**: Response times, memory usage, CPU utilization
+- **Alert Management**: Active alerts with severity levels and resolution status
+- **AWS-Specific Metrics**: Lambda cold starts, DynamoDB capacity, API Gateway throttling
+
 ## ⚡ **Performance Optimization Architecture**
 
 ### **Global Performance Strategy**
@@ -399,3 +478,408 @@ graph TB
     style DeploymentMetrics fill:#2196f3
     style UserJourney fill:#9c27b0
 ```
+
+## 🔧 **AWS Health Monitoring Implementation**
+
+### **Environment-Aware Health Service Architecture**
+
+```typescript
+// /backend/src/admin-service/aws-health-service.ts
+export class AWSHealthService {
+  private cloudwatch: AWS.CloudWatch;
+  private dynamodb: AWS.DynamoDB;
+  private isAWS: boolean;
+  
+  constructor() {
+    this.isAWS = !!process.env.AWS_LAMBDA_FUNCTION_NAME;
+    if (this.isAWS) {
+      this.cloudwatch = new AWS.CloudWatch();
+      this.dynamodb = new AWS.DynamoDB();
+    }
+  }
+  
+  async getComprehensiveHealth(): Promise<SystemHealthReport> {
+    const startTime = Date.now();
+    
+    // Parallel health checks based on environment
+    const healthChecks = this.isAWS ? 
+      await this.getAWSHealthChecks() : 
+      await this.getLocalHealthChecks();
+    
+    return {
+      status: this.calculateOverallStatus(healthChecks),
+      timestamp: new Date().toISOString(),
+      environment: {
+        type: this.isAWS ? 'aws' : 'local',
+        region: process.env.AWS_REGION || 'local',
+        runtime: process.version,
+        functionName: process.env.AWS_LAMBDA_FUNCTION_NAME
+      },
+      services: healthChecks,
+      performance: await this.getPerformanceMetrics(),
+      alerts: await this.generateAlerts(healthChecks),
+      responseTime: Date.now() - startTime
+    };
+  }
+  
+  private async getAWSHealthChecks(): Promise<ServiceHealthMap> {
+    const [dynamoHealth, lambdaHealth, apiGatewayHealth] = await Promise.all([
+      this.checkDynamoDBHealth(),
+      this.checkLambdaHealth(),
+      this.checkAPIGatewayHealth()
+    ]);
+    
+    // Publish metrics to CloudWatch
+    await this.publishHealthMetrics({
+      dynamodb: dynamoHealth,
+      lambda: lambdaHealth,
+      apigateway: apiGatewayHealth
+    });
+    
+    return {
+      database: dynamoHealth,
+      compute: lambdaHealth,
+      api: apiGatewayHealth
+    };
+  }
+  
+  private async checkDynamoDBHealth(): Promise<ServiceHealth> {
+    try {
+      const tableNames = [
+        process.env.USERS_TABLE || 'harborlist-users',
+        process.env.LISTINGS_TABLE || 'harborlist-listings',
+        process.env.SESSIONS_TABLE || 'harborlist-admin-sessions'
+      ];
+      
+      const tableHealthChecks = await Promise.all(
+        tableNames.map(async (tableName) => {
+          const startTime = Date.now();
+          
+          // Check table status and get metrics
+          const [tableDescription, throttleMetrics] = await Promise.all([
+            this.dynamodb.describeTable({ TableName: tableName }).promise(),
+            this.getTableThrottlingMetrics(tableName)
+          ]);
+          
+          const responseTime = Date.now() - startTime;
+          const isHealthy = tableDescription.Table?.TableStatus === 'ACTIVE' && 
+                           throttleMetrics.throttledRequests < 10;
+          
+          return {
+            tableName,
+            status: tableDescription.Table?.TableStatus || 'UNKNOWN',
+            responseTime,
+            healthy: isHealthy,
+            throttledRequests: throttleMetrics.throttledRequests,
+            consumedCapacity: throttleMetrics.consumedCapacity
+          };
+        })
+      );
+      
+      const allHealthy = tableHealthChecks.every(check => check.healthy);
+      const avgResponseTime = tableHealthChecks.reduce((sum, check) => 
+        sum + check.responseTime, 0) / tableHealthChecks.length;
+      
+      return {
+        status: allHealthy ? 'healthy' : 'unhealthy',
+        responseTime: avgResponseTime,
+        message: `${tableHealthChecks.filter(c => c.healthy).length}/${tableHealthChecks.length} tables healthy`,
+        details: tableHealthChecks
+      };
+    } catch (error) {
+      return {
+        status: 'unhealthy',
+        responseTime: 0,
+        message: `DynamoDB health check failed: ${error.message}`,
+        error: error.message
+      };
+    }
+  }
+  
+  private async checkLambdaHealth(): Promise<ServiceHealth> {
+    try {
+      const functionName = process.env.AWS_LAMBDA_FUNCTION_NAME;
+      if (!functionName) {
+        return { status: 'healthy', responseTime: 0, message: 'Not running in Lambda' };
+      }
+      
+      // Get Lambda metrics from CloudWatch
+      const [errorMetrics, durationMetrics, concurrencyMetrics] = await Promise.all([
+        this.getLambdaErrorMetrics(functionName),
+        this.getLambdaDurationMetrics(functionName),
+        this.getLambdaConcurrencyMetrics(functionName)
+      ]);
+      
+      const isHealthy = errorMetrics.errorRate < 0.05 && // Less than 5% error rate
+                       durationMetrics.averageDuration < 30000 && // Less than 30s average
+                       concurrencyMetrics.currentConcurrency < 900; // Less than 90% of limit
+      
+      return {
+        status: isHealthy ? 'healthy' : 'degraded',
+        responseTime: durationMetrics.averageDuration,
+        message: isHealthy ? 'Lambda performing normally' : 'Lambda performance degraded',
+        details: {
+          errorRate: errorMetrics.errorRate,
+          averageDuration: durationMetrics.averageDuration,
+          concurrency: concurrencyMetrics.currentConcurrency
+        }
+      };
+    } catch (error) {
+      return {
+        status: 'unhealthy',
+        responseTime: 0,
+        message: `Lambda health check failed: ${error.message}`,
+        error: error.message
+      };
+    }
+  }
+  
+  private async publishHealthMetrics(healthData: ServiceHealthMap): Promise<void> {
+    if (!this.isAWS) return;
+    
+    const metricData = [
+      {
+        MetricName: 'DatabaseHealth',
+        Value: healthData.database.status === 'healthy' ? 1 : 0,
+        Unit: 'Count',
+        Dimensions: [{ Name: 'Environment', Value: process.env.NODE_ENV || 'development' }]
+      },
+      {
+        MetricName: 'LambdaHealth', 
+        Value: healthData.compute.status === 'healthy' ? 1 : 0,
+        Unit: 'Count',
+        Dimensions: [{ Name: 'FunctionName', Value: process.env.AWS_LAMBDA_FUNCTION_NAME }]
+      },
+      {
+        MetricName: 'APIResponseTime',
+        Value: healthData.api.responseTime,
+        Unit: 'Milliseconds',
+        Dimensions: [{ Name: 'Service', Value: 'AdminAPI' }]
+      }
+    ];
+    
+    await this.cloudwatch.putMetricData({
+      Namespace: 'HarborList/HealthMonitoring',
+      MetricData: metricData
+    }).promise();
+  }
+}
+```
+
+### **Frontend AWS Health Dashboard Enhancement**
+
+```typescript
+// /frontend/src/hooks/useAWSHealthMetrics.ts
+export interface AWSHealthMetrics {
+  environment: {
+    type: 'aws' | 'local';
+    region: string;
+    functionName?: string;
+  };
+  services: {
+    dynamodb: {
+      status: 'healthy' | 'degraded' | 'unhealthy';
+      tables: Array<{
+        name: string;
+        status: string;
+        throttledRequests: number;
+        responseTime: number;
+      }>;
+    };
+    lambda: {
+      status: 'healthy' | 'degraded' | 'unhealthy';
+      errorRate: number;
+      averageDuration: number;
+      concurrency: number;
+      coldStarts?: number;
+    };
+    apigateway: {
+      status: 'healthy' | 'degraded' | 'unhealthy';
+      requestRate: number;
+      errorRate: number;
+      latency: number;
+    };
+  };
+  cloudwatch?: {
+    customMetrics: boolean;
+    alarmsActive: number;
+    dashboardUrl?: string;
+  };
+}
+
+export const useAWSHealthMetrics = () => {
+  const [healthData, setHealthData] = useState<AWSHealthMetrics | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  
+  const fetchHealthMetrics = useCallback(async () => {
+    try {
+      setLoading(true);
+      const response = await fetch('/api/admin/system/health/aws', {
+        headers: {
+          'Authorization': `Bearer ${getAuthToken()}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Health check failed: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      setHealthData(data);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error');
+      setHealthData(null);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+  
+  useEffect(() => {
+    fetchHealthMetrics();
+    const interval = setInterval(fetchHealthMetrics, 30000); // Every 30 seconds
+    return () => clearInterval(interval);
+  }, [fetchHealthMetrics]);
+  
+  return { healthData, loading, error, refetch: fetchHealthMetrics };
+};
+```
+
+```tsx
+// /frontend/src/components/admin/AWSHealthDashboard.tsx
+export const AWSHealthDashboard: React.FC = () => {
+  const { healthData, loading, error } = useAWSHealthMetrics();
+  
+  if (loading) return <HealthDashboardSkeleton />;
+  if (error) return <HealthErrorDisplay error={error} />;
+  if (!healthData) return null;
+  
+  return (
+    <div className="aws-health-dashboard">
+      {/* Environment Badge */}
+      <div className="environment-info">
+        <Badge 
+          variant={healthData.environment.type === 'aws' ? 'success' : 'info'}
+          className="mb-4"
+        >
+          {healthData.environment.type.toUpperCase()} - {healthData.environment.region}
+          {healthData.environment.functionName && (
+            <span className="ml-2 text-xs">({healthData.environment.functionName})</span>
+          )}
+        </Badge>
+      </div>
+      
+      {/* AWS Services Health Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        {/* DynamoDB Health */}
+        <HealthServiceCard
+          title="DynamoDB"
+          status={healthData.services.dynamodb.status}
+          icon={<DatabaseIcon />}
+          metrics={[
+            { label: 'Tables', value: healthData.services.dynamodb.tables.length },
+            { 
+              label: 'Throttled Requests', 
+              value: healthData.services.dynamodb.tables.reduce((sum, t) => sum + t.throttledRequests, 0)
+            }
+          ]}
+          details={
+            <DynamoDBTablesList tables={healthData.services.dynamodb.tables} />
+          }
+        />
+        
+        {/* Lambda Health */}
+        <HealthServiceCard
+          title="Lambda Functions"
+          status={healthData.services.lambda.status}
+          icon={<ServerIcon />}
+          metrics={[
+            { label: 'Error Rate', value: `${(healthData.services.lambda.errorRate * 100).toFixed(2)}%` },
+            { label: 'Avg Duration', value: `${healthData.services.lambda.averageDuration}ms` },
+            { label: 'Concurrency', value: healthData.services.lambda.concurrency }
+          ]}
+          details={
+            healthData.services.lambda.coldStarts && (
+              <div className="text-sm text-gray-600">
+                Cold Starts: {healthData.services.lambda.coldStarts}
+              </div>
+            )
+          }
+        />
+        
+        {/* API Gateway Health */}
+        <HealthServiceCard
+          title="API Gateway"
+          status={healthData.services.apigateway.status}
+          icon={<NetworkIcon />}
+          metrics={[
+            { label: 'Request Rate', value: `${healthData.services.apigateway.requestRate}/min` },
+            { label: 'Error Rate', value: `${(healthData.services.apigateway.errorRate * 100).toFixed(2)}%` },
+            { label: 'Latency', value: `${healthData.services.apigateway.latency}ms` }
+          ]}
+        />
+      </div>
+      
+      {/* CloudWatch Integration Status */}
+      {healthData.cloudwatch && (
+        <div className="bg-blue-50 rounded-lg p-4 mb-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center">
+              <CloudWatchIcon className="h-5 w-5 text-blue-600 mr-2" />
+              <span className="font-medium">CloudWatch Integration</span>
+            </div>
+            <div className="flex items-center space-x-4">
+              <span className="text-sm text-gray-600">
+                Active Alarms: {healthData.cloudwatch.alarmsActive}
+              </span>
+              {healthData.cloudwatch.dashboardUrl && (
+                <a
+                  href={healthData.cloudwatch.dashboardUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-600 hover:text-blue-800 text-sm"
+                >
+                  View Dashboard →
+                </a>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+```
+
+### **CloudWatch Alarms Integration**
+
+The system automatically integrates with existing CloudWatch alarms defined in the infrastructure:
+
+```typescript
+// Enhanced alarm handling in health service
+async function getActiveCloudWatchAlarms(): Promise<AlarmStatus[]> {
+  const alarms = await this.cloudwatch.describeAlarms({
+    StateValue: 'ALARM',
+    AlarmNamePrefix: 'harborlist-'
+  }).promise();
+  
+  return alarms.MetricAlarms?.map(alarm => ({
+    name: alarm.AlarmName,
+    description: alarm.AlarmDescription,
+    state: alarm.StateValue,
+    reason: alarm.StateReason,
+    timestamp: alarm.StateUpdatedTimestamp
+  })) || [];
+}
+```
+
+This comprehensive AWS health monitoring system provides:
+
+- **Environment Detection**: Automatically adapts between local and AWS environments
+- **Service-Specific Monitoring**: DynamoDB, Lambda, and API Gateway health checks
+- **CloudWatch Integration**: Custom metrics publishing and alarm monitoring  
+- **Real-Time Dashboard**: Frontend components for AWS-specific health visualization
+- **Performance Tracking**: AWS-specific performance metrics and thresholds
+- **Alert Management**: Integration with CloudWatch Alarms and SNS notifications

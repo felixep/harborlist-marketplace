@@ -31,6 +31,71 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 });
 
 /**
+ * Wrapper function for directly imported handlers
+ */
+const lambdaToExpressSync = (handler: any) => {
+  return async (req: Request, res: Response) => {
+    try {
+      // Convert Express request to Lambda event
+      const event = {
+        httpMethod: req.method,
+        path: req.path,
+        pathParameters: req.params,
+        queryStringParameters: req.query,
+        headers: req.headers,
+        body: req.body ? JSON.stringify(req.body) : null,
+        requestContext: {
+          requestId: Math.random().toString(36).substring(7),
+          identity: {
+            sourceIp: req.ip,
+            userAgent: req.get('User-Agent'),
+          },
+        },
+      };
+
+      const context = {
+        requestId: event.requestContext.requestId,
+        functionName: 'admin-service',
+        getRemainingTimeInMillis: () => 30000,
+      };
+
+      // Call Lambda handler
+      const result = await handler(event, context);
+
+      // Convert Lambda response to Express response
+      if (result.headers) {
+        Object.entries(result.headers).forEach(([key, value]) => {
+          res.set(key, value as string);
+        });
+      }
+
+      res.status(result.statusCode || 200);
+      
+      if (result.body) {
+        try {
+          const body = typeof result.body === 'string' ? JSON.parse(result.body) : result.body;
+          res.json(body);
+        } catch {
+          res.send(result.body);
+        }
+      } else {
+        res.end();
+      }
+    } catch (error: unknown) {
+      console.error('Handler error:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const errorStack = error instanceof Error ? error.stack : undefined;
+      
+      res.status(500).json({
+        error: 'Internal Server Error',
+        message: errorMessage,
+        stack: process.env.NODE_ENV === 'development' ? errorStack : undefined,
+      });
+    }
+  };
+};
+
+/**
  * Wrapper function to convert Lambda handlers to Express middleware
  * Handles the conversion between Express req/res and Lambda event/context
  */
@@ -38,8 +103,35 @@ const lambdaToExpress = (handlerModule: string, handlerName: string = 'handler')
   return async (req: Request, res: Response) => {
     try {
       // Import handler dynamically for hot reload
-      delete require.cache[require.resolve(handlerModule)];
-      const { [handlerName]: handler } = require(handlerModule);
+      const modulePath = handlerModule.startsWith('./') ? handlerModule : `./${handlerModule}`;
+      let fullPath;
+      
+      // Try to resolve with index.ts first, then fallback to direct module name
+      try {
+        fullPath = require.resolve(`${modulePath}/index.ts`);
+      } catch {
+        try {
+          fullPath = require.resolve(`${modulePath}.ts`);
+        } catch {
+          fullPath = require.resolve(modulePath);
+        }
+      }
+      
+      delete require.cache[fullPath];
+      
+      // For TypeScript files, we need to use dynamic import since we're running with ts-node
+      let handler;
+      if (fullPath.endsWith('.ts')) {
+        const module = await import(fullPath);
+        handler = module[handlerName] || module.default?.[handlerName];
+      } else {
+        const module = require(fullPath);
+        handler = module[handlerName];
+      }
+      
+      if (!handler) {
+        throw new Error(`Handler '${handlerName}' not found in module '${handlerModule}' (resolved to: ${fullPath})`);
+      }
 
       // Convert Express request to Lambda event
       const event = {
@@ -114,13 +206,16 @@ app.get('/health', (req: Request, res: Response) => {
   });
 });
 
+// Import admin service directly since it has complex TypeScript structure
+import { handler as adminHandler } from './admin-service/index';
+
 // API Routes - dynamically load handlers
 app.use('/api/auth', lambdaToExpress('./auth-service'));
 app.use('/api/listings', lambdaToExpress('./listing'));
 app.use('/api/search', lambdaToExpress('./search'));
 app.use('/api/media', lambdaToExpress('./media'));
 app.use('/api/email', lambdaToExpress('./email'));
-app.use('/api/admin', lambdaToExpress('./admin-service'));
+app.use('/api/admin', lambdaToExpressSync(adminHandler));
 app.use('/api/stats', lambdaToExpress('./stats-service'));
 
 // Catch-all for undefined routes
