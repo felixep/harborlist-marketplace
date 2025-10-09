@@ -1,23 +1,33 @@
 import { useNavigate } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
 import { useAuth } from '../components/auth/AuthProvider';
+import { useToast } from '../contexts/ToastContext';
 import { createListing } from '../services/listings';
 import ListingForm from '../components/listing/ListingForm';
 import { Listing } from '@harborlist/shared-types';
 
 export default function CreateListing() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
+  const { showError, showSuccess } = useToast();
 
   const createMutation = useMutation({
     mutationFn: createListing,
     onSuccess: (data) => {
+      showSuccess('Listing Created Successfully', 'Your boat listing has been published and is now live!');
       navigate(`/listing/${data.listingId}`);
     },
-    onError: (error) => {
+    onError: (error: any) => {
       console.error('Failed to create listing:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Failed to create listing. Please try again.';
-      alert(`Error: ${errorMessage}`);
+      
+      if (error.status === 401) {
+        showError('Authentication Required', 'Your session has expired. Please sign in again.');
+        logout();
+        navigate('/login', { state: { from: { pathname: '/create' } } });
+      } else {
+        const errorMessage = error instanceof Error ? error.message : 'Failed to create listing. Please try again.';
+        showError('Failed to Create Listing', errorMessage);
+      }
     }
   });
 

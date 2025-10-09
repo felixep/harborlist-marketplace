@@ -29,6 +29,16 @@ interface User {
 }
 
 /**
+ * Registration response interface
+ */
+interface RegistrationResponse {
+  token?: string;
+  user: User;
+  requiresVerification?: boolean;
+  message: string;
+}
+
+/**
  * Authentication state management hook
  * 
  * Provides comprehensive user authentication state management including
@@ -138,37 +148,46 @@ export const useAuthState = () => {
    * ```
    */
   const login = async (email: string, password: string) => {
-    const response = await api.login(email, password) as { token: string; user: User };
-    localStorage.setItem('authToken', response.token);
+    const response = await api.login(email, password) as { success: boolean; tokens: { accessToken: string; refreshToken: string }; user: User };
+    localStorage.setItem('authToken', response.tokens.accessToken);
+    localStorage.setItem('refreshToken', response.tokens.refreshToken);
     setUser(response.user);
   };
 
   /**
    * Registers a new user account
    * 
-   * Creates a new user account with the provided information and
-   * automatically logs in the user upon successful registration.
+   * Creates a new user account with the provided information. With the new
+   * email verification flow, users must verify their email before logging in.
    * 
    * @param {string} name - User's display name
    * @param {string} email - User's email address
    * @param {string} password - User's password
-   * @returns {Promise<void>} Resolves when registration is successful
+   * @returns {Promise<RegistrationResponse>} Resolves with registration response data
    * @throws {Error} Registration error if account creation fails
    * 
    * @example
    * ```tsx
    * try {
-   *   await register('John Doe', 'john@example.com', 'password123');
-   *   // User is now registered and logged in
+   *   const response = await register('John Doe', 'john@example.com', 'password123');
+   *   if (response.requiresVerification) {
+   *     // Redirect to verification page
+   *   }
    * } catch (error) {
    *   console.error('Registration failed:', error.message);
    * }
    * ```
    */
-  const register = async (name: string, email: string, password: string) => {
-    const response = await api.register(name, email, password) as { token: string; user: User };
-    localStorage.setItem('authToken', response.token);
-    setUser(response.user);
+  const register = async (name: string, email: string, password: string): Promise<RegistrationResponse> => {
+    const response = await api.register(name, email, password) as RegistrationResponse;
+    
+    // Only auto-login if verification is not required (backwards compatibility)
+    if (response.token && !response.requiresVerification) {
+      localStorage.setItem('authToken', response.token);
+      setUser(response.user);
+    }
+    
+    return response;
   };
 
   /**
@@ -190,6 +209,7 @@ export const useAuthState = () => {
    */
   const logout = () => {
     localStorage.removeItem('authToken');
+    localStorage.removeItem('refreshToken');
     setUser(null);
   };
 

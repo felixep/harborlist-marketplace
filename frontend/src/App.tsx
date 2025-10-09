@@ -40,6 +40,8 @@ import Insurance from './pages/Insurance';
 import Help from './pages/Help';
 import Contact from './pages/Contact';
 import Safety from './pages/Safety';
+import VerifyEmail from './pages/VerifyEmail';
+import RegistrationSuccess from './pages/RegistrationSuccess';
 import './styles/globals.css';
 
 // Admin imports
@@ -197,6 +199,8 @@ function App() {
                           <Route path="/listing/:id" element={<ListingDetail />} />
                           <Route path="/login" element={<Login />} />
                           <Route path="/register" element={<Register />} />
+                          <Route path="/verify-email" element={<VerifyEmail />} />
+                          <Route path="/registration-success" element={<RegistrationSuccess />} />
                           <Route path="/sell" element={<Sell />} />
                           <Route path="/finance" element={<Finance />} />
                           <Route path="/about" element={<About />} />

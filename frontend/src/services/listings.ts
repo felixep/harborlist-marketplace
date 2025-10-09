@@ -1,6 +1,7 @@
 import { Listing, SearchFilters, SearchResult } from '@harborlist/shared-types';
+import { config } from '../config/env';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://api-dev.harborlist.com';
+const API_BASE_URL = config.apiUrl;
 
 class ApiError extends Error {
   constructor(public status: number, message: string) {
@@ -22,7 +23,26 @@ async function apiRequest<T>(endpoint: string, options: RequestInit = {}): Promi
   });
 
   if (!response.ok) {
-    throw new ApiError(response.status, `API Error: ${response.statusText}`);
+    let errorMessage = `API Error: ${response.statusText}`;
+    
+    try {
+      const errorData = await response.json();
+      if (errorData.error?.message) {
+        errorMessage = errorData.error.message;
+      } else if (errorData.error) {
+        errorMessage = errorData.error;
+      }
+    } catch {
+      // If we can't parse the error response, use the default message
+    }
+
+    if (response.status === 401) {
+      errorMessage = 'Authentication required. Please sign in to continue.';
+    } else if (response.status === 403) {
+      errorMessage = 'You do not have permission to perform this action.';
+    }
+
+    throw new ApiError(response.status, errorMessage);
   }
 
   return response.json();

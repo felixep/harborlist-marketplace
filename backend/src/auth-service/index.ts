@@ -28,6 +28,7 @@ import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, GetCommand, PutCommand, QueryCommand, UpdateCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
 import crypto from 'crypto';
 import { createResponse, createErrorResponse } from '../shared/utils';
+import { emailService } from '../shared/email';
 import {
   hashPassword,
   verifyPassword,
@@ -137,6 +138,10 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       return await handlePasswordResetRequest(body, requestId, clientInfo);
     } else if (path.endsWith('/password/reset/confirm') && method === 'POST') {
       return await handlePasswordResetConfirm(body, requestId, clientInfo);
+    } else if (path.endsWith('/verify-email') && method === 'POST') {
+      return await handleEmailVerification(body, requestId, clientInfo);
+    } else if (path.endsWith('/resend-verification') && method === 'POST') {
+      return await handleResendVerification(body, requestId, clientInfo);
     }
 
     return createErrorResponse(404, 'NOT_FOUND', 'Endpoint not found', requestId);
@@ -203,7 +208,15 @@ const handleLogin = async (
 
     // Check if account is active
     if (user.status !== UserStatus.ACTIVE) {
+      if (user.status === UserStatus.PENDING_VERIFICATION) {
+        return createErrorResponse(403, 'EMAIL_NOT_VERIFIED', 'Please verify your email address before logging in. Check your email for verification instructions.', requestId);
+      }
       return createErrorResponse(403, 'ACCOUNT_INACTIVE', 'Account is not active', requestId);
+    }
+
+    // Check if email is verified (skip for admin users)
+    if (!user.emailVerified && user.role === UserRole.USER) {
+      return createErrorResponse(403, 'EMAIL_NOT_VERIFIED', 'Please verify your email address before logging in. Check your email for verification instructions.', requestId);
     }
 
     // Verify password
@@ -305,18 +318,19 @@ const handleRegister = async (
     // Log registration
     await logAuditEvent('USER_REGISTERED', 'user', { userId, email }, clientInfo, requestId, userId);
 
-    // TODO: Send verification email
-    // await sendVerificationEmail(email, emailVerificationToken);
+    // Send verification email
+    await emailService.sendVerificationEmail(email, name, emailVerificationToken);
 
     return createResponse(201, {
-      message: 'Registration successful. Please check your email to verify your account.',
+      message: 'Registration successful. Please check your email to verify your account before logging in.',
       user: {
         id: userId,
         name,
         email,
         status: user.status,
         emailVerified: user.emailVerified
-      }
+      },
+      requiresVerification: true
     });
   } catch (error) {
     console.error('Registration error:', error);
@@ -435,7 +449,7 @@ const handleRefreshToken = async (
     return createResponse(200, {
       accessToken,
       tokenType: 'Bearer',
-      expiresIn: 15 * 60, // 15 minutes
+      expiresIn: AUTH_CONFIG.ACCESS_TOKEN_EXPIRY_SECONDS,
     });
   } catch (error) {
     console.error('Token refresh error:', error);
@@ -657,6 +671,123 @@ const handlePasswordResetConfirm = async (
   }
 };
 
+const handleEmailVerification = async (
+  body: { token: string },
+  requestId: string,
+  clientInfo: { ipAddress: string; userAgent: string }
+): Promise<APIGatewayProxyResult> => {
+  const { token } = body;
+
+  if (!token) {
+    return createErrorResponse(400, 'MISSING_TOKEN', 'Verification token is required', requestId);
+  }
+
+  try {
+    // Find user with this verification token
+    const result = await docClient.send(new ScanCommand({
+      TableName: USERS_TABLE,
+      FilterExpression: 'emailVerificationToken = :token AND emailVerificationExpires > :now',
+      ExpressionAttributeValues: {
+        ':token': token,
+        ':now': new Date().toISOString()
+      }
+    }));
+
+    if (!result.Items || result.Items.length === 0) {
+      return createErrorResponse(400, 'INVALID_TOKEN', 'Invalid or expired verification token', requestId);
+    }
+
+    const user = result.Items[0] as User;
+
+    // Update user to verified status
+    await docClient.send(new UpdateCommand({
+      TableName: USERS_TABLE,
+      Key: { id: user.id },
+      UpdateExpression: 'SET emailVerified = :verified, #status = :status, emailVerificationToken = :nullToken, emailVerificationExpires = :nullExpires, updatedAt = :updatedAt',
+      ExpressionAttributeNames: {
+        '#status': 'status'
+      },
+      ExpressionAttributeValues: {
+        ':verified': true,
+        ':status': UserStatus.ACTIVE,
+        ':nullToken': null,
+        ':nullExpires': null,
+        ':updatedAt': new Date().toISOString()
+      }
+    }));
+
+    // Log verification
+    await logAuditEvent('EMAIL_VERIFIED', 'user', { userId: user.id, email: user.email }, clientInfo, requestId, user.id);
+
+    return createResponse(200, {
+      message: 'Email verified successfully. You can now log in to your account.',
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        status: UserStatus.ACTIVE,
+        emailVerified: true
+      }
+    });
+  } catch (error) {
+    console.error('Email verification error:', error);
+    return createErrorResponse(500, 'INTERNAL_ERROR', 'Email verification failed', requestId);
+  }
+};
+
+const handleResendVerification = async (
+  body: { email: string },
+  requestId: string,
+  clientInfo: { ipAddress: string; userAgent: string }
+): Promise<APIGatewayProxyResult> => {
+  const { email } = body;
+
+  if (!email || !validateEmail(email)) {
+    return createErrorResponse(400, 'INVALID_EMAIL', 'Valid email is required', requestId);
+  }
+
+  try {
+    const user = await getUserByEmail(email);
+    if (!user) {
+      // Don't reveal if user exists or not
+      return createResponse(200, { message: 'If the email exists and is unverified, a new verification email has been sent' });
+    }
+
+    if (user.emailVerified) {
+      return createErrorResponse(400, 'ALREADY_VERIFIED', 'Email is already verified', requestId);
+    }
+
+    // Generate new verification token
+    const emailVerificationToken = generateSecureToken();
+    const emailVerificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(); // 24 hours
+
+    // Update user with new token
+    await docClient.send(new UpdateCommand({
+      TableName: USERS_TABLE,
+      Key: { id: user.id },
+      UpdateExpression: 'SET emailVerificationToken = :token, emailVerificationExpires = :expires, updatedAt = :updatedAt',
+      ExpressionAttributeValues: {
+        ':token': emailVerificationToken,
+        ':expires': emailVerificationExpires,
+        ':updatedAt': new Date().toISOString()
+      }
+    }));
+
+        // Send verification email
+    await emailService.sendVerificationEmail(user.email, user.name, emailVerificationToken);
+
+    // Log resend verification
+    await logAuditEvent('VERIFICATION_RESENT', 'user', { userId: user.id, email: user.email }, clientInfo, requestId, user.id);
+
+    return createResponse(200, {
+      message: 'Verification email sent. Please check your email and follow the instructions.'
+    });
+  } catch (error) {
+    console.error('Resend verification error:', error);
+    return createErrorResponse(500, 'INTERNAL_ERROR', 'Failed to resend verification email', requestId);
+  }
+};
+
 // Utility Functions
 
 async function getUserByEmail(email: string): Promise<User | null> {
@@ -815,7 +946,7 @@ async function createUserSession(
     tokens: {
       accessToken,
       refreshToken,
-      expiresIn: 15 * 60, // 15 minutes
+      expiresIn: AUTH_CONFIG.ACCESS_TOKEN_EXPIRY_SECONDS,
       tokenType: 'Bearer'
     },
     user: {

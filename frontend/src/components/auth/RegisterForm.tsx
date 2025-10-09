@@ -10,8 +10,10 @@
  */
 
 import React, { useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from './AuthProvider';
+import { useToast } from '../../contexts/ToastContext';
+import { api } from '../../services/api';
 
 /**
  * Registration form component for new user account creation
@@ -71,7 +73,9 @@ export const RegisterForm: React.FC = () => {
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [errorCode, setErrorCode] = useState<string | null>(null);
   const { register } = useAuth();
+  const { showInfo } = useToast();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -108,6 +112,7 @@ export const RegisterForm: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setErrorCode(null);
     
     if (formData.password !== formData.confirmPassword) {
       setError('Passwords do not match');
@@ -116,11 +121,48 @@ export const RegisterForm: React.FC = () => {
     
     setLoading(true);
     try {
-      await register(formData.name, formData.email, formData.password);
-      // Redirect to intended destination after successful registration
-      navigate(from, { replace: true });
-    } catch (error) {
-      setError(error instanceof Error ? error.message : 'Registration failed');
+      const response = await api.register(formData.name, formData.email, formData.password) as { 
+        requiresVerification?: boolean; 
+        message: string;
+        user: { email: string; name: string } 
+      };
+      
+      if (response.requiresVerification) {
+        // Redirect to registration success page instead of logging in
+        navigate('/registration-success', { 
+          state: { 
+            email: formData.email,
+            name: formData.name,
+            message: response.message
+          },
+          replace: true 
+        });
+      } else {
+        // Fallback: if verification not required, proceed with normal flow
+        await register(formData.name, formData.email, formData.password);
+        navigate(from, { replace: true });
+      }
+    } catch (error: any) {
+      setErrorCode(error.code || null);
+      
+      // Handle specific error codes with user-friendly messages
+      if (error.code === 'USER_EXISTS') {
+        setError('An account with this email address already exists.');
+        showInfo(
+          'Account Already Exists', 
+          `An account is already registered with ${formData.email}. You can sign in instead.`,
+          { duration: 8000 }
+        );
+      } else if (error.code === 'WEAK_PASSWORD') {
+        setError('Password must contain at least one uppercase letter and one special character.');
+      } else if (error.code === 'INVALID_EMAIL') {
+        setError('Please enter a valid email address.');
+      } else if (error.code === 'VALIDATION_ERROR') {
+        setError(error.message || 'Please check your information and try again.');
+      } else {
+        // Generic error message for unknown errors
+        setError(error.message || 'Registration failed. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
@@ -152,7 +194,18 @@ export const RegisterForm: React.FC = () => {
     <form onSubmit={handleSubmit} className="max-w-md mx-auto space-y-4">
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
-          {error}
+          <div>{error}</div>
+          {errorCode === 'USER_EXISTS' && (
+            <div className="mt-2">
+              <Link 
+                to="/login" 
+                state={{ from: location.state?.from, email: formData.email }}
+                className="font-medium text-red-800 hover:text-red-900 underline"
+              >
+                Sign in to your existing account instead →
+              </Link>
+            </div>
+          )}
         </div>
       )}
       <div>
@@ -187,6 +240,24 @@ export const RegisterForm: React.FC = () => {
           className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
           required
         />
+        {formData.password && (
+          <div className="mt-2 text-xs text-gray-600">
+            <div className="space-y-1">
+              <div className={`flex items-center ${formData.password.length >= 8 ? 'text-green-600' : 'text-red-600'}`}>
+                <span className="mr-1">{formData.password.length >= 8 ? '✓' : '✗'}</span>
+                At least 8 characters
+              </div>
+              <div className={`flex items-center ${/[A-Z]/.test(formData.password) ? 'text-green-600' : 'text-red-600'}`}>
+                <span className="mr-1">{/[A-Z]/.test(formData.password) ? '✓' : '✗'}</span>
+                One uppercase letter
+              </div>
+              <div className={`flex items-center ${/[!@#$%^&*(),.?":{}|<>]/.test(formData.password) ? 'text-green-600' : 'text-red-600'}`}>
+                <span className="mr-1">{/[!@#$%^&*(),.?":{}|<>]/.test(formData.password) ? '✓' : '✗'}</span>
+                One special character
+              </div>
+            </div>
+          </div>
+        )}
       </div>
       <div>
         <label className="block text-sm font-medium text-gray-700">Confirm Password</label>
@@ -195,9 +266,23 @@ export const RegisterForm: React.FC = () => {
           name="confirmPassword"
           value={formData.confirmPassword}
           onChange={handleChange}
-          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+          className={`mt-1 block w-full rounded-md shadow-sm focus:ring-blue-500 ${
+            formData.confirmPassword && formData.password !== formData.confirmPassword
+              ? 'border-red-300 focus:border-red-500'
+              : 'border-gray-300 focus:border-blue-500'
+          }`}
           required
         />
+        {formData.confirmPassword && formData.password !== formData.confirmPassword && (
+          <div className="mt-1 text-sm text-red-600">
+            Passwords do not match
+          </div>
+        )}
+        {formData.confirmPassword && formData.password === formData.confirmPassword && formData.confirmPassword.length > 0 && (
+          <div className="mt-1 text-sm text-green-600">
+            ✓ Passwords match
+          </div>
+        )}
       </div>
       <button
         type="submit"

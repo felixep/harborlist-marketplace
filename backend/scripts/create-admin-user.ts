@@ -21,7 +21,7 @@ import { User, UserRole, AdminPermission } from '../src/types/common';
 import crypto from 'crypto';
 
 // Configuration
-const USERS_TABLE = process.env.USERS_TABLE || 'boat-users';
+const USERS_TABLE = process.env.USERS_TABLE || 'harborlist-users';
 const AWS_REGION = process.env.AWS_REGION || 'us-east-1';
 
 // Initialize DynamoDB client with local endpoint support

@@ -105,6 +105,11 @@ services:
       - DYNAMODB_ENDPOINT=http://dynamodb-local:8000
       - S3_ENDPOINT=http://localstack:4566
       - SES_ENDPOINT=http://localstack:4566
+      - SMTP_HOST=smtp4dev
+      - SMTP_PORT=25
+      - SMTP_SECURE=false
+      - ACCESS_TOKEN_EXPIRY_SECONDS=86400  # 24 hours for local development
+      - FROM_EMAIL=noreply@harborlist.local
       - JWT_SECRET=local-dev-secret-harborlist-2025
       - AWS_ACCESS_KEY_ID=test
       - AWS_SECRET_ACCESS_KEY=test
@@ -192,6 +197,31 @@ services:
       - redis_data:/data
     networks:
       - harborlist-local
+
+  # SMTP4Dev for local email testing
+  smtp4dev:
+    profiles: ["basic", "enhanced"]
+    image: rnwood/smtp4dev:v3
+    ports:
+      - "5001:80"    # Web UI (changed from 5000 to avoid conflict with macOS Control Center)
+      - "2525:25"    # SMTP port
+    environment:
+      - ServerOptions__HostName=smtp4dev
+    networks:
+      - harborlist-local
+    labels:
+      - "traefik.enable=true"
+      # HTTP to HTTPS redirect
+      - "traefik.http.routers.smtp4dev-http.rule=Host(`mail.local.harborlist.com`)"
+      - "traefik.http.routers.smtp4dev-http.entrypoints=web"
+      - "traefik.http.routers.smtp4dev-http.middlewares=https-redirect@file"
+      # HTTPS router
+      - "traefik.http.routers.smtp4dev-https.rule=Host(`mail.local.harborlist.com`)"
+      - "traefik.http.routers.smtp4dev-https.entrypoints=websecure"
+      - "traefik.http.routers.smtp4dev-https.tls=true"
+      - "traefik.http.routers.smtp4dev-https.service=smtp4dev"
+      - "traefik.http.services.smtp4dev.loadbalancer.server.port=80"
+      - "traefik.http.services.smtp4dev.loadbalancer.server.scheme=http"
 
 networks:
   harborlist-local:

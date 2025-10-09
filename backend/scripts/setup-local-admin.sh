@@ -21,8 +21,11 @@ if ! command -v npx &> /dev/null; then
 fi
 
 # Set default environment variables for local development
-export USERS_TABLE=${USERS_TABLE:-"boat-users"}
+export USERS_TABLE=${USERS_TABLE:-"harborlist-users"}
 export AWS_REGION=${AWS_REGION:-"us-east-1"}
+export DYNAMODB_ENDPOINT=${DYNAMODB_ENDPOINT:-"http://localhost:8000"}
+export AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-"test"}
+export AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-"test"}
 
 echo "📋 Configuration:"
 echo "   Users Table: $USERS_TABLE"

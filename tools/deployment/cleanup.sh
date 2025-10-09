@@ -10,12 +10,29 @@
 # Features:
 #   - Local environment cleanup (Docker containers, volumes, networks)
 #   - AWS environment cleanup (CDK destroy, S3 bucket deletion, resource cleanup)
-#   - Safety confirmations for destructive operations
-#   - Comprehensive logging and error handling
+#   - Safety confirmations for destructive op    echo "Usage: $0 <environment> [--force] [--clean-certs]"
+    echo ""
+    echo "Environments:"
+    echo "  local    - Clean up local Docker development environment"
+    echo "  dev      - Clean up AWS development environment"
+    echo "  staging  - Clean up AWS staging environment"
+    echo "  prod     - Clean up AWS production environment"
+    echo ""
+    echo "Options:"
+    echo "  --force       - Skip confirmation prompts (USE WITH EXTREME CAUTION)"
+    echo "  --clean-certs - Also remove SSL certificates (will need regeneration)"
+    echo ""
+    echo "Examples:"
+    echo "  $0 local                         # Clean up local development environment"
+    echo "  $0 dev                           # Clean up AWS dev environment"
+    echo "  $0 prod                          # Clean up AWS production (extra confirmation)"
+    echo "  $0 staging --force               # Force cleanup without prompts"
+    echo "  $0 local --clean-certs           # Clean up and remove SSL certificates"
+    echo "  $0 local --force --clean-certs   # Force cleanup including SSL certificates"omprehensive logging and error handling
 #   - Environment-specific validation
 #
 # Usage:
-#   ./cleanup.sh <environment> [--force]
+#   ./cleanup.sh <environment> [--force] [--clean-certs]
 #
 # Environments:
 #   local    - Clean up local Docker development environment
@@ -24,19 +41,23 @@
 #   prod     - Clean up AWS production environment (EXTRA CONFIRMATION REQUIRED)
 #
 # Options:
-#   --force  - Skip confirmation prompts (USE WITH EXTREME CAUTION)
+#   --force       - Skip confirmation prompts (USE WITH EXTREME CAUTION)
+#   --clean-certs - Also remove SSL certificates (will need regeneration)
 #
 # Examples:
-#   ./cleanup.sh local                    # Clean up local development environment
-#   ./cleanup.sh dev                      # Clean up AWS development environment
-#   ./cleanup.sh prod                     # Clean up AWS production (with confirmations)
-#   ./cleanup.sh staging --force          # Force cleanup without prompts
+#   ./cleanup.sh local                         # Clean up local development environment
+#   ./cleanup.sh dev                           # Clean up AWS development environment
+#   ./cleanup.sh prod                          # Clean up AWS production (with confirmations)
+#   ./cleanup.sh staging --force               # Force cleanup without prompts
+#   ./cleanup.sh local --clean-certs           # Clean up and remove SSL certificates
 #
 # WARNING: This script performs DESTRUCTIVE operations including:
 #   - Deleting S3 buckets and ALL their contents
 #   - Destroying CDK stacks and ALL associated resources
 #   - Removing Docker containers, volumes, and networks
 #   - Clearing local development data
+#   
+# PRESERVED: SSL certificates in certs/local/ are preserved for reuse
 #
 # Prerequisites:
 #   For local cleanup:
@@ -225,10 +246,12 @@ cleanup_local() {
     log_step "Removing Docker networks..."
     docker network ls --filter "label=com.docker.compose.project=harborlist-marketplace" -q | xargs -r docker network rm || true
     
-    # Clean up local certificates
-    if [[ -d "${PROJECT_ROOT}/certs/local" ]]; then
-        log_destruction "Removing local SSL certificates..."
+    # Handle SSL certificates based on --clean-certs flag
+    if [[ "$CLEAN_CERTS" == "true" ]] && [[ -d "${PROJECT_ROOT}/certs/local" ]]; then
+        log_destruction "Removing local SSL certificates (--clean-certs flag specified)..."
         rm -rf "${PROJECT_ROOT}/certs/local"
+    else
+        log_info "Preserving local SSL certificates in certs/local/ for reuse (use --clean-certs to remove)"
     fi
     
     # Clean up any local data directories
@@ -450,7 +473,11 @@ display_summary() {
     if [[ "$environment" == "local" ]]; then
         echo -e "${GREEN}║  ✅ Local Docker environment cleaned                         ║${NC}"
         echo -e "${GREEN}║  ✅ Containers, volumes, and networks removed               ║${NC}"
-        echo -e "${GREEN}║  ✅ Local certificates removed                              ║${NC}"
+        if [[ "$CLEAN_CERTS" == "true" ]]; then
+            echo -e "${GREEN}║  ✅ SSL certificates removed                                ║${NC}"
+        else
+            echo -e "${GREEN}║  ℹ️  SSL certificates preserved for reuse                   ║${NC}"
+        fi
         echo -e "${GREEN}║  ✅ Development data cleared                                ║${NC}"
     else
         echo -e "${GREEN}║  ✅ AWS environment cleaned                                  ║${NC}"
@@ -496,13 +523,29 @@ main() {
     fi
     
     local environment="$1"
-    local force_flag="${2:-}"
+    shift # Remove environment from arguments
     
-    # Check for force mode
+    # Parse flags
     FORCE_MODE="false"
-    if [[ "$force_flag" == "--force" ]]; then
-        FORCE_MODE="true"
-    fi
+    CLEAN_CERTS="false"
+    
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --force)
+                FORCE_MODE="true"
+                shift
+                ;;
+            --clean-certs)
+                CLEAN_CERTS="true"
+                shift
+                ;;
+            *)
+                log_error "Unknown option: $1"
+                show_usage
+                exit 1
+                ;;
+        esac
+    done
     
     # Create log file
     touch "$LOG_FILE"
@@ -511,6 +554,7 @@ main() {
     log_info "HarborList Environment Cleanup Started"
     log_info "Environment: $environment"
     log_info "Force Mode: $FORCE_MODE"
+    log_info "Clean Certificates: $CLEAN_CERTS"
     log_info "Log File: $LOG_FILE"
     
     # Print header

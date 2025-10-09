@@ -133,6 +133,31 @@ const lambdaToExpress = (handlerModule: string, handlerName: string = 'handler')
         throw new Error(`Handler '${handlerName}' not found in module '${handlerModule}' (resolved to: ${fullPath})`);
       }
 
+      // Parse JWT token for authentication (local development only)
+      let authorizer = undefined;
+      const authHeader = req.headers.authorization;
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        try {
+          const token = authHeader.substring(7);
+          // Import JWT verification dynamically
+          const { verifyToken } = await import('./shared/auth');
+          const decoded = verifyToken(token);
+          authorizer = {
+            claims: {
+              sub: decoded.sub,
+              email: decoded.email,
+              name: decoded.name,
+              role: decoded.role,
+              sessionId: decoded.sessionId,
+              deviceId: decoded.deviceId,
+            }
+          };
+        } catch (error) {
+          console.log('JWT token validation failed:', error instanceof Error ? error.message : 'Unknown error');
+          // Continue without authorization context - let the handler decide if auth is required
+        }
+      }
+
       // Convert Express request to Lambda event
       const event = {
         httpMethod: req.method,
@@ -147,6 +172,7 @@ const lambdaToExpress = (handlerModule: string, handlerName: string = 'handler')
             sourceIp: req.ip,
             userAgent: req.get('User-Agent'),
           },
+          ...(authorizer && { authorizer }),
         },
       };
 

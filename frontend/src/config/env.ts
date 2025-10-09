@@ -14,6 +14,8 @@ export const endpoints = {
   auth: {
     login: `${config.apiUrl}/auth/login`,
     register: `${config.apiUrl}/auth/register`,
+    verifyEmail: `${config.apiUrl}/auth/verify-email`,
+    resendVerification: `${config.apiUrl}/auth/resend-verification`,
   },
   admin: {
     base: `${config.apiUrl}/admin`,

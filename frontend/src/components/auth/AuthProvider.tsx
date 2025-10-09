@@ -29,6 +29,16 @@ interface User {
 }
 
 /**
+ * Registration response interface
+ */
+interface RegistrationResponse {
+  token?: string;
+  user: User;
+  requiresVerification?: boolean;
+  message: string;
+}
+
+/**
  * Authentication context type definition
  * 
  * Defines the shape of the authentication context value that will be
@@ -37,7 +47,7 @@ interface User {
  * @interface AuthContextType
  * @property {User | null} user - Current authenticated user or null if not logged in
  * @property {(email: string, password: string) => Promise<void>} login - Login function with email/password
- * @property {(name: string, email: string, password: string) => Promise<void>} register - Registration function
+ * @property {(name: string, email: string, password: string) => Promise<RegistrationResponse>} register - Registration function
  * @property {() => void} logout - Logout function that clears user session
  * @property {boolean} loading - Loading state for authentication operations
  * @property {boolean} isAuthenticated - Computed boolean indicating if user is logged in
@@ -45,7 +55,7 @@ interface User {
 interface AuthContextType {
   user: User | null;
   login: (email: string, password: string) => Promise<void>;
-  register: (name: string, email: string, password: string) => Promise<void>;
+  register: (name: string, email: string, password: string) => Promise<RegistrationResponse>;
   logout: () => void;
   loading: boolean;
   isAuthenticated: boolean;

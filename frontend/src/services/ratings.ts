@@ -1,6 +1,7 @@
 import { Review, ListingRating } from '@harborlist/shared-types';
+import { config } from '../config/env';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://api-dev.harborlist.com';
+const API_BASE_URL = config.apiUrl;
 
 export interface CreateReviewData {
   listingId: string;

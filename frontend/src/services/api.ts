@@ -1,5 +1,11 @@
 import { endpoints } from '../config/env';
 
+export interface ApiError extends Error {
+  code?: string;
+  requestId?: string;
+  status?: number;
+}
+
 class ApiService {
   private getAuthHeaders() {
     const token = localStorage.getItem('authToken');
@@ -19,8 +25,15 @@ class ApiService {
     });
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: 'Request failed' }));
-      throw new Error(error.error || `HTTP ${response.status}`);
+      const errorData = await response.json().catch(() => ({ error: 'Request failed' }));
+      
+      // Create a custom error object with more information
+      const error = new Error(errorData.error?.message || errorData.error || `HTTP ${response.status}`) as any;
+      error.code = errorData.error?.code;
+      error.requestId = errorData.error?.requestId;
+      error.status = response.status;
+      
+      throw error;
     }
 
     return response.json();
@@ -38,6 +51,20 @@ class ApiService {
     return this.request(endpoints.auth.register, {
       method: 'POST',
       body: JSON.stringify({ name, email, password })
+    });
+  }
+
+  async verifyEmail(token: string) {
+    return this.request(endpoints.auth.verifyEmail, {
+      method: 'POST',
+      body: JSON.stringify({ token })
+    });
+  }
+
+  async resendVerification(email: string) {
+    return this.request(endpoints.auth.resendVerification, {
+      method: 'POST',
+      body: JSON.stringify({ email })
     });
   }
 

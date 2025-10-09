@@ -9,9 +9,10 @@
  * @version 1.0.0
  */
 
-import React, { useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from './AuthProvider';
+import { api } from '../../services/api';
 
 /**
  * Login form component for user authentication
@@ -63,12 +64,21 @@ export const LoginForm: React.FC = () => {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [isEmailVerificationError, setIsEmailVerificationError] = useState(false);
+  const [resendLoading, setResendLoading] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
   // Get the intended destination from state, default to home
   const from = location.state?.from?.pathname || '/';
+
+  // Prefill email if coming from registration page
+  useEffect(() => {
+    if (location.state?.email) {
+      setEmail(location.state.email);
+    }
+  }, [location.state?.email]);
 
   /**
    * Handles form submission for user login
@@ -95,15 +105,40 @@ export const LoginForm: React.FC = () => {
     e.preventDefault();
     setLoading(true);
     setError('');
+    setIsEmailVerificationError(false);
     
     try {
       await login(email, password);
       // Redirect to intended destination after successful login
       navigate(from, { replace: true });
     } catch (error) {
-      setError(error instanceof Error ? error.message : 'Login failed');
+      const errorMessage = error instanceof Error ? error.message : 'Login failed';
+      setError(errorMessage);
+      
+      // Check if this is an email verification error
+      if (errorMessage.toLowerCase().includes('verify') || errorMessage.toLowerCase().includes('verification')) {
+        setIsEmailVerificationError(true);
+      }
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleResendVerification = async () => {
+    if (!email) {
+      alert('Please enter your email address first.');
+      return;
+    }
+
+    try {
+      setResendLoading(true);
+      await api.resendVerification(email);
+      alert('Verification email sent! Please check your inbox and spam folder.');
+    } catch (error) {
+      console.error('Resend verification error:', error);
+      alert('Failed to send verification email. Please try again.');
+    } finally {
+      setResendLoading(false);
     }
   };
 
@@ -111,7 +146,20 @@ export const LoginForm: React.FC = () => {
     <form onSubmit={handleSubmit} className="max-w-md mx-auto space-y-4">
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
-          {error}
+          <div className="mb-2">{error}</div>
+          {isEmailVerificationError && (
+            <div className="text-sm space-y-2">
+              <div>Need a new verification email?</div>
+              <button
+                type="button"
+                onClick={handleResendVerification}
+                disabled={resendLoading}
+                className="text-blue-600 hover:text-blue-700 underline disabled:opacity-50"
+              >
+                {resendLoading ? 'Sending...' : 'Resend verification email'}
+              </button>
+            </div>
+          )}
         </div>
       )}
       <div>

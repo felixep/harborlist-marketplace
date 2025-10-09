@@ -174,6 +174,21 @@ deploy_local() {
         exit 1
     fi
     
+    print_step "Setting up SSL certificates for local development..."
+    
+    # Check if SSL certificates exist, generate if needed
+    if [[ ! -f "${PROJECT_ROOT}/certs/local/server-cert.pem" ]] || [[ ! -f "${PROJECT_ROOT}/certs/local/server-key.pem" ]]; then
+        print_info "SSL certificates not found, generating new ones..."
+        if [[ -f "${PROJECT_ROOT}/tools/ssl/generate-ssl-certs.sh" ]]; then
+            "${PROJECT_ROOT}/tools/ssl/generate-ssl-certs.sh"
+        else
+            print_warning "SSL certificate generation script not found"
+            print_info "Please run: ./tools/ssl/generate-ssl-certs.sh"
+        fi
+    else
+        print_success "SSL certificates already exist"
+    fi
+    
     print_step "Building and starting Docker services..."
     
     # Use enhanced profile by default for Traefik routing and custom domains
@@ -209,6 +224,19 @@ deploy_local() {
         print_info "Run: ./backend/scripts/setup-local-db.sh"
     fi
     
+    # Create admin user using existing working script
+    print_step "Creating local admin user..."
+    if [[ -f "${PROJECT_ROOT}/tools/operations/create-admin-user.sh" ]]; then
+        "${PROJECT_ROOT}/tools/operations/create-admin-user.sh" \
+            --environment local \
+            --email admin@harborlist.local \
+            --name "Local Admin" \
+            --role super_admin
+    else
+        print_warning "Admin user creation script not found. You may need to create an admin user manually."
+        print_info "Run: ./tools/operations/create-admin-user.sh --environment local --email admin@harborlist.local --name 'Local Admin' --role super_admin"
+    fi
+    
     print_success "Local deployment completed!"
     
     # Display access information
@@ -221,6 +249,13 @@ deploy_local() {
     echo "  Traefik Dashboard: http://localhost:8088"
     echo "  DynamoDB Local: http://localhost:8000"
     echo "  DynamoDB Admin: http://localhost:8001"
+    echo "  SMTP4Dev (Email Testing): http://localhost:5001"
+    
+    echo ""
+    print_info "Default Admin Credentials:"
+    echo "  Email: admin@harborlist.local"
+    echo "  Check the admin setup output above for the generated password"
+    echo "  Role: super_admin"
     
     echo ""
     print_info "Useful Docker Compose commands:"

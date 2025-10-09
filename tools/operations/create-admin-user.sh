@@ -38,7 +38,7 @@ DRY_RUN=false
 get_env_config() {
     case $1 in
         local)
-            echo "USERS_TABLE=boat-users AWS_REGION=us-east-1"
+            echo "USERS_TABLE=harborlist-users AWS_REGION=us-east-1 DYNAMODB_ENDPOINT=http://localhost:8000"
             ;;
         dev)
             echo "USERS_TABLE=harborlist-users-dev AWS_REGION=us-east-1"

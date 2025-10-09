@@ -53,7 +53,11 @@ const clientConfig = {
 };
 
 const client = new DynamoDBClient(clientConfig);
-const docClient = DynamoDBDocumentClient.from(client);
+const docClient = DynamoDBDocumentClient.from(client, {
+  marshallOptions: {
+    removeUndefinedValues: true,
+  },
+});
 
 /**
  * Environment-based table name configuration

@@ -45,6 +45,10 @@ export const AUTH_CONFIG = {
   PASSWORD_MIN_LENGTH: 8,
   ADMIN_SESSION_TIMEOUT: 60, // minutes
   USER_SESSION_TIMEOUT: 24 * 60, // minutes
+  // Configurable token expiry - default to 24 hours in development, 15 minutes in production
+  ACCESS_TOKEN_EXPIRY_SECONDS: process.env.ACCESS_TOKEN_EXPIRY_SECONDS ? 
+    parseInt(process.env.ACCESS_TOKEN_EXPIRY_SECONDS) : 
+    (process.env.NODE_ENV === 'development' ? 24 * 60 * 60 : 15 * 60),
 };
 
 /**
@@ -271,7 +275,7 @@ export function createAccessToken(user: User, sessionId: string, deviceId: strin
     sessionId,
     deviceId,
     iat: Math.floor(Date.now() / 1000),
-    exp: Math.floor(Date.now() / 1000) + (15 * 60), // 15 minutes
+    exp: Math.floor(Date.now() / 1000) + AUTH_CONFIG.ACCESS_TOKEN_EXPIRY_SECONDS,
   };
 
   return jwt.sign(payload, AUTH_CONFIG.JWT_SECRET);
