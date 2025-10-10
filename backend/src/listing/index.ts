@@ -117,7 +117,23 @@ async function getListing(listingId: string, requestId: string): Promise<APIGate
     // Increment view count
     await db.incrementViews(listingId);
 
-    return createResponse(200, { listing });
+    // Fetch owner information
+    let listingWithOwner = listing;
+    try {
+      const owner = await db.getUser(listing.ownerId);
+      listingWithOwner = {
+        ...listing,
+        owner: owner ? {
+          id: owner.id,
+          name: owner.name,
+          email: owner.email
+        } : null
+      } as any;
+    } catch (error) {
+      console.warn(`Failed to fetch owner for listing ${listingId}:`, error);
+    }
+
+    return createResponse(200, { listing: listingWithOwner });
   } catch (error) {
     console.error('Error getting listing:', error);
     return createErrorResponse(500, 'DATABASE_ERROR', 'Failed to retrieve listing', requestId);
@@ -141,9 +157,32 @@ async function getListings(event: APIGatewayProxyEvent, requestId: string): Prom
 
     const result = await db.getListings(limit, lastKey);
     
+    // Fetch owner information for each listing
+    const listingsWithOwners = await Promise.all(
+      result.listings.map(async (listing: any) => {
+        try {
+          const owner = await db.getUser(listing.ownerId);
+          return {
+            ...listing,
+            owner: owner ? {
+              id: owner.id,
+              name: owner.name,
+              email: owner.email // Optional: include email if needed
+            } : null
+          };
+        } catch (error) {
+          console.warn(`Failed to fetch owner for listing ${listing.listingId}:`, error);
+          return {
+            ...listing,
+            owner: null
+          };
+        }
+      })
+    );
+    
     const response: any = {
-      listings: result.listings,
-      total: result.listings.length,
+      listings: listingsWithOwners,
+      total: listingsWithOwners.length,
     };
 
     if (result.lastKey) {

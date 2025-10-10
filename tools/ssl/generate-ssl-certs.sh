@@ -48,7 +48,8 @@ subjectAltName = @alt_names
 DNS.1 = local.harborlist.com
 DNS.2 = local-api.harborlist.com
 DNS.3 = traefik.local.harborlist.com
-DNS.4 = localhost
+DNS.4 = s3.local.harborlist.com
+DNS.5 = localhost
 IP.1 = 127.0.0.1
 EOF
 
@@ -82,4 +83,5 @@ echo "🌐 Domains covered:"
 echo "   - local.harborlist.com"
 echo "   - local-api.harborlist.com" 
 echo "   - traefik.local.harborlist.com"
+echo "   - s3.local.harborlist.com"
 echo "   - localhost"

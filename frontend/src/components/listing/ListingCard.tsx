@@ -9,7 +9,7 @@
  * @version 1.0.0
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Listing } from '@harborlist/shared-types';
 
@@ -97,6 +97,14 @@ interface ListingCardProps {
 export default function ListingCard({ listing, featured = false, compact = false }: ListingCardProps) {
   const [imageError, setImageError] = useState(false);
   const [isImageLoading, setIsImageLoading] = useState(true);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+
+  // Reset image state when listing changes
+  useEffect(() => {
+    setImageError(false);
+    setIsImageLoading(true);
+    setCurrentImageIndex(0);
+  }, [listing.listingId]);
 
   /**
    * Formats price as currency with proper locale and formatting
@@ -152,7 +160,12 @@ export default function ListingCard({ listing, featured = false, compact = false
     return date.toLocaleDateString();
   };
 
-  const mainImage = listing.thumbnails?.[0] || listing.images?.[0];
+  // Create fallback cascade: thumbnails first, then original images
+  const imageOptions = [
+    ...(listing.thumbnails || []),
+    ...(listing.images || [])
+  ];
+  const mainImage = imageOptions[currentImageIndex];
   const cardClass = featured ? 'card-featured' : compact ? 'card-compact' : 'card-interactive';
 
   return (
@@ -199,8 +212,14 @@ export default function ListingCard({ listing, featured = false, compact = false
                 }`}
                 onLoad={() => setIsImageLoading(false)}
                 onError={() => {
-                  setImageError(true);
                   setIsImageLoading(false);
+                  // Try next image in fallback cascade
+                  if (currentImageIndex < imageOptions.length - 1) {
+                    setCurrentImageIndex(currentImageIndex + 1);
+                    setIsImageLoading(true);
+                  } else {
+                    setImageError(true);
+                  }
                 }}
               />
             </>
@@ -285,7 +304,9 @@ export default function ListingCard({ listing, featured = false, compact = false
           <div className="flex justify-between items-center pt-4 border-t border-neutral-100">
             <div className="flex items-center space-x-2">
               <div className="w-6 h-6 bg-neutral-200 rounded-full"></div>
-              <span className="text-small text-neutral-600">Seller name</span>
+              <span className="text-small text-neutral-600">
+                {(listing as any).owner?.name || 'Private Seller'}
+              </span>
             </div>
             <button className="btn-ghost btn-sm">
               View details

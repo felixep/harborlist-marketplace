@@ -89,7 +89,31 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     const searchParams = parseBody<SearchFilters & { limit?: number; offset?: number }>(event);
     
     // Retrieve listings from database with performance optimization
-    const { listings: allListings } = await db.getListings(1000); // Get up to 1000 listings
+    const { listings: rawListings } = await db.getListings(1000); // Get up to 1000 listings
+    
+    // Fetch owner information for each listing
+    const allListings = await Promise.all(
+      rawListings.map(async (listing: any) => {
+        try {
+          const owner = await db.getUser(listing.ownerId);
+          return {
+            ...listing,
+            owner: owner ? {
+              id: owner.id,
+              name: owner.name,
+              email: owner.email
+            } : null
+          };
+        } catch (error) {
+          console.warn(`Failed to fetch owner for listing ${listing.listingId}:`, error);
+          return {
+            ...listing,
+            owner: null
+          };
+        }
+      })
+    );
+    
     let filteredListings = allListings;
 
     // Apply text-based search filter
