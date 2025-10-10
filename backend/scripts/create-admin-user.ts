@@ -43,6 +43,7 @@ interface CreateAdminOptions {
   role: UserRole;
   password?: string;
   permissions?: AdminPermission[];
+  resetPassword?: boolean;
 }
 
 async function checkUserExists(email: string): Promise<boolean> {
@@ -63,12 +64,16 @@ async function checkUserExists(email: string): Promise<boolean> {
 }
 
 async function createAdminUserInDB(options: CreateAdminOptions): Promise<User> {
-  const { email, name, role, password, permissions } = options;
+  const { email, name, role, password, permissions, resetPassword } = options;
 
   // Check if user already exists
   const userExists = await checkUserExists(email);
   if (userExists) {
-    throw new Error(`User with email ${email} already exists`);
+    if (!resetPassword) {
+      console.log(`✅ User with email ${email} already exists. Use --reset-password to reset their password.`);
+      return null as any; // Exit gracefully without error
+    }
+    console.log(`🔄 User exists. Resetting password for ${email}...`);
   }
 
   // Generate a secure password if not provided
@@ -108,39 +113,79 @@ async function createAdminUserInDB(options: CreateAdminOptions): Promise<User> {
     }
   }
 
-  // Create admin user object
-  const adminUserData = createAdminUser({
-    email,
-    name,
-    role,
-    permissions: userPermissions
-  });
+  let user: User;
 
-  // Add password and other required fields
-  const user: User = {
-    ...adminUserData,
-    password: hashedPassword,
-    // MFA is optional for admin accounts
-    mfaEnabled: false,
-    sessionTimeout: role === UserRole.SUPER_ADMIN ? 30 : 60 // minutes
-  } as User;
+  if (userExists && resetPassword) {
+    // Update existing user's password
+    const result = await docClient.send(new ScanCommand({
+      TableName: USERS_TABLE,
+      FilterExpression: 'email = :email',
+      ExpressionAttributeValues: {
+        ':email': email
+      }
+    }));
 
-  // Save to database
-  await docClient.send(new PutCommand({
-    TableName: USERS_TABLE,
-    Item: user,
-    ConditionExpression: 'attribute_not_exists(id)' // Prevent overwriting
-  }));
+    const existingUser = result.Items![0] as User;
+    
+    // Update the user with new password
+    user = {
+      ...existingUser,
+      password: hashedPassword,
+      updatedAt: new Date().toISOString(),
+      loginAttempts: 0, // Reset login attempts
+      lockedUntil: undefined,
+      passwordResetToken: undefined,
+      passwordResetExpires: undefined
+    };
 
-  console.log(`✅ Admin user created successfully!`);
-  console.log(`📧 Email: ${email}`);
-  console.log(`👤 Name: ${name}`);
-  console.log(`🔑 Role: ${role}`);
-  console.log(`🛡️  Permissions: ${userPermissions.join(', ')}`);
-  
-  if (!password) {
-    console.log(`🔐 Generated Password: ${userPassword}`);
-    console.log(`⚠️  IMPORTANT: Save this password securely! It won't be shown again.`);
+    await docClient.send(new PutCommand({
+      TableName: USERS_TABLE,
+      Item: user
+    }));
+
+  } else {
+    // Create admin user object
+    const adminUserData = createAdminUser({
+      email,
+      name,
+      role,
+      permissions: userPermissions
+    });
+
+    // Add password and other required fields
+    user = {
+      ...adminUserData,
+      password: hashedPassword,
+      // MFA is optional for admin accounts
+      mfaEnabled: false,
+      sessionTimeout: role === UserRole.SUPER_ADMIN ? 30 : 60 // minutes
+    } as User;
+
+    // Save to database
+    await docClient.send(new PutCommand({
+      TableName: USERS_TABLE,
+      Item: user,
+      ConditionExpression: 'attribute_not_exists(id)' // Prevent overwriting
+    }));
+  }
+
+  if (userExists && resetPassword) {
+    console.log(`✅ Password reset successfully for existing user!`);
+    console.log(`📧 Email: ${email}`);
+    console.log(`👤 Name: ${user.name}`);
+    console.log(`🔐 New Password: ${userPassword}`);
+    console.log(`⚠️  IMPORTANT: Save this new password securely!`);
+  } else {
+    console.log(`✅ Admin user created successfully!`);
+    console.log(`📧 Email: ${email}`);
+    console.log(`👤 Name: ${name}`);
+    console.log(`🔑 Role: ${role}`);
+    console.log(`🛡️  Permissions: ${userPermissions.join(', ')}`);
+    
+    if (!password) {
+      console.log(`🔐 Generated Password: ${userPassword}`);
+      console.log(`⚠️  IMPORTANT: Save this password securely! It won't be shown again.`);
+    }
   }
   
   console.log(`\n📋 Next Steps:`);
@@ -208,6 +253,10 @@ function parseArguments(): CreateAdminOptions {
         }
         options.permissions = validPerms as AdminPermission[];
         break;
+      case '--reset-password':
+        options.resetPassword = true;
+        i--; // No value needed for this flag
+        break;
       default:
         if (key.startsWith('--')) {
           throw new Error(`Unknown option: ${key}`);
@@ -215,15 +264,18 @@ function parseArguments(): CreateAdminOptions {
     }
   }
 
-  // Validate required fields
+  // Set default email if not provided
   if (!options.email) {
-    throw new Error('Email is required. Use --email flag.');
+    options.email = 'admin@harborlist.com';
+    console.log('📧 Using default email: admin@harborlist.com');
   }
   if (!options.name) {
-    throw new Error('Name is required. Use --name flag.');
+    options.name = 'HarborList Admin';
+    console.log('👤 Using default name: HarborList Admin');
   }
   if (!options.role) {
-    throw new Error('Role is required. Use --role flag.');
+    options.role = UserRole.SUPER_ADMIN;
+    console.log('🔑 Using default role: super_admin');
   }
 
   // Validate email format
@@ -240,28 +292,31 @@ function printUsage() {
 🚀 HarborList Admin User Creation Script
 
 Usage:
-  npm run create-admin -- --email <email> --name <name> --role <role> [options]
-
-Required Arguments:
-  --email <email>     Admin user email address
-  --name <name>       Admin user full name
-  --role <role>       Admin role (super_admin, admin, moderator, support)
+  npm run create-admin [options]
 
 Optional Arguments:
+  --email <email>     Admin user email address (default: admin@harborlist.com)
+  --name <name>       Admin user full name (default: HarborList Admin)
+  --role <role>       Admin role (default: super_admin)
   --password <pass>   Custom password (if not provided, one will be generated)
+  --reset-password    Reset password if user already exists
   --permissions <p>   Comma-separated list of permissions (overrides role defaults)
 
 Examples:
-  # Create a super admin
-  npm run create-admin -- --email admin@harborlist.com --name "Super Admin" --role super_admin
+  # Create default admin (admin@harborlist.com, super_admin role)
+  npm run create-admin
 
-  # Create a moderator with custom password
+  # Create admin with custom email
+  npm run create-admin -- --email admin@company.com
+
+  # Reset password for existing admin
+  npm run create-admin -- --reset-password
+
+  # Create a moderator with custom password  
   npm run create-admin -- --email mod@harborlist.com --name "Content Moderator" --role moderator --password MySecurePass123!
 
   # Create admin with specific permissions
-  npm run create-admin -- --email support@harborlist.com --name "Support User" --role support --permissions user_management,audit_log_view
-
-Available Roles:
+  npm run create-admin -- --email support@harborlist.com --name "Support User" --role support --permissions user_management,audit_log_viewAvailable Roles:
   - super_admin: Full system access
   - admin: User management, content moderation, analytics
   - moderator: Content moderation only

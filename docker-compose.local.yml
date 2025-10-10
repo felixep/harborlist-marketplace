@@ -119,6 +119,9 @@ services:
       - FRONTEND_URL=https://local.harborlist.com
       - LISTINGS_TABLE=harborlist-listings
       - USERS_TABLE=harborlist-users
+      - MEDIA_BUCKET=harborlist-media-local
+      - THUMBNAILS_BUCKET=harborlist-thumbnails-local
+      - USERS_TABLE=harborlist-users
       - REVIEWS_TABLE=harborlist-reviews
       - SESSIONS_TABLE=harborlist-sessions
       - LOGIN_ATTEMPTS_TABLE=harborlist-login-attempts
@@ -172,6 +175,18 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - harborlist-local
+    labels:
+      - "traefik.enable=true"
+      # S3 HTTPS proxy
+      - "traefik.http.routers.s3-http.rule=Host(`s3.local.harborlist.com`)"
+      - "traefik.http.routers.s3-http.entrypoints=web"
+      - "traefik.http.routers.s3-http.middlewares=https-redirect@file"
+      - "traefik.http.routers.s3-https.rule=Host(`s3.local.harborlist.com`)"
+      - "traefik.http.routers.s3-https.entrypoints=websecure"
+      - "traefik.http.routers.s3-https.tls=true"
+      - "traefik.http.routers.s3-https.service=localstack"
+      - "traefik.http.services.localstack.loadbalancer.server.port=4566"
+      - "traefik.http.services.localstack.loadbalancer.server.scheme=http"
 
   # DynamoDB Admin UI
   dynamodb-admin:

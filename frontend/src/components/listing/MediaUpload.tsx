@@ -4,9 +4,11 @@ interface MediaUploadProps {
   onUpload: (files: File[], type: 'images' | 'videos') => void;
   existingImages: string[];
   existingVideos: string[];
+  uploading?: boolean;
+  uploadProgress?: number;
 }
 
-export default function MediaUpload({ onUpload, existingImages, existingVideos }: MediaUploadProps) {
+export default function MediaUpload({ onUpload, existingImages, existingVideos, uploading = false, uploadProgress = 0 }: MediaUploadProps) {
   const [dragActive, setDragActive] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);

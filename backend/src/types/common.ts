@@ -33,7 +33,13 @@ export interface Listing {
   images: string[];
   videos?: string[];
   thumbnails: string[];
-  status: 'active' | 'inactive' | 'sold';
+  status: 'pending_review' | 'approved' | 'rejected' | 'active' | 'inactive' | 'sold';
+  moderationStatus?: {
+    reviewedBy?: string;
+    reviewedAt?: number;
+    rejectionReason?: string;
+    moderatorNotes?: string;
+  };
   views?: number;
   createdAt: number;
   updatedAt: number;

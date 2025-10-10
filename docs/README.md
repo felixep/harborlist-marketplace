@@ -119,7 +119,7 @@ The platform has undergone a major simplification, removing complex tunnel infra
 - **Auth Service**: User authentication and session management
 - **Listing Service**: Boat listing CRUD operations and search
 - **Admin Service**: Administrative functions and dashboard APIs
-- **Media Service**: Image upload, processing, and CDN integration
+- **Media Service**: S3/LocalStack integration, presigned URLs, and environment-aware storage
 - **Email Service**: Notification and communication systems
 - **Stats Service**: Analytics and reporting functionality
 
@@ -150,6 +150,7 @@ The platform has undergone a major simplification, removing complex tunnel infra
 
 ### [`🚀 Deployment & CI/CD`](./deployment/README.md)
 - **Local Development**: Docker-based development environment setup
+- **Media Infrastructure**: S3/LocalStack integration for development and production
 - **Deployment Strategy**: Blue-green and rolling deployment patterns
 - **Pipeline Configuration**: Automated testing and deployment workflows
 - **Environment Management**: Configuration and secrets management

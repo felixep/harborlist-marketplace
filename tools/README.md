@@ -22,6 +22,9 @@ harborlist-marketplace/
 │   │   ├── cleanup.sh                       # Environment cleanup and resource destruction
 │   │   ├── verify-deployment.sh             # Post-deployment validation
 │   │   └── README.md                        # Deployment tools documentation
+│   ├── development/                          # Local development setup tools
+│   │   ├── setup-s3-buckets.sh              # LocalStack S3 bucket initialization
+│   │   └── README.md                        # Development tools documentation
 │   ├── monitoring/                           # System monitoring tools
 │   │   ├── setup-monitoring.sh              # Monitoring infrastructure setup
 │   │   ├── test-monitoring.sh               # Monitor validation
@@ -120,6 +123,7 @@ harborlist-marketplace/
   "scripts": {
     "deploy": "./deployment/deploy.sh",
     "verify": "./deployment/verify-deployment.sh",
+    "dev:setup": "./development/setup-s3-buckets.sh",
     "monitor": "./monitoring/test-monitoring.sh",
     "cost-check": "./cost-management/cost-alert.sh",
     "security-scan": "./security/comprehensive-dev-environment-test.js",
@@ -214,6 +218,7 @@ This tools directory is fully documented as part of the HarborList enterprise do
 
 ### **📋 Tool Category Documentation**  
 - **[Deployment Scripts](../docs/tools/deployment-scripts.md)**: Infrastructure deployment automation
+- **[Development Tools](./development/README.md)**: LocalStack S3 setup and development environment
 - **[Operations Scripts](../docs/tools/operations-scripts.md)**: User management and system operations
 - **[Monitoring Scripts](../docs/tools/monitoring-scripts.md)**: Health and performance monitoring
 - **[Cost Management Scripts](../docs/tools/cost-management-scripts.md)**: Cost optimization tools

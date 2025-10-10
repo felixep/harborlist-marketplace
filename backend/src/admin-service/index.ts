@@ -205,6 +205,23 @@ export const handler = withApiVersioning(async (event: APIGatewayProxyEvent, ver
       )(handleModerateListing)(event as AuthenticatedEvent, {});
     }
 
+    // Moderation queue endpoints
+    if (path.includes('/admin/moderation/queue') && method === 'GET') {
+      return await compose(
+        withRateLimit(50, 60000),
+        withAdminAuth([AdminPermission.CONTENT_MODERATION]),
+        withAuditLog('VIEW_MODERATION_QUEUE', 'moderation')
+      )(handleGetModerationQueue)(event as AuthenticatedEvent, {});
+    }
+
+    if (path.includes('/admin/moderation/stats') && method === 'GET') {
+      return await compose(
+        withRateLimit(30, 60000),
+        withAdminAuth([AdminPermission.CONTENT_MODERATION]),
+        withAuditLog('VIEW_MODERATION_STATS', 'moderation')
+      )(handleGetModerationStats)(event as AuthenticatedEvent, {});
+    }
+
     if (path.includes('/admin/audit-logs') && !path.includes('/export') && method === 'GET') {
       return await compose(
         withAdaptiveRateLimit(AdminPermission.AUDIT_LOG_VIEW),
@@ -908,6 +925,38 @@ const handleModerateListing = async (event: AuthenticatedEvent): Promise<APIGate
   } catch (error) {
     console.error('Moderate listing error:', error);
     return createErrorResponse(500, 'INTERNAL_ERROR', 'Failed to moderate listing', requestId);
+  }
+};
+
+// Moderation Queue Handlers
+const handleGetModerationQueue = async (event: AuthenticatedEvent): Promise<APIGatewayProxyResult> => {
+  const requestId = event.requestContext.requestId;
+  const queryParams = event.queryStringParameters || {};
+
+  try {
+    const page = parseInt(queryParams.page || '1');
+    const limit = Math.min(parseInt(queryParams.limit || '20'), 100);
+    const status = queryParams.status || 'pending_review';
+
+    const queue = await getModerationQueue({ page, limit, status });
+
+    return createResponse(200, queue);
+  } catch (error) {
+    console.error('Get moderation queue error:', error);
+    return createErrorResponse(500, 'INTERNAL_ERROR', 'Failed to get moderation queue', requestId);
+  }
+};
+
+const handleGetModerationStats = async (event: AuthenticatedEvent): Promise<APIGatewayProxyResult> => {
+  const requestId = event.requestContext.requestId;
+
+  try {
+    const stats = await getModerationStats();
+
+    return createResponse(200, stats);
+  } catch (error) {
+    console.error('Get moderation stats error:', error);
+    return createErrorResponse(500, 'INTERNAL_ERROR', 'Failed to get moderation stats', requestId);
   }
 };
 
@@ -2815,28 +2864,124 @@ async function getListings(params: {
 
 async function moderateListing(listingId: string, action: string, reason: string, notes: string, adminId: string) {
   try {
-    let newStatus = 'active';
+    let newStatus = 'approved';
     if (action === 'reject') {
       newStatus = 'rejected';
     } else if (action === 'request_changes') {
-      newStatus = 'pending_changes';
+      newStatus = 'pending_review';
     }
+
+    const moderationStatus = {
+      reviewedBy: adminId,
+      reviewedAt: Date.now(),
+      rejectionReason: action === 'reject' ? reason : undefined,
+      moderatorNotes: notes
+    };
 
     await docClient.send(new UpdateCommand({
       TableName: LISTINGS_TABLE,
       Key: { listingId },
-      UpdateExpression: 'SET #status = :status, moderatedAt = :moderatedAt, moderatedBy = :moderatedBy, moderationReason = :reason, moderationNotes = :notes',
+      UpdateExpression: 'SET #status = :status, moderationStatus = :moderationStatus, updatedAt = :updatedAt',
       ExpressionAttributeNames: { '#status': 'status' },
       ExpressionAttributeValues: {
         ':status': newStatus,
-        ':moderatedAt': new Date().toISOString(),
-        ':moderatedBy': adminId,
-        ':reason': reason,
-        ':notes': notes
+        ':moderationStatus': moderationStatus,
+        ':updatedAt': Date.now()
       }
     }));
   } catch (error) {
     console.error('Error moderating listing:', error);
+    throw error;
+  }
+}
+
+async function getModerationQueue(params: {
+  page: number;
+  limit: number;
+  status: string;
+}) {
+  try {
+    const result = await docClient.send(new ScanCommand({
+      TableName: LISTINGS_TABLE,
+      FilterExpression: '#status = :status',
+      ExpressionAttributeNames: { '#status': 'status' },
+      ExpressionAttributeValues: { ':status': params.status }
+    }));
+
+    let listings = result.Items || [];
+
+    // Sort by creation date (newest first)
+    listings.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+
+    // Apply pagination
+    const total = listings.length;
+    const startIndex = (params.page - 1) * params.limit;
+    const paginatedListings = listings.slice(startIndex, startIndex + params.limit);
+
+    return {
+      listings: paginatedListings,
+      pagination: {
+        page: params.page,
+        limit: params.limit,
+        total,
+        totalPages: Math.ceil(total / params.limit)
+      }
+    };
+  } catch (error) {
+    console.error('Error getting moderation queue:', error);
+    throw error;
+  }
+}
+
+async function getModerationStats() {
+  try {
+    // Get counts for different moderation statuses
+    const pendingResult = await docClient.send(new ScanCommand({
+      TableName: LISTINGS_TABLE,
+      FilterExpression: '#status = :status',
+      ExpressionAttributeNames: { '#status': 'status' },
+      ExpressionAttributeValues: { ':status': 'pending_review' },
+      Select: 'COUNT'
+    }));
+
+    const approvedResult = await docClient.send(new ScanCommand({
+      TableName: LISTINGS_TABLE,
+      FilterExpression: '#status = :status',
+      ExpressionAttributeNames: { '#status': 'status' },
+      ExpressionAttributeValues: { ':status': 'approved' },
+      Select: 'COUNT'
+    }));
+
+    const rejectedResult = await docClient.send(new ScanCommand({
+      TableName: LISTINGS_TABLE,
+      FilterExpression: '#status = :status',
+      ExpressionAttributeNames: { '#status': 'status' },
+      ExpressionAttributeValues: { ':status': 'rejected' },
+      Select: 'COUNT'
+    }));
+
+    const activeResult = await docClient.send(new ScanCommand({
+      TableName: LISTINGS_TABLE,
+      FilterExpression: '#status = :status',
+      ExpressionAttributeNames: { '#status': 'status' },
+      ExpressionAttributeValues: { ':status': 'active' },
+      Select: 'COUNT'
+    }));
+
+    const totalPending = pendingResult.Count || 0;
+    const totalApproved = approvedResult.Count || 0;
+    const totalRejected = rejectedResult.Count || 0;
+    const totalActive = activeResult.Count || 0;
+
+    return {
+      pending: totalPending,
+      approved: totalApproved,
+      rejected: totalRejected,
+      active: totalActive,
+      total: totalPending + totalApproved + totalRejected + totalActive
+    };
+  } catch (error) {
+    console.error('Error getting moderation stats:', error);
     throw error;
   }
 }

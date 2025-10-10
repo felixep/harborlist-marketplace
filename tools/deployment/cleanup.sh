@@ -220,6 +220,49 @@ check_prerequisites() {
     log_success "Prerequisites check passed"
 }
 
+# Clean up LocalStack S3 buckets
+cleanup_local_s3_buckets() {
+    log_step "Cleaning up LocalStack S3 buckets..."
+    
+    # Check if LocalStack is running
+    if ! docker ps --filter "name=localstack" --filter "status=running" -q | grep -q .; then
+        log_info "LocalStack is not running, skipping S3 bucket cleanup"
+        return 0
+    fi
+    
+    # Define bucket names
+    local media_bucket="harborlist-media-local"
+    local thumbnails_bucket="harborlist-thumbnails-local"
+    
+    # Use awslocal if available, otherwise use aws with localstack endpoint
+    local aws_cmd="aws"
+    if command -v awslocal &> /dev/null; then
+        aws_cmd="awslocal"
+    else
+        aws_cmd="aws --endpoint-url=http://localhost:4566"
+    fi
+    
+    # Clean up media bucket
+    if $aws_cmd s3api head-bucket --bucket "$media_bucket" 2>/dev/null; then
+        log_step "Emptying and removing S3 bucket: $media_bucket"
+        $aws_cmd s3 rm s3://"$media_bucket" --recursive 2>/dev/null || true
+        $aws_cmd s3api delete-bucket --bucket "$media_bucket" 2>/dev/null || true
+    else
+        log_info "S3 bucket $media_bucket does not exist, skipping..."
+    fi
+    
+    # Clean up thumbnails bucket
+    if $aws_cmd s3api head-bucket --bucket "$thumbnails_bucket" 2>/dev/null; then
+        log_step "Emptying and removing S3 bucket: $thumbnails_bucket"
+        $aws_cmd s3 rm s3://"$thumbnails_bucket" --recursive 2>/dev/null || true
+        $aws_cmd s3api delete-bucket --bucket "$thumbnails_bucket" 2>/dev/null || true
+    else
+        log_info "S3 bucket $thumbnails_bucket does not exist, skipping..."
+    fi
+    
+    log_success "LocalStack S3 bucket cleanup completed"
+}
+
 # Clean up local environment
 cleanup_local() {
     log_step "Starting local environment cleanup..."
@@ -265,6 +308,10 @@ cleanup_local() {
         log_destruction "Removing log files..."
         rm -rf "${PROJECT_ROOT}/logs"
     fi
+    
+    # Clean up LocalStack S3 buckets
+    log_step "Cleaning up LocalStack S3 buckets..."
+    cleanup_local_s3_buckets
     
     # Docker system prune (remove unused images, containers, networks)
     log_step "Performing Docker system cleanup..."

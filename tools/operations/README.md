@@ -24,11 +24,14 @@ Creates admin users across different environments (local, dev, staging, prod).
 
 **Quick Start:**
 ```bash
-# Create a super admin for local development
-./tools/operations/create-admin-user.sh \
-  --email admin@harborlist.com \
-  --name "Super Admin" \
-  --role super_admin
+# Create default admin (admin@harborlist.com, super_admin role)
+./tools/operations/create-admin-user.sh
+
+# Create admin with custom email
+./tools/operations/create-admin-user.sh --email admin@company.com
+
+# Reset password for existing admin
+./tools/operations/create-admin-user.sh --reset-password
 
 # Create a production admin with custom password
 ./tools/operations/create-admin-user.sh \

@@ -180,9 +180,14 @@ async function getListings(event: APIGatewayProxyEvent, requestId: string): Prom
       })
     );
     
+    // Filter to only show approved/active listings for public view
+    const publicListings = listingsWithOwners.filter(listing => 
+      listing.status === 'approved' || listing.status === 'active'
+    );
+    
     const response: any = {
-      listings: listingsWithOwners,
-      total: listingsWithOwners.length,
+      listings: publicListings,
+      total: publicListings.length,
     };
 
     if (result.lastKey) {
@@ -269,7 +274,13 @@ async function createListing(event: APIGatewayProxyEvent, requestId: string): Pr
       images: body.images || [],
       videos: body.videos || [],
       thumbnails: body.thumbnails || [],
-      status: 'active',
+      status: 'pending_review',
+      moderationStatus: {
+        reviewedBy: undefined,
+        reviewedAt: undefined,
+        rejectionReason: undefined,
+        moderatorNotes: undefined,
+      },
       views: 0,
       createdAt: Date.now(),
       updatedAt: Date.now(),

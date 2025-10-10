@@ -94,7 +94,7 @@ graph TB
         
         subgraph "Data Layer"
             DDB[DynamoDB Tables<br/>- Users & Sessions<br/>- Boat Listings<br/>- Audit Logs<br/>- Search Indexes]
-            S3Media[S3 Media Bucket<br/>- Image Storage<br/>- Video Files<br/>- Processed Media<br/>- Lifecycle Management]
+            S3Media[S3/LocalStack Media<br/>- Environment-Aware Storage<br/>- Presigned URL Upload<br/>- Auto Bucket Creation<br/>- Lifecycle Management]
             Secrets[Secrets Manager<br/>- JWT Secrets<br/>- API Keys<br/>- Edge Secrets<br/>- Auto Rotation]
             SSM[Systems Manager<br/>- Configuration<br/>- Cloudflare Secrets<br/>- Environment Variables]
         end
@@ -176,7 +176,7 @@ graph LR
         
         Admin[👤 Admin Service<br>- User Management<br>- Content Moderation<br>- Analytics Dashboard]
         
-        Media[📸 Media Service<br>- Image Upload<br>- Image Processing<br>- CDN Integration]
+        Media[📸 Media Service<br>- S3/LocalStack Integration<br>- Presigned URL Upload<br>- Environment-Aware Storage]
         
         Email[📧 Email Service<br>- Notifications<br>- Templates<br>- Delivery Tracking]
         

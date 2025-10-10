@@ -185,15 +185,94 @@ export default function ListingForm({ onSubmit, isLoading, initialData }: Listin
     }));
   };
 
-  const handleMediaUpload = (files: File[], type: 'images' | 'videos') => {
-    setSelectedFiles(prev => ({
-      ...prev,
-      [type]: [...prev[type], ...files]
-    }));
+  const [uploadingFiles, setUploadingFiles] = useState<{
+    images: boolean;
+    videos: boolean;
+  }>({
+    images: false,
+    videos: false,
+  });
+
+  const [uploadProgress, setUploadProgress] = useState<{
+    [key: string]: number;
+  }>({});
+
+  const handleMediaUpload = async (files: File[], type: 'images' | 'videos') => {
+    if (files.length === 0) return;
+
+    setUploadingFiles(prev => ({ ...prev, [type]: true }));
+    
+    try {
+      // Import the media service dynamically to avoid circular dependencies
+      const { uploadMultipleMedia, validateMediaFile } = await import('../../services/media');
+      
+      // Validate files first
+      for (const file of files) {
+        const validation = validateMediaFile(file);
+        if (!validation.valid) {
+          alert(`${file.name}: ${validation.error}`);
+          return;
+        }
+      }
+
+      // Upload files and get URLs
+      console.log(`Starting upload of ${files.length} ${type}...`);
+      const uploadResults = await uploadMultipleMedia(files, (overallProgress, fileProgresses) => {
+        console.log(`Upload progress for ${type}: ${overallProgress.toFixed(1)}%`);
+        setUploadProgress(prev => ({
+          ...prev,
+          [`${type}_overall`]: overallProgress,
+        }));
+      });
+
+      console.log(`Upload successful for ${type}:`, uploadResults);
+
+      // Update form data with uploaded URLs
+      const urls = uploadResults.map(result => result.url);
+      const thumbnails = uploadResults
+        .filter(result => result.thumbnail)
+        .map(result => result.thumbnail!);
+
+      console.log(`Adding ${urls.length} ${type} URLs to form data:`, urls);
+      setFormData(prev => {
+        const updated = {
+          ...prev,
+          [type]: [...prev[type], ...urls],
+          ...(type === 'images' && thumbnails.length > 0 && {
+            thumbnails: [...prev.thumbnails, ...thumbnails]
+          }),
+        };
+        console.log(`Updated form data:`, { images: updated.images, thumbnails: updated.thumbnails });
+        return updated;
+      });
+
+      // Also store selected files for display purposes
+      setSelectedFiles(prev => ({
+        ...prev,
+        [type]: [...prev[type], ...files]
+      }));
+
+    } catch (error) {
+      console.error(`${type} upload failed:`, error);
+      alert(`Failed to upload ${type}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setUploadingFiles(prev => ({ ...prev, [type]: false }));
+      setUploadProgress(prev => {
+        const updated = { ...prev };
+        delete updated[`${type}_overall`];
+        return updated;
+      });
+    }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Check if uploads are in progress
+    if (uploadingFiles.images || uploadingFiles.videos) {
+      alert('Please wait for media uploads to complete before submitting.');
+      return;
+    }
     
     // Validate required fields
     if (!formData.title.trim()) {
@@ -558,6 +637,8 @@ export default function ListingForm({ onSubmit, isLoading, initialData }: Listin
           onUpload={handleMediaUpload}
           existingImages={formData.images}
           existingVideos={formData.videos}
+          uploading={uploadingFiles.images || uploadingFiles.videos}
+          uploadProgress={uploadProgress['images_overall'] || uploadProgress['videos_overall'] || 0}
         />
       </div>
 
@@ -572,10 +653,14 @@ export default function ListingForm({ onSubmit, isLoading, initialData }: Listin
         </button>
         <button
           type="submit"
-          disabled={isLoading}
+          disabled={isLoading || uploadingFiles.images || uploadingFiles.videos}
           className="btn-primary"
         >
-          {isLoading ? 'Creating Listing...' : 'Create Listing'}
+          {(uploadingFiles.images || uploadingFiles.videos) 
+            ? 'Uploading Media...' 
+            : isLoading 
+            ? 'Creating Listing...' 
+            : 'Create Listing'}
         </button>
       </div>
     </form>

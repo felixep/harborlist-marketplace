@@ -26,11 +26,14 @@ The operations scripts handle system administration tasks, user management, and 
 
 **Usage**:
 ```bash
-# Basic usage
-./tools/operations/create-admin-user.sh \
-  --email admin@harborlist.com \
-  --name "Super Admin" \
-  --role super_admin
+# Create default admin (admin@harborlist.com, super_admin role)
+./tools/operations/create-admin-user.sh
+
+# Create admin with custom email
+./tools/operations/create-admin-user.sh --email admin@company.com
+
+# Reset password for existing admin
+./tools/operations/create-admin-user.sh --reset-password
 
 # Production deployment with custom password
 ./tools/operations/create-admin-user.sh \
@@ -49,15 +52,22 @@ The operations scripts handle system administration tasks, user management, and 
 ```
 
 **Arguments**:
-- `--email` (required): Admin user email address
-- `--name` (required): Admin user full name
-- `--role` (required): Admin role (super_admin, admin, moderator, support)
+- `--email` (optional): Admin user email address (default: admin@harborlist.com)
+- `--name` (optional): Admin user full name (default: HarborList Admin)
+- `--role` (optional): Admin role (default: super_admin)
 - `--environment` (optional): Target environment (default: local)
 - `--password` (optional): Custom password (auto-generated if not provided)
+- `--reset-password`: Reset password if user already exists
 - `--permissions` (optional): Comma-separated permissions list
 - `--force`: Skip confirmation prompts
 - `--dry-run`: Show what would be done without executing
 - `--help`: Show detailed help information
+
+**Behavior**:
+- **New Users**: Creates admin user with specified/default settings
+- **Existing Users**: Displays message that user exists, unless `--reset-password` is used
+- **Password Reset**: Updates existing user's password and clears login failures
+- **Default Values**: Simplifies common use case with sensible defaults
 
 **Roles & Permissions**:
 

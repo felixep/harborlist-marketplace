@@ -116,6 +116,11 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     
     let filteredListings = allListings;
 
+    // Filter to only show approved/active listings (hide pending_review and rejected)
+    filteredListings = filteredListings.filter(listing => 
+      listing.status === 'approved' || listing.status === 'active'
+    );
+
     // Apply text-based search filter
     filteredListings = applyTextSearch(filteredListings, searchParams.query);
     

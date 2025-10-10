@@ -180,11 +180,14 @@ interface AdminPermissions {
 ### **Image Upload, Processing & CDN Integration**
 
 #### **Service Responsibilities**
+- Environment-aware S3/LocalStack integration
 - Secure image upload via presigned URLs
 - Image processing and optimization
 - Thumbnail generation and multiple formats
 - CDN integration and cache management
 - Media validation and virus scanning
+
+> 📖 **Complete Implementation Guide**: See [Media Infrastructure Integration](../deployment/media-infrastructure-integration.md) for comprehensive S3 bucket setup, environment configuration, and deployment integration.
 
 #### **API Endpoints**
 ```typescript

@@ -224,6 +224,21 @@ deploy_local() {
         print_info "Run: ./backend/scripts/setup-local-db.sh"
     fi
     
+    # Set up S3 buckets for media storage
+    print_step "Setting up S3 buckets for media storage..."
+    if [[ -f "${PROJECT_ROOT}/tools/development/setup-s3-buckets.sh" ]]; then
+        "${PROJECT_ROOT}/tools/development/setup-s3-buckets.sh"
+        if [[ $? -eq 0 ]]; then
+            print_success "S3 buckets configured successfully"
+        else
+            print_warning "S3 bucket setup encountered issues, but deployment will continue"
+            print_info "You can run it manually: ./tools/development/setup-s3-buckets.sh"
+        fi
+    else
+        print_warning "S3 bucket setup script not found. Media uploads may not work."
+        print_info "Run: ./tools/development/setup-s3-buckets.sh"
+    fi
+    
     # Create admin user using existing working script
     print_step "Creating local admin user..."
     if [[ -f "${PROJECT_ROOT}/tools/operations/create-admin-user.sh" ]]; then
@@ -249,6 +264,7 @@ deploy_local() {
     echo "  Traefik Dashboard: http://localhost:8088"
     echo "  DynamoDB Local: http://localhost:8000"
     echo "  DynamoDB Admin: http://localhost:8001"
+    echo "  LocalStack (S3): http://localhost:4566"
     echo "  SMTP4Dev (Email Testing): http://localhost:5001"
     
     echo ""

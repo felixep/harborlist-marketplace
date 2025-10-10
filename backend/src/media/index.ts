@@ -43,21 +43,129 @@
  */
 
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
-import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, GetObjectCommand, CreateBucketCommand, HeadBucketCommand, PutBucketCorsCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import sharp from 'sharp';
 import { createResponse, createErrorResponse, getUserId, generateId } from '../shared/utils';
 
 /**
- * AWS S3 client configuration for media operations
+ * S3 client configuration with environment-aware settings
+ * Supports both AWS and LocalStack environments
  */
-const s3Client = new S3Client({ region: process.env.AWS_REGION });
+const clientConfig = {
+  region: process.env.AWS_REGION || 'us-east-1',
+  ...(process.env.S3_ENDPOINT && {
+    endpoint: process.env.S3_ENDPOINT,
+    forcePathStyle: true, // Required for LocalStack
+    credentials: {
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID || 'test',
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || 'test',
+    },
+  }),
+  // Disable automatic checksums for LocalStack compatibility
+  requestChecksumCalculation: 'NEVER' as any,
+};
+
+const s3Client = new S3Client(clientConfig);
 
 /**
  * S3 bucket names for media storage
  */
 const MEDIA_BUCKET = process.env.MEDIA_BUCKET!;
 const THUMBNAILS_BUCKET = process.env.THUMBNAILS_BUCKET!;
+
+/**
+ * Environment detection
+ */
+const isLocalEnvironment = process.env.ENVIRONMENT === 'local' || !!process.env.S3_ENDPOINT;
+
+/**
+ * Base URL for media access - different for local vs AWS
+ */
+const getMediaBaseUrl = () => {
+  if (isLocalEnvironment) {
+    return `https://s3.local.harborlist.com/${MEDIA_BUCKET}`;
+  }
+  return `https://${MEDIA_BUCKET}.s3.amazonaws.com`;
+};
+
+const getThumbnailBaseUrl = () => {
+  if (isLocalEnvironment) {
+    return `https://s3.local.harborlist.com/${THUMBNAILS_BUCKET}`;
+  }
+  return `https://${THUMBNAILS_BUCKET}.s3.amazonaws.com`;
+};
+
+/**
+ * Convert internal Docker URLs to external localhost URLs for frontend access
+ * For uploads, keep HTTP for LocalStack compatibility
+ */
+const convertUrlForFrontend = (url: string): string => {
+  if (isLocalEnvironment && url.includes('localstack:4566')) {
+    return url.replace('localstack:4566', 'localhost:4566');
+  }
+  return url;
+};
+
+/**
+ * Convert display URLs to HTTPS for mixed content compatibility
+ */
+const convertDisplayUrlForFrontend = (url: string): string => {
+  if (isLocalEnvironment && url.startsWith('http://localhost:4566')) {
+    return url.replace('http://localhost:4566', 'https://localhost:4566');
+  }
+  return url;
+};
+
+/**
+ * Initialize S3 buckets for local development
+ * Creates buckets if they don't exist (LocalStack only)
+ */
+async function initializeBuckets() {
+  if (!isLocalEnvironment) {
+    return; // Skip for AWS - buckets should be managed via Infrastructure as Code
+  }
+
+  const buckets = [MEDIA_BUCKET, THUMBNAILS_BUCKET];
+  
+  // CORS configuration for frontend access
+  const corsConfiguration = {
+    CORSRules: [
+      {
+        AllowedOrigins: ['https://local.harborlist.com', 'http://localhost:3000'],
+        AllowedMethods: ['GET', 'PUT', 'POST', 'DELETE', 'HEAD'],
+        AllowedHeaders: ['*'],
+        ExposeHeaders: ['ETag'],
+        MaxAgeSeconds: 3000,
+      },
+    ],
+  };
+  
+  for (const bucket of buckets) {
+    try {
+      await s3Client.send(new HeadBucketCommand({ Bucket: bucket }));
+      console.log(`Bucket ${bucket} already exists`);
+    } catch (error) {
+      try {
+        await s3Client.send(new CreateBucketCommand({ Bucket: bucket }));
+        console.log(`Created bucket ${bucket} in LocalStack`);
+        
+        // Configure CORS for the new bucket
+        try {
+          await s3Client.send(new PutBucketCorsCommand({
+            Bucket: bucket,
+            CORSConfiguration: corsConfiguration,
+          }));
+          console.log(`Configured CORS for bucket ${bucket}`);
+        } catch (corsError) {
+          console.error(`Failed to configure CORS for bucket ${bucket}:`, corsError);
+        }
+      } catch (createError) {
+        console.error(`Failed to create bucket ${bucket}:`, createError);
+      }
+    }
+  }
+}
 
 /**
  * Main Lambda handler for media upload operations
@@ -104,6 +212,9 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
   const requestId = event.requestContext.requestId;
 
   try {
+    // Initialize buckets for local development
+    await initializeBuckets();
+
     // CORS preflight requests are handled by API Gateway
 
     if (event.httpMethod !== 'POST') {
@@ -124,13 +235,14 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     const fileName = `${userId}/${fileId}`;
     
     // Create presigned URL for secure direct upload to S3
-    const uploadUrl = await generatePresignedUploadUrl(fileName, 'image/jpeg');
+    const internalUploadUrl = await generatePresignedUploadUrl(fileName, 'image/jpeg');
+    const uploadUrl = convertUrlForFrontend(internalUploadUrl);
 
     const response = {
       uploadId: fileId,
       uploadUrl,
-      url: `https://${MEDIA_BUCKET}.s3.amazonaws.com/${fileName}`,
-      thumbnail: `https://${THUMBNAILS_BUCKET}.s3.amazonaws.com/${fileName}_thumb.jpg`,
+      url: `${getMediaBaseUrl()}/${fileName}`,
+      thumbnail: `${getThumbnailBaseUrl()}/${fileName}_thumb.jpg`,
       metadata: {
         size: 0, // Will be determined after upload
         dimensions: { width: 0, height: 0 }, // Will be extracted during processing
@@ -326,17 +438,20 @@ async function generatePresignedUploadUrl(
   contentType: string, 
   expiresIn: number = 3600
 ): Promise<string> {
-  return await getSignedUrl(
-    s3Client,
-    new PutObjectCommand({
-      Bucket: MEDIA_BUCKET,
-      Key: fileName,
-      ContentType: contentType,
-      Metadata: {
-        'upload-date': new Date().toISOString(),
-        'content-type': contentType,
-      },
-    }),
-    { expiresIn }
-  );
+  const command = new PutObjectCommand({
+    Bucket: MEDIA_BUCKET,
+    Key: fileName,
+    ContentType: contentType,
+    Metadata: {
+      'upload-date': new Date().toISOString(),
+      'content-type': contentType,
+    },
+  });
+
+  // For LocalStack, remove any checksum-related parameters
+  if (isLocalEnvironment) {
+    delete (command.input as any).ChecksumAlgorithm;
+  }
+
+  return await getSignedUrl(s3Client, command, { expiresIn });
 }

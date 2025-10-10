@@ -34,7 +34,7 @@ export class BoatListingStack extends cdk.Stack {
 | **DynamoDB Tables** | Data persistence | On-demand billing, GSI indexes, TTL policies |
 | **Lambda Functions** | Serverless compute | Node.js 18, 512MB memory, 30s timeout |
 | **API Gateway** | HTTP endpoints | REST API, CORS enabled, throttling configured |
-| **S3 Buckets** | File storage | Static hosting, media storage, lifecycle policies |
+| **S3 Buckets** | File storage | Static hosting, media storage, environment-aware integration |
 | **CloudWatch** | Monitoring | Custom dashboards, alarms, log aggregation |
 | **Secrets Manager** | Configuration | JWT secrets, API keys, encryption keys |
 

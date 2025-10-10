@@ -10,6 +10,7 @@ Before deploying to cloud environments, developers can work with a complete loca
 
 - **[📖 Local Development Setup](./local-development.md)** - Complete Docker-based local environment
 - **[🔧 Implementation Details](./local-development-implementation.md)** - Technical implementation summary
+- **[📸 Media Infrastructure Integration](./media-infrastructure-integration.md)** - S3/LocalStack setup for media handling
 
 **Quick Start:**
 ```bash
@@ -23,6 +24,7 @@ npm run dev:admin       # Create admin user
 - Frontend: http://local.harborlist.com:3000
 - Backend: http://local-api.harborlist.com:3001
 - DynamoDB Admin: http://localhost:8001
+- LocalStack S3: http://localhost:4566 (Media storage endpoint)
 
 ---
 

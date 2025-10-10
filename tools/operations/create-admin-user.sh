@@ -26,13 +26,14 @@ NC='\033[0m' # No Color
 
 # Default values
 ENVIRONMENT="local"
-EMAIL=""
-NAME=""
-ROLE=""
+EMAIL="admin@harborlist.com"
+NAME="HarborList Admin"
+ROLE="super_admin"
 PASSWORD=""
 PERMISSIONS=""
 FORCE=false
 DRY_RUN=false
+RESET_PASSWORD=false
 
 # Environment-specific configurations
 get_env_config() {
@@ -80,15 +81,14 @@ $(print_color $CYAN "🚀 HarborList Admin User Creation Script")
 $(print_color $YELLOW "USAGE:")
     $0 [OPTIONS]
 
-$(print_color $YELLOW "REQUIRED OPTIONS:")
-    -e, --email <email>      Admin user email address
-    -n, --name <name>        Admin user full name  
-    -r, --role <role>        Admin role (super_admin, admin, moderator, support)
-
-$(print_color $YELLOW "OPTIONAL OPTIONS:")
+$(print_color $YELLOW "OPTIONS:")
+    -e, --email <email>      Admin user email address [default: admin@harborlist.com]
+    -n, --name <name>        Admin user full name [default: HarborList Admin]
+    -r, --role <role>        Admin role [default: super_admin]
     -E, --environment <env>  Target environment (local, dev, staging, prod) [default: local]
     -p, --password <pass>    Custom password (if not provided, one will be generated)
     -P, --permissions <list> Comma-separated permissions (overrides role defaults)
+    --reset-password        Reset password if user already exists
     -f, --force             Skip confirmation prompts
     -d, --dry-run           Show what would be done without executing
     -h, --help              Show this help message
@@ -108,8 +108,14 @@ $(print_color $YELLOW "AVAILABLE PERMISSIONS:")
     - financial_reports: Access financial and payment reports
 
 $(print_color $YELLOW "EXAMPLES:")
-    # Create a super admin for local development
-    $0 --email admin@harborlist.com --name "Super Admin" --role super_admin
+    # Create default admin (admin@harborlist.com with super_admin role)
+    $0
+
+    # Create admin with custom email
+    $0 --email admin@company.com
+
+    # Reset password for existing admin
+    $0 --reset-password
 
     # Create a production admin with custom password
     $0 --environment prod \\
@@ -286,6 +292,7 @@ create_admin_user() {
     
     [[ -n $PASSWORD ]] && cmd_args+=(--password "$PASSWORD")
     [[ -n $PERMISSIONS ]] && cmd_args+=(--permissions "$PERMISSIONS")
+    [[ $RESET_PASSWORD == true ]] && cmd_args+=(--reset-password)
 
     if [[ $DRY_RUN == true ]]; then
         print_color $YELLOW "🧪 DRY RUN - Would execute:"
@@ -361,6 +368,10 @@ parse_arguments() {
                 PERMISSIONS="$2"
                 shift 2
                 ;;
+            --reset-password)
+                RESET_PASSWORD=true
+                shift
+                ;;
             -f|--force)
                 FORCE=true
                 shift
@@ -382,20 +393,17 @@ parse_arguments() {
     done
 }
 
-# Function to validate required arguments
+# Function to validate arguments (all have defaults now)
 validate_arguments() {
-    local errors=()
-
-    [[ -z $EMAIL ]] && errors+=("Email is required (--email)")
-    [[ -z $NAME ]] && errors+=("Name is required (--name)")
-    [[ -z $ROLE ]] && errors+=("Role is required (--role)")
-
-    if [[ ${#errors[@]} -gt 0 ]]; then
-        print_color $RED "❌ Missing required arguments:"
-        printf '%s\n' "${errors[@]}" | sed 's/^/   • /'
-        echo
-        print_usage
-        exit 1
+    # Display defaults being used
+    if [[ $EMAIL == "admin@harborlist.com" ]]; then
+        print_color $BLUE "📧 Using default email: admin@harborlist.com"
+    fi
+    if [[ $NAME == "HarborList Admin" ]]; then
+        print_color $BLUE "👤 Using default name: HarborList Admin"
+    fi
+    if [[ $ROLE == "super_admin" ]]; then
+        print_color $BLUE "🔑 Using default role: super_admin"
     fi
 
     # Validate individual fields
