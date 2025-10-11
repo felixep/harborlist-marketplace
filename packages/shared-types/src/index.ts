@@ -8,7 +8,9 @@ export * from './common';
 export type {
   // Core entities
   Listing,
+  EnhancedListing,
   BoatDetails,
+  Engine,
   Location,
   Review,
   ListingRating,
@@ -16,6 +18,12 @@ export type {
   // User management
   User,
   AdminUser,
+  EnhancedUser,
+  SalesUser,
+  UserTier,
+  TierFeature,
+  UserLimits,
+  UserCapability,
   
   // Search and filtering
   SearchFilters,
@@ -36,6 +44,9 @@ export type {
   FlaggedListing,
   ModerationDecision,
   ModerationStats,
+  ModerationWorkflow,
+  ModerationNotes,
+  ModerationQueue,
   DateRange,
   AnalyticsMetrics,
   UserMetrics,
@@ -90,6 +101,11 @@ export type {
   
   // Financial Management
   Transaction,
+  BillingAccount,
+  FinanceCalculation,
+  PaymentScheduleItem,
+  DisputeCase,
+  DisputeEvidence,
   FinancialSummary,
   DisputedTransaction,
   PaymentProcessor,

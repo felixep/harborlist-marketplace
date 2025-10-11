@@ -8,6 +8,21 @@ export interface Location {
   };
 }
 
+// Engine interface for multi-engine boat support
+export interface Engine {
+  engineId: string;
+  type: 'outboard' | 'inboard' | 'sterndrive' | 'jet' | 'electric' | 'hybrid';
+  manufacturer?: string;
+  model?: string;
+  horsepower: number;
+  fuelType: 'gasoline' | 'diesel' | 'electric' | 'hybrid';
+  hours?: number;
+  year?: number;
+  condition: 'excellent' | 'good' | 'fair' | 'needs_work';
+  specifications?: Record<string, any>;
+  position: number; // 1, 2, 3 for multiple engines
+}
+
 export interface BoatDetails {
   type: string;
   manufacturer?: string;
@@ -16,9 +31,13 @@ export interface BoatDetails {
   length: number;
   beam?: number;
   draft?: number;
-  engine?: string;
-  hours?: number;
+  engine?: string; // Legacy field - kept for backward compatibility
+  hours?: number; // Legacy field - kept for backward compatibility
   condition: 'Excellent' | 'Good' | 'Fair' | 'Needs Work';
+  // New multi-engine support
+  engines?: Engine[];
+  totalHorsepower?: number;
+  engineConfiguration?: 'single' | 'twin' | 'triple' | 'quad';
 }
 
 export interface Listing {
@@ -41,6 +60,22 @@ export interface Listing {
   moderationStatus?: 'approved' | 'pending' | 'flagged' | 'rejected';
   flagCount?: number;
   lastModerated?: number;
+}
+
+// Enhanced listing interface with multi-engine support and SEO features
+export interface EnhancedListing extends Listing {
+  slug: string; // SEO-friendly URL slug
+  engines: Engine[]; // Multi-engine support
+  totalHorsepower: number; // Calculated total horsepower
+  engineConfiguration: 'single' | 'twin' | 'triple' | 'quad';
+  moderationWorkflow?: {
+    status: 'pending_review' | 'approved' | 'rejected' | 'changes_requested';
+    reviewedBy?: string;
+    reviewedAt?: number;
+    rejectionReason?: string;
+    moderatorNotes?: string;
+    requiredChanges?: string[];
+  };
 }
 
 export interface Review {
@@ -112,7 +147,8 @@ export enum UserRole {
   ADMIN = 'admin',
   SUPER_ADMIN = 'super_admin',
   MODERATOR = 'moderator',
-  SUPPORT = 'support'
+  SUPPORT = 'support',
+  SALES = 'sales'
 }
 
 export enum UserStatus {
@@ -128,7 +164,11 @@ export enum AdminPermission {
   FINANCIAL_ACCESS = 'financial_access',
   SYSTEM_CONFIG = 'system_config',
   ANALYTICS_VIEW = 'analytics_view',
-  AUDIT_LOG_VIEW = 'audit_log_view'
+  AUDIT_LOG_VIEW = 'audit_log_view',
+  TIER_MANAGEMENT = 'tier_management',
+  CAPABILITY_ASSIGNMENT = 'capability_assignment',
+  BILLING_MANAGEMENT = 'billing_management',
+  SALES_MANAGEMENT = 'sales_management'
 }
 
 export interface User {
@@ -161,6 +201,101 @@ export interface AdminUser extends User {
   permissions: AdminPermission[];
   ipWhitelist?: string[];
   sessionTimeout: number; // in minutes
+}
+
+// User tier and membership management types
+export interface UserLimits {
+  maxListings: number;
+  maxImages: number;
+  priorityPlacement: boolean;
+  featuredListings: number;
+  analyticsAccess: boolean;
+  bulkOperations: boolean;
+  advancedSearch: boolean;
+  premiumSupport: boolean;
+}
+
+export interface UserCapability {
+  feature: string;
+  enabled: boolean;
+  expiresAt?: number;
+  grantedBy: string;
+  grantedAt: number;
+  metadata?: Record<string, any>;
+}
+
+export interface UserTier {
+  tierId: string;
+  name: string;
+  type: 'individual' | 'dealer';
+  isPremium: boolean;
+  features: TierFeature[];
+  limits: UserLimits;
+  pricing: {
+    monthly?: number;
+    yearly?: number;
+    currency: string;
+  };
+  active: boolean;
+  description?: string;
+  displayOrder: number;
+}
+
+export interface TierFeature {
+  featureId: string;
+  name: string;
+  description: string;
+  enabled: boolean;
+  limits?: Record<string, number>;
+}
+
+export interface EnhancedUser extends User {
+  userType: 'individual' | 'dealer' | 'premium_individual' | 'premium_dealer';
+  membershipDetails: {
+    plan?: string;
+    tierId?: string;
+    features: string[];
+    limits: UserLimits;
+    expiresAt?: number;
+    autoRenew: boolean;
+    billingCycle?: 'monthly' | 'yearly';
+  };
+  salesRepId?: string;
+  capabilities: UserCapability[];
+  billingInfo?: {
+    customerId?: string;
+    subscriptionId?: string;
+    paymentMethodId?: string;
+    billingAddress?: {
+      street: string;
+      city: string;
+      state: string;
+      zipCode: string;
+      country: string;
+    };
+  };
+  premiumActive: boolean;
+  premiumPlan?: string;
+  premiumExpiresAt?: number;
+}
+
+export interface SalesUser extends EnhancedUser {
+  role: UserRole.ADMIN | UserRole.SUPER_ADMIN;
+  permissions: AdminPermission[];
+  assignedCustomers: string[];
+  salesTargets?: {
+    monthly: number;
+    quarterly: number;
+    yearly: number;
+    achieved: {
+      monthly: number;
+      quarterly: number;
+      yearly: number;
+    };
+  };
+  commissionRate?: number;
+  territory?: string;
+  managerUserId?: string;
 }
 
 export interface AuthSession {
@@ -272,11 +407,88 @@ export interface SystemAlert {
 
 export interface ContentFlag {
   id: string;
-  type: 'inappropriate' | 'spam' | 'fraud' | 'duplicate' | 'other';
+  flagId?: string; // Alternative ID for consistency
+  type: 'inappropriate' | 'spam' | 'fraud' | 'duplicate' | 'misleading' | 'copyright' | 'other';
   reason: string;
   reportedBy: string;
   reportedAt: string;
-  severity: 'low' | 'medium' | 'high';
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  status: 'pending' | 'reviewed' | 'resolved' | 'dismissed';
+  reviewedBy?: string;
+  reviewedAt?: string;
+  resolution?: string;
+  metadata?: Record<string, any>;
+}
+
+// Content moderation workflow types
+export interface ModerationWorkflow {
+  queueId: string;
+  listingId: string;
+  submittedBy: string;
+  assignedTo?: string;
+  priority: 'low' | 'medium' | 'high' | 'urgent';
+  flags: ContentFlag[];
+  status: 'pending' | 'in_review' | 'approved' | 'rejected' | 'changes_requested';
+  moderationNotes?: ModerationNotes;
+  submittedAt: number;
+  reviewedAt?: number;
+  dueDate?: number;
+  escalated: boolean;
+  escalatedAt?: number;
+  escalatedBy?: string;
+  escalationReason?: string;
+}
+
+export interface ModerationNotes {
+  reviewerId: string;
+  reviewerName: string;
+  decision: 'approve' | 'reject' | 'request_changes';
+  reason: string;
+  publicNotes?: string; // Notes visible to listing owner
+  internalNotes?: string; // Notes only visible to moderators
+  requiredChanges?: string[];
+  reviewDuration?: number; // Time spent reviewing in minutes
+  confidence: 'low' | 'medium' | 'high'; // Moderator confidence in decision
+}
+
+export interface ModerationQueue {
+  queueId: string;
+  name: string;
+  description?: string;
+  filters: {
+    priority?: string[];
+    listingTypes?: string[];
+    flagTypes?: string[];
+    assignedModerators?: string[];
+  };
+  autoAssignment: boolean;
+  maxItemsPerModerator: number;
+  slaHours: number; // Service level agreement in hours
+  active: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ModerationStats {
+  totalFlagged: number;
+  pendingReview: number;
+  approvedToday: number;
+  rejectedToday: number;
+  averageReviewTime: number;
+  queueBacklog: number;
+  moderatorWorkload: Array<{
+    moderatorId: string;
+    moderatorName: string;
+    assignedItems: number;
+    completedToday: number;
+    averageReviewTime: number;
+  }>;
+  flagTypeBreakdown: Array<{
+    type: string;
+    count: number;
+    percentage: number;
+  }>;
+  slaCompliance: number; // Percentage of items reviewed within SLA
 }
 
 export interface FlaggedListing {
@@ -306,13 +518,7 @@ export interface ModerationDecision {
   notifyUser: boolean;
 }
 
-export interface ModerationStats {
-  totalFlagged: number;
-  pendingReview: number;
-  approvedToday: number;
-  rejectedToday: number;
-  averageReviewTime: number;
-}
+// ModerationStats moved to enhanced version below with ModerationWorkflow types
 
 export interface DateRange {
   startDate: string;
@@ -691,13 +897,14 @@ export interface AnnouncementStats {
   };
 }
 
-// Financial Management Types
+// Enhanced Financial Management Types
 export interface Transaction {
   id: string;
-  type: 'payment' | 'refund' | 'commission' | 'payout';
+  transactionId: string; // Alternative ID for consistency
+  type: 'payment' | 'refund' | 'commission' | 'payout' | 'membership' | 'subscription';
   amount: number;
   currency: string;
-  status: 'pending' | 'completed' | 'failed' | 'disputed';
+  status: 'pending' | 'completed' | 'failed' | 'disputed' | 'cancelled';
   userId: string;
   userName: string;
   userEmail: string;
@@ -710,6 +917,107 @@ export interface Transaction {
   description: string;
   fees: number;
   netAmount: number;
+  metadata?: Record<string, any>;
+  billingAccountId?: string;
+  subscriptionId?: string;
+  invoiceId?: string;
+}
+
+// Billing account management
+export interface BillingAccount {
+  billingId: string;
+  userId: string;
+  customerId?: string; // Payment processor customer ID
+  paymentMethodId?: string;
+  subscriptionId?: string;
+  plan: string;
+  amount: number;
+  currency: string;
+  status: 'active' | 'past_due' | 'canceled' | 'suspended' | 'trialing';
+  nextBillingDate?: number;
+  trialEndsAt?: number;
+  canceledAt?: number;
+  paymentHistory: Transaction[];
+  billingAddress?: {
+    street: string;
+    city: string;
+    state: string;
+    zipCode: string;
+    country: string;
+  };
+  taxInfo?: {
+    taxId?: string;
+    taxExempt: boolean;
+    taxRate?: number;
+  };
+  createdAt: number;
+  updatedAt: number;
+}
+
+// Finance calculation for boat loans
+export interface FinanceCalculation {
+  calculationId: string;
+  listingId: string;
+  userId?: string;
+  boatPrice: number;
+  downPayment: number;
+  loanAmount: number;
+  interestRate: number;
+  termMonths: number;
+  monthlyPayment: number;
+  totalInterest: number;
+  totalCost: number;
+  paymentSchedule?: PaymentScheduleItem[];
+  saved: boolean;
+  shared: boolean;
+  shareToken?: string;
+  calculationNotes?: string;
+  lenderInfo?: {
+    name?: string;
+    rate?: number;
+    terms?: string;
+  };
+  createdAt: number;
+  updatedAt?: number;
+}
+
+export interface PaymentScheduleItem {
+  paymentNumber: number;
+  paymentDate: string;
+  principalAmount: number;
+  interestAmount: number;
+  totalPayment: number;
+  remainingBalance: number;
+}
+
+// Financial reporting and analytics - enhanced existing interface above
+
+// Dispute management
+export interface DisputeCase extends DisputedTransaction {
+  disputeId: string;
+  caseNumber: string;
+  disputeType: 'chargeback' | 'inquiry' | 'fraud' | 'authorization' | 'processing_error';
+  disputeAmount: number;
+  evidenceRequired: string[];
+  evidenceSubmitted: DisputeEvidence[];
+  respondByDate: string;
+  resolution?: {
+    outcome: 'won' | 'lost' | 'accepted';
+    resolvedAt: string;
+    resolvedBy: string;
+    notes: string;
+  };
+  assignedTo?: string;
+  priority: 'low' | 'medium' | 'high' | 'urgent';
+}
+
+export interface DisputeEvidence {
+  evidenceId: string;
+  type: 'receipt' | 'communication' | 'shipping' | 'refund' | 'other';
+  description: string;
+  fileUrl?: string;
+  submittedAt: string;
+  submittedBy: string;
 }
 
 export interface FinancialSummary {
@@ -774,15 +1082,23 @@ export interface PayoutSchedule {
 
 export interface FinancialReport {
   id: string;
-  type: 'revenue' | 'commission' | 'payout' | 'dispute';
+  reportId?: string; // Alternative ID for consistency
+  type: 'revenue' | 'commission' | 'payout' | 'dispute' | 'subscription' | 'membership';
   title: string;
   description: string;
   dateRange: DateRange;
   generatedAt: string;
   generatedBy: string;
-  format: 'csv' | 'pdf' | 'excel';
+  format: 'csv' | 'pdf' | 'excel' | 'json';
   downloadUrl?: string;
   status: 'generating' | 'completed' | 'failed';
+  filters?: Record<string, any>;
+  summary?: {
+    totalRevenue: number;
+    totalTransactions: number;
+    averageTransactionValue: number;
+    topPaymentMethods: Array<{ method: string; count: number; amount: number }>;
+  };
 }
 
 export interface ExportOptions {
