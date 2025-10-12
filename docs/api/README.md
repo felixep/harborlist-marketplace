@@ -65,33 +65,67 @@ X-Request-ID: <uuid>               # Optional request tracking
 Based on the actual CDK infrastructure deployment:
 
 ```typescript
-// Current API Gateway configuration from boat-listing-stack.ts
+// Enhanced API Gateway configuration from boat-listing-stack.ts
 const apiRoutes = {
   // Public endpoints
   'GET /listings': 'listingFunction',
-  'GET /listings/{id}': 'listingFunction', 
-  'POST /search': 'searchFunction',
+  'GET /listings/{slug}': 'listingFunction', // SEO-friendly URLs
+  'GET /listings/{id}': 'listingFunction', // Legacy ID support
+  'POST /search': 'searchFunction', // Enhanced multi-engine search
   'GET /stats/platform': 'statsFunction',
   
   // Authentication endpoints  
   'POST /auth/login': 'authFunction',
-  'POST /auth/register': 'authFunction',
+  'POST /auth/register': 'authFunction', // Enhanced with user types
   'POST /auth/admin/login': 'authFunction',
   'POST /auth/refresh': 'authFunction',
   'POST /auth/logout': 'authFunction',
   
   // Protected user endpoints (require JWT)
-  'POST /listings': 'listingFunction',
+  'POST /listings': 'listingFunction', // Multi-engine support
   'PUT /listings/{id}': 'listingFunction',
   'DELETE /listings/{id}': 'listingFunction',
   'POST /media': 'mediaFunction',
   'POST /email': 'emailFunction',
+  
+  // Enhanced user management endpoints
+  'GET /users/profile': 'userFunction',
+  'PUT /users/profile': 'userFunction',
+  'POST /users/upgrade': 'userFunction', // Premium upgrades
+  'GET /users/capabilities': 'userFunction',
+  
+  // Finance calculator endpoints
+  'POST /finance/calculate': 'financeFunction',
+  'POST /finance/save': 'financeFunction',
+  'GET /finance/calculations': 'financeFunction',
+  'POST /finance/share': 'financeFunction',
+  
+  // Billing endpoints
+  'GET /billing/account': 'billingFunction',
+  'POST /billing/payment-method': 'billingFunction',
+  'POST /billing/subscription': 'billingFunction',
+  'GET /billing/transactions': 'billingFunction',
+  'POST /billing/refund': 'billingFunction',
   
   // Admin endpoints (require admin JWT + permissions)
   'GET /admin': 'adminFunction',
   'POST /admin': 'adminFunction', 
   'PUT /admin': 'adminFunction',
   'DELETE /admin': 'adminFunction',
+  
+  // Enhanced admin endpoints
+  'GET /admin/users': 'adminFunction', // User tier management
+  'PUT /admin/users/{id}/tier': 'adminFunction',
+  'GET /admin/moderation/queue': 'adminFunction',
+  'POST /admin/moderation/decision': 'adminFunction',
+  'GET /admin/billing/overview': 'adminFunction',
+  'GET /admin/analytics/dashboard': 'adminFunction',
+  
+  // Sales role endpoints
+  'GET /sales/customers': 'userFunction',
+  'PUT /sales/customers/{id}/plan': 'userFunction',
+  'POST /sales/customers/{id}/capabilities': 'userFunction',
+  
   'ANY /admin/{proxy+}': 'adminFunction' // Catch-all for admin routes
 };
 ```

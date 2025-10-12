@@ -7,5 +7,6 @@ export { default as SystemMonitoring } from './SystemMonitoring';
 export { default as Analytics } from './Analytics';
 export { default as PlatformSettings } from './PlatformSettings';
 export { default as FinancialManagement } from './FinancialManagement';
+export { default as SalesManagement } from './SalesManagement';
 export { default as SupportDashboard } from './SupportDashboard';
 export { default as AuditLogs } from './AuditLogs';

@@ -161,6 +161,14 @@ create_simple_table "harborlist-reviews"
 create_admin_sessions_table  # Use specialized function for admin sessions table to match production
 create_simple_table "harborlist-analytics"
 
+# Enhanced feature tables for boat marketplace enhancements
+create_simple_table "harborlist-engines"
+create_simple_table "harborlist-billing-accounts"
+create_simple_table "harborlist-transactions"
+create_simple_table "harborlist-finance-calculations"
+create_simple_table "harborlist-moderation-queue"
+create_simple_table "harborlist-user-groups"
+
 # Admin-specific tables
 create_simple_table "harborlist-platform-settings"
 create_simple_table "harborlist-settings-audit"

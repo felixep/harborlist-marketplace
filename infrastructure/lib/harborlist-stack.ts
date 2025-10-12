@@ -191,6 +191,132 @@ export class HarborListStack extends cdk.Stack {
       sortKey: { name: 'lastActivity', type: dynamodb.AttributeType.STRING },
     });
 
+    // Engines Table for multi-engine boat support
+    const enginesTable = new dynamodb.Table(this, 'EnginesTable', {
+      tableName: 'harborlist-engines',
+      partitionKey: { name: 'engineId', type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+      pointInTimeRecovery: true,
+    });
+
+    enginesTable.addGlobalSecondaryIndex({
+      indexName: 'listing-index',
+      partitionKey: { name: 'listingId', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'position', type: dynamodb.AttributeType.NUMBER },
+    });
+
+    // Billing Accounts Table
+    const billingAccountsTable = new dynamodb.Table(this, 'BillingAccountsTable', {
+      tableName: 'harborlist-billing-accounts',
+      partitionKey: { name: 'billingId', type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+      pointInTimeRecovery: true,
+    });
+
+    billingAccountsTable.addGlobalSecondaryIndex({
+      indexName: 'user-index',
+      partitionKey: { name: 'userId', type: dynamodb.AttributeType.STRING },
+    });
+
+    billingAccountsTable.addGlobalSecondaryIndex({
+      indexName: 'subscription-index',
+      partitionKey: { name: 'subscriptionId', type: dynamodb.AttributeType.STRING },
+    });
+
+    // Transactions Table
+    const transactionsTable = new dynamodb.Table(this, 'TransactionsTable', {
+      tableName: 'harborlist-transactions',
+      partitionKey: { name: 'transactionId', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'createdAt', type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+      pointInTimeRecovery: true,
+    });
+
+    transactionsTable.addGlobalSecondaryIndex({
+      indexName: 'user-index',
+      partitionKey: { name: 'userId', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'createdAt', type: dynamodb.AttributeType.STRING },
+    });
+
+    transactionsTable.addGlobalSecondaryIndex({
+      indexName: 'status-index',
+      partitionKey: { name: 'status', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'createdAt', type: dynamodb.AttributeType.STRING },
+    });
+
+    transactionsTable.addGlobalSecondaryIndex({
+      indexName: 'type-index',
+      partitionKey: { name: 'type', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'createdAt', type: dynamodb.AttributeType.STRING },
+    });
+
+    // Finance Calculations Table
+    const financeCalculationsTable = new dynamodb.Table(this, 'FinanceCalculationsTable', {
+      tableName: 'harborlist-finance-calculations',
+      partitionKey: { name: 'calculationId', type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
+    financeCalculationsTable.addGlobalSecondaryIndex({
+      indexName: 'listing-index',
+      partitionKey: { name: 'listingId', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'createdAt', type: dynamodb.AttributeType.STRING },
+    });
+
+    financeCalculationsTable.addGlobalSecondaryIndex({
+      indexName: 'user-index',
+      partitionKey: { name: 'userId', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'createdAt', type: dynamodb.AttributeType.STRING },
+    });
+
+    financeCalculationsTable.addGlobalSecondaryIndex({
+      indexName: 'share-token-index',
+      partitionKey: { name: 'shareToken', type: dynamodb.AttributeType.STRING },
+    });
+
+    // Moderation Queue Table
+    const moderationQueueTable = new dynamodb.Table(this, 'ModerationQueueTable', {
+      tableName: 'harborlist-moderation-queue',
+      partitionKey: { name: 'queueId', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'submittedAt', type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
+    moderationQueueTable.addGlobalSecondaryIndex({
+      indexName: 'listing-index',
+      partitionKey: { name: 'listingId', type: dynamodb.AttributeType.STRING },
+    });
+
+    moderationQueueTable.addGlobalSecondaryIndex({
+      indexName: 'status-index',
+      partitionKey: { name: 'status', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'priority', type: dynamodb.AttributeType.STRING },
+    });
+
+    moderationQueueTable.addGlobalSecondaryIndex({
+      indexName: 'assigned-index',
+      partitionKey: { name: 'assignedTo', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'submittedAt', type: dynamodb.AttributeType.STRING },
+    });
+
+    // User Groups Table for enhanced user management
+    const userGroupsTable = new dynamodb.Table(this, 'UserGroupsTable', {
+      tableName: 'harborlist-user-groups',
+      partitionKey: { name: 'groupId', type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
+    userGroupsTable.addGlobalSecondaryIndex({
+      indexName: 'name-index',
+      partitionKey: { name: 'name', type: dynamodb.AttributeType.STRING },
+    });
+
     // Login Attempts Table
     const loginAttemptsTable = new dynamodb.Table(this, 'LoginAttemptsTable', {
       tableName: 'harborlist-login-attempts',
@@ -311,6 +437,8 @@ export class HarborListStack extends cdk.Stack {
       environment: {
         LISTINGS_TABLE: listingsTable.tableName,
         USERS_TABLE: usersTable.tableName,
+        ENGINES_TABLE: enginesTable.tableName,
+        MODERATION_QUEUE_TABLE: moderationQueueTable.tableName,
         JWT_SECRET: jwtConfig.JWT_SECRET,
         JWT_SECRET_ARN: jwtConfig.JWT_SECRET_ARN,
         ENVIRONMENT: environment,
@@ -379,6 +507,12 @@ export class HarborListStack extends cdk.Stack {
         AUDIT_LOGS_TABLE: auditLogsTable.tableName,
         ADMIN_SESSIONS_TABLE: adminSessionsTable.tableName,
         LOGIN_ATTEMPTS_TABLE: loginAttemptsTable.tableName,
+        ENGINES_TABLE: enginesTable.tableName,
+        BILLING_ACCOUNTS_TABLE: billingAccountsTable.tableName,
+        TRANSACTIONS_TABLE: transactionsTable.tableName,
+        FINANCE_CALCULATIONS_TABLE: financeCalculationsTable.tableName,
+        MODERATION_QUEUE_TABLE: moderationQueueTable.tableName,
+        USER_GROUPS_TABLE: userGroupsTable.tableName,
         JWT_SECRET: jwtConfig.JWT_SECRET,
         JWT_SECRET_ARN: jwtConfig.JWT_SECRET_ARN,
         ENVIRONMENT: environment,
@@ -388,6 +522,52 @@ export class HarborListStack extends cdk.Stack {
         SESSION_TIMEOUT_MINUTES: '60',
         MAX_LOGIN_ATTEMPTS: '5',
         LOGIN_ATTEMPT_WINDOW_MINUTES: '15',
+      },
+    });
+
+    // Billing Service Lambda Function
+    const billingFunction = new lambda.Function(this, 'BillingFunction', {
+      runtime: lambda.Runtime.NODEJS_18_X,
+      handler: 'billing-service/index.handler',
+      code: lambda.Code.fromAsset('../backend/dist/packages/billing-service.zip'),
+      timeout: cdk.Duration.seconds(30),
+      memorySize: 512,
+      environment: {
+        USERS_TABLE: usersTable.tableName,
+        BILLING_ACCOUNTS_TABLE: billingAccountsTable.tableName,
+        TRANSACTIONS_TABLE: transactionsTable.tableName,
+        JWT_SECRET: jwtConfig.JWT_SECRET,
+        JWT_SECRET_ARN: jwtConfig.JWT_SECRET_ARN,
+        ENVIRONMENT: environment,
+        DEPLOYMENT_TARGET: 'aws',
+        NODE_ENV: environment === 'prod' ? 'production' : 'development',
+        LOG_LEVEL: environment === 'prod' ? 'warn' : 'debug',
+        // Payment processor configuration
+        STRIPE_SECRET_KEY: '', // Will be set via environment variables or secrets
+        STRIPE_WEBHOOK_SECRET: '', // Will be set via environment variables or secrets
+        PAYPAL_CLIENT_ID: '', // Will be set via environment variables or secrets
+        PAYPAL_CLIENT_SECRET: '', // Will be set via environment variables or secrets
+        PAYMENT_PROCESSOR: 'stripe', // Default processor
+      },
+    });
+
+    // Finance Service Lambda Function
+    const financeFunction = new lambda.Function(this, 'FinanceFunction', {
+      runtime: lambda.Runtime.NODEJS_18_X,
+      handler: 'finance-service/index.handler',
+      code: lambda.Code.fromAsset('../backend/dist/packages/finance-service.zip'),
+      timeout: cdk.Duration.seconds(15),
+      memorySize: 256,
+      environment: {
+        LISTINGS_TABLE: listingsTable.tableName,
+        USERS_TABLE: usersTable.tableName,
+        FINANCE_CALCULATIONS_TABLE: financeCalculationsTable.tableName,
+        JWT_SECRET: jwtConfig.JWT_SECRET,
+        JWT_SECRET_ARN: jwtConfig.JWT_SECRET_ARN,
+        ENVIRONMENT: environment,
+        DEPLOYMENT_TARGET: 'aws',
+        NODE_ENV: environment === 'prod' ? 'production' : 'development',
+        LOG_LEVEL: environment === 'prod' ? 'warn' : 'debug',
       },
     });
 
@@ -432,6 +612,12 @@ export class HarborListStack extends cdk.Stack {
     auditLogsTable.grantReadWriteData(adminFunction);
     adminSessionsTable.grantReadWriteData(adminFunction);
     loginAttemptsTable.grantReadWriteData(adminFunction);
+    enginesTable.grantReadWriteData(adminFunction);
+    billingAccountsTable.grantReadWriteData(adminFunction);
+    transactionsTable.grantReadWriteData(adminFunction);
+    financeCalculationsTable.grantReadWriteData(adminFunction);
+    moderationQueueTable.grantReadWriteData(adminFunction);
+    userGroupsTable.grantReadWriteData(adminFunction);
 
     // Grant admin function scan permissions
     adminFunction.addToRolePolicy(new iam.PolicyStatement({
@@ -444,7 +630,64 @@ export class HarborListStack extends cdk.Stack {
         adminSessionsTable.tableArn,
         `${adminSessionsTable.tableArn}/index/*`,
         loginAttemptsTable.tableArn,
-        `${loginAttemptsTable.tableArn}/index/*`
+        `${loginAttemptsTable.tableArn}/index/*`,
+        enginesTable.tableArn,
+        `${enginesTable.tableArn}/index/*`,
+        billingAccountsTable.tableArn,
+        `${billingAccountsTable.tableArn}/index/*`,
+        transactionsTable.tableArn,
+        `${transactionsTable.tableArn}/index/*`,
+        financeCalculationsTable.tableArn,
+        `${financeCalculationsTable.tableArn}/index/*`,
+        moderationQueueTable.tableArn,
+        `${moderationQueueTable.tableArn}/index/*`,
+        userGroupsTable.tableArn,
+        `${userGroupsTable.tableArn}/index/*`
+      ],
+    }));
+
+    // Grant billing function access to billing-related tables
+    usersTable.grantReadWriteData(billingFunction);
+    billingAccountsTable.grantReadWriteData(billingFunction);
+    transactionsTable.grantReadWriteData(billingFunction);
+    auditLogsTable.grantReadWriteData(billingFunction);
+
+    // Grant billing function scan permissions
+    billingFunction.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['dynamodb:Scan'],
+      resources: [
+        billingAccountsTable.tableArn,
+        `${billingAccountsTable.tableArn}/index/*`,
+        transactionsTable.tableArn,
+        `${transactionsTable.tableArn}/index/*`
+      ],
+    }));
+
+    // Grant finance function access to finance-related tables
+    listingsTable.grantReadData(financeFunction);
+    usersTable.grantReadData(financeFunction);
+    financeCalculationsTable.grantReadWriteData(financeFunction);
+
+    // Grant finance function scan permissions
+    financeFunction.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['dynamodb:Scan'],
+      resources: [
+        financeCalculationsTable.tableArn,
+        `${financeCalculationsTable.tableArn}/index/*`
+      ],
+    }));
+
+    // Grant listing function access to new tables for enhanced features
+    enginesTable.grantReadWriteData(listingFunction);
+    moderationQueueTable.grantReadWriteData(listingFunction);
+
+    listingFunction.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['dynamodb:Scan'],
+      resources: [
+        enginesTable.tableArn,
+        `${enginesTable.tableArn}/index/*`,
+        moderationQueueTable.tableArn,
+        `${moderationQueueTable.tableArn}/index/*`
       ],
     }));
 
@@ -453,6 +696,8 @@ export class HarborListStack extends cdk.Stack {
       jwtSecret.grantRead(adminFunction);
       jwtSecret.grantRead(authFunction);
       jwtSecret.grantRead(listingFunction);
+      jwtSecret.grantRead(billingFunction);
+      jwtSecret.grantRead(financeFunction);
     }
 
     // Grant auth function access to tables
@@ -562,6 +807,60 @@ export class HarborListStack extends cdk.Stack {
 
     const adminProxy = admin.addResource('{proxy+}');
     adminProxy.addMethod('ANY', new apigateway.LambdaIntegration(adminFunction));
+
+    // Billing API routes
+    const billing = api.root.addResource('billing', {
+      defaultCorsPreflightOptions: {
+        allowOrigins: apigateway.Cors.ALL_ORIGINS,
+        allowMethods: apigateway.Cors.ALL_METHODS,
+        allowHeaders: apigateway.Cors.DEFAULT_HEADERS.concat(['Authorization']),
+      }
+    });
+    billing.addMethod('GET', new apigateway.LambdaIntegration(billingFunction));
+    billing.addMethod('POST', new apigateway.LambdaIntegration(billingFunction));
+    billing.addMethod('PUT', new apigateway.LambdaIntegration(billingFunction));
+    billing.addMethod('DELETE', new apigateway.LambdaIntegration(billingFunction));
+
+    const billingProxy = billing.addResource('{proxy+}');
+    billingProxy.addMethod('ANY', new apigateway.LambdaIntegration(billingFunction));
+
+    // Finance API routes
+    const finance = api.root.addResource('finance', {
+      defaultCorsPreflightOptions: {
+        allowOrigins: apigateway.Cors.ALL_ORIGINS,
+        allowMethods: apigateway.Cors.ALL_METHODS,
+        allowHeaders: apigateway.Cors.DEFAULT_HEADERS.concat(['Authorization']),
+      }
+    });
+    finance.addMethod('GET', new apigateway.LambdaIntegration(financeFunction));
+    finance.addMethod('POST', new apigateway.LambdaIntegration(financeFunction));
+    finance.addMethod('PUT', new apigateway.LambdaIntegration(financeFunction));
+    finance.addMethod('DELETE', new apigateway.LambdaIntegration(financeFunction));
+
+    const financeProxy = finance.addResource('{proxy+}');
+    financeProxy.addMethod('ANY', new apigateway.LambdaIntegration(financeFunction));
+
+    // Enhanced listing routes for multi-engine support
+    const engines = listings.addResource('engines');
+    engines.addMethod('GET', new apigateway.LambdaIntegration(listingFunction));
+    engines.addMethod('POST', new apigateway.LambdaIntegration(listingFunction));
+    engines.addMethod('PUT', new apigateway.LambdaIntegration(listingFunction));
+    engines.addMethod('DELETE', new apigateway.LambdaIntegration(listingFunction));
+
+    // Moderation API routes
+    const moderation = api.root.addResource('moderation', {
+      defaultCorsPreflightOptions: {
+        allowOrigins: apigateway.Cors.ALL_ORIGINS,
+        allowMethods: apigateway.Cors.ALL_METHODS,
+        allowHeaders: apigateway.Cors.DEFAULT_HEADERS.concat(['Authorization']),
+      }
+    });
+    moderation.addMethod('GET', new apigateway.LambdaIntegration(adminFunction));
+    moderation.addMethod('POST', new apigateway.LambdaIntegration(adminFunction));
+    moderation.addMethod('PUT', new apigateway.LambdaIntegration(adminFunction));
+
+    const moderationProxy = moderation.addResource('{proxy+}');
+    moderationProxy.addMethod('ANY', new apigateway.LambdaIntegration(adminFunction));
 
 
 

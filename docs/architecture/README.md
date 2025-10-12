@@ -664,13 +664,22 @@ graph TB
 ```mermaid
 graph LR
     subgraph "Core Tables"
-        Users[boat-users<br>• User profiles<br>• Authentication data<br>• Preferences]
-        Listings[boat-listings<br>• Boat details<br>• Pricing & availability<br>• Media references]
+        Users[boat-users<br>• Enhanced user profiles<br>• User tiers & membership<br>• Sales assignments]
+        Listings[boat-listings<br>• Multi-engine boat details<br>• SEO slugs<br>• Moderation status]
+        Engines[boat-engines<br>• Engine specifications<br>• Multi-engine support<br>• Configuration details]
         Reviews[boat-reviews<br>• User feedback<br>• Ratings<br>• Comments]
         Sessions[boat-sessions<br>• Active sessions<br>• Device tracking<br>• Expiration]
         AuditLogs[boat-audit-logs<br>• System actions<br>• User activities<br>• Admin operations]
         AdminUsers[boat-admin-users<br>• Admin accounts<br>• Permissions<br>• Role assignments]
         LoginAttempts[boat-login-attempts<br>• Security tracking<br>• Failed attempts<br>• IP monitoring]
+    end
+    
+    subgraph "Enhanced Tables"
+        UserGroups[boat-user-groups<br>• Group management<br>• Permissions<br>• Member assignments]
+        BillingAccounts[boat-billing-accounts<br>• Customer billing<br>• Payment methods<br>• Subscription data]
+        Transactions[boat-transactions<br>• Payment history<br>• Financial records<br>• Dispute tracking]
+        FinanceCalculations[boat-finance-calculations<br>• Loan calculations<br>• Saved scenarios<br>• Sharing data]
+        ModerationQueue[boat-moderation-queue<br>• Content review queue<br>• Assignment tracking<br>• Priority management]
     end
     
     subgraph "Global Secondary Indexes"
@@ -769,16 +778,19 @@ sequenceDiagram
 
 ## 🏢 **Microservices Architecture**
 
-### **Service Boundaries & Responsibilities**
+### **Enhanced Service Boundaries & Responsibilities**
 
 | Service | Primary Responsibility | Key Functions | Data Access |
 |---------|----------------------|---------------|-------------|
 | **Auth Service** | Authentication & Authorization | • User login/logout<br>• JWT token management<br>• MFA verification<br>• Session management | • Users table<br>• Sessions table<br>• Login attempts<br>• Audit logs |
-| **Listing Service** | Boat Listing Management | • CRUD operations<br>• Search & filtering<br>• Media integration<br>• Validation | • Listings table<br>• Reviews table<br>• Media references |
-| **Admin Service** | Administrative Operations | • User management<br>• Content moderation<br>• Analytics dashboard<br>• System configuration | • All tables (read)<br>• Admin users<br>• Audit logs<br>• System config |
+| **Enhanced Listing Service** | Multi-Engine Boat Management | • Multi-engine CRUD operations<br>• Content moderation workflow<br>• SEO-friendly URL generation<br>• Advanced search & filtering | • Listings table<br>• Engines table<br>• Moderation queue<br>• Reviews table |
+| **Enhanced Admin Service** | Comprehensive Platform Management | • Functional dashboard sections<br>• User tier management<br>• Content moderation queue<br>• Billing administration<br>• System monitoring | • All tables (read/write)<br>• Admin users<br>• Audit logs<br>• System config |
+| **User Service** | User Tier & Membership Management | • User type management<br>• Premium membership handling<br>• Sales role support<br>• Capability assignment | • Users table<br>• User groups<br>• Billing accounts<br>• Audit logs |
+| **Billing Service** | Payment & Subscription Management | • Payment processing<br>• Subscription management<br>• Financial reporting<br>• Dispute resolution | • Billing accounts<br>• Transactions<br>• Payment methods<br>• Financial reports |
+| **Finance Service** | Loan Calculation Engine | • Finance calculations<br>• Payment scenarios<br>• Calculation persistence<br>• Sharing functionality | • Finance calculations<br>• Loan parameters<br>• User preferences |
 | **Media Service** | File & Media Management | • Image upload/processing<br>• CDN integration<br>• File optimization<br>• Storage management | • S3 buckets<br>• Media metadata<br>• Processing logs |
-| **Email Service** | Communication & Notifications | • Welcome emails<br>• System notifications<br>• Alert management<br>• Template rendering | • Email templates<br>• Notification logs<br>• User preferences |
-| **Stats Service** | Analytics & Reporting | • Platform metrics<br>• User analytics<br>• Performance tracking<br>• Business intelligence | • All tables (read)<br>• Aggregated data<br>• Metrics storage |
+| **Email Service** | Enhanced Communication | • Welcome emails<br>• Moderation notifications<br>• Billing alerts<br>• System notifications | • Email templates<br>• Notification logs<br>• User preferences |
+| **Stats Service** | Advanced Analytics & BI | • Platform metrics<br>• User behavior analytics<br>• Business intelligence<br>• Performance tracking | • All tables (read)<br>• Aggregated data<br>• Analytics storage |
 
 ### **Inter-Service Communication**
 

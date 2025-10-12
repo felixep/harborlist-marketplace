@@ -121,11 +121,23 @@ services:
       - USERS_TABLE=harborlist-users
       - MEDIA_BUCKET=harborlist-media-local
       - THUMBNAILS_BUCKET=harborlist-thumbnails-local
-      - USERS_TABLE=harborlist-users
       - REVIEWS_TABLE=harborlist-reviews
       - SESSIONS_TABLE=harborlist-sessions
       - LOGIN_ATTEMPTS_TABLE=harborlist-login-attempts
       - AUDIT_LOGS_TABLE=harborlist-audit-logs
+      # Enhanced feature tables
+      - ENGINES_TABLE=harborlist-engines
+      - BILLING_ACCOUNTS_TABLE=harborlist-billing-accounts
+      - TRANSACTIONS_TABLE=harborlist-transactions
+      - FINANCE_CALCULATIONS_TABLE=harborlist-finance-calculations
+      - MODERATION_QUEUE_TABLE=harborlist-moderation-queue
+      - USER_GROUPS_TABLE=harborlist-user-groups
+      # Payment processor configuration for local testing
+      - STRIPE_SECRET_KEY=sk_test_local_development_key
+      - STRIPE_WEBHOOK_SECRET=whsec_local_development_secret
+      - PAYPAL_CLIENT_ID=local_paypal_client_id
+      - PAYPAL_CLIENT_SECRET=local_paypal_client_secret
+      - PAYMENT_PROCESSOR=stripe
     depends_on:
       - dynamodb-local
       - localstack
@@ -212,6 +224,109 @@ services:
       - redis_data:/data
     networks:
       - harborlist-local
+
+  # Billing Service (for enhanced features)
+  billing-service:
+    profiles: ["enhanced"]
+    build:
+      context: .
+      dockerfile: ./backend/Dockerfile.dev
+      target: billing-service
+    ports:
+      - "3002:3002"
+    volumes:
+      - .:/workspace
+      - /workspace/node_modules
+      - /workspace/backend/node_modules
+      - /workspace/packages/shared-types/node_modules
+    environment:
+      - NODE_ENV=development
+      - ENVIRONMENT=local
+      - DEPLOYMENT_TARGET=docker
+      - DYNAMODB_ENDPOINT=http://dynamodb-local:8000
+      - JWT_SECRET=local-dev-secret-harborlist-2025
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_REGION=us-east-1
+      - CORS_ORIGINS=https://local.harborlist.com,http://localhost:3000
+      - API_BASE_URL=https://local-api.harborlist.com
+      - FRONTEND_URL=https://local.harborlist.com
+      - USERS_TABLE=harborlist-users
+      - BILLING_ACCOUNTS_TABLE=harborlist-billing-accounts
+      - TRANSACTIONS_TABLE=harborlist-transactions
+      - AUDIT_LOGS_TABLE=harborlist-audit-logs
+      # Payment processor configuration for local testing
+      - STRIPE_SECRET_KEY=sk_test_local_development_key
+      - STRIPE_WEBHOOK_SECRET=whsec_local_development_secret
+      - PAYPAL_CLIENT_ID=local_paypal_client_id
+      - PAYPAL_CLIENT_SECRET=local_paypal_client_secret
+      - PAYMENT_PROCESSOR=stripe
+      - SERVICE_PORT=3002
+    depends_on:
+      - dynamodb-local
+    networks:
+      - harborlist-local
+    labels:
+      - "traefik.enable=true"
+      # HTTP to HTTPS redirect
+      - "traefik.http.routers.billing-http.rule=Host(`billing.local.harborlist.com`)"
+      - "traefik.http.routers.billing-http.entrypoints=web"
+      - "traefik.http.routers.billing-http.middlewares=https-redirect@file"
+      # HTTPS router
+      - "traefik.http.routers.billing-https.rule=Host(`billing.local.harborlist.com`)"
+      - "traefik.http.routers.billing-https.entrypoints=websecure"
+      - "traefik.http.routers.billing-https.tls=true"
+      - "traefik.http.routers.billing-https.service=billing-service"
+      - "traefik.http.services.billing-service.loadbalancer.server.port=3002"
+      - "traefik.http.services.billing-service.loadbalancer.server.scheme=http"
+
+  # Finance Service (for enhanced features)
+  finance-service:
+    profiles: ["enhanced"]
+    build:
+      context: .
+      dockerfile: ./backend/Dockerfile.dev
+      target: finance-service
+    ports:
+      - "3003:3003"
+    volumes:
+      - .:/workspace
+      - /workspace/node_modules
+      - /workspace/backend/node_modules
+      - /workspace/packages/shared-types/node_modules
+    environment:
+      - NODE_ENV=development
+      - ENVIRONMENT=local
+      - DEPLOYMENT_TARGET=docker
+      - DYNAMODB_ENDPOINT=http://dynamodb-local:8000
+      - JWT_SECRET=local-dev-secret-harborlist-2025
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_REGION=us-east-1
+      - CORS_ORIGINS=https://local.harborlist.com,http://localhost:3000
+      - API_BASE_URL=https://local-api.harborlist.com
+      - FRONTEND_URL=https://local.harborlist.com
+      - LISTINGS_TABLE=harborlist-listings
+      - USERS_TABLE=harborlist-users
+      - FINANCE_CALCULATIONS_TABLE=harborlist-finance-calculations
+      - SERVICE_PORT=3003
+    depends_on:
+      - dynamodb-local
+    networks:
+      - harborlist-local
+    labels:
+      - "traefik.enable=true"
+      # HTTP to HTTPS redirect
+      - "traefik.http.routers.finance-http.rule=Host(`finance.local.harborlist.com`)"
+      - "traefik.http.routers.finance-http.entrypoints=web"
+      - "traefik.http.routers.finance-http.middlewares=https-redirect@file"
+      # HTTPS router
+      - "traefik.http.routers.finance-https.rule=Host(`finance.local.harborlist.com`)"
+      - "traefik.http.routers.finance-https.entrypoints=websecure"
+      - "traefik.http.routers.finance-https.tls=true"
+      - "traefik.http.routers.finance-https.service=finance-service"
+      - "traefik.http.services.finance-service.loadbalancer.server.port=3003"
+      - "traefik.http.services.finance-service.loadbalancer.server.scheme=http"
 
   # SMTP4Dev for local email testing
   smtp4dev:

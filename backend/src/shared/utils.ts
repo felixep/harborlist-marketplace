@@ -29,6 +29,7 @@
 
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { ApiResponse, ErrorResponse } from '../types/common';
+import { EnhancedError, createEnhancedError, EnhancedErrorCodes, ErrorSeverity, ErrorCategory } from './errors';
 
 /**
  * Creates a standardized HTTP response for API Gateway
@@ -149,13 +150,25 @@ export function createErrorResponse(
  */
 export function parseBody<T>(event: APIGatewayProxyEvent): T {
   if (!event.body) {
-    throw new Error('Request body is required');
+    throw createEnhancedError(
+      EnhancedErrorCodes.INVALID_LOAN_PARAMETERS,
+      ErrorSeverity.HIGH,
+      ErrorCategory.VALIDATION,
+      { operation: 'parseBody' },
+      'Request body is required'
+    );
   }
 
   try {
     return JSON.parse(event.body) as T;
   } catch (error) {
-    throw new Error('Invalid JSON in request body');
+    throw createEnhancedError(
+      EnhancedErrorCodes.INVALID_LOAN_PARAMETERS,
+      ErrorSeverity.HIGH,
+      ErrorCategory.VALIDATION,
+      { operation: 'parseBody', originalError: String(error) },
+      'Invalid JSON in request body'
+    );
   }
 }
 
@@ -180,7 +193,13 @@ export function parseBody<T>(event: APIGatewayProxyEvent): T {
 export function getUserId(event: APIGatewayProxyEvent): string {
   const userId = event.requestContext.authorizer?.claims?.sub;
   if (!userId) {
-    throw new Error('User not authenticated');
+    throw createEnhancedError(
+      EnhancedErrorCodes.ADMIN_PERMISSION_REQUIRED,
+      ErrorSeverity.HIGH,
+      ErrorCategory.AUTHENTICATION,
+      { operation: 'getUserId' },
+      'User not authenticated'
+    );
   }
   return userId;
 }

@@ -110,6 +110,44 @@ class ApiService {
       body: JSON.stringify(data)
     });
   }
+
+  // Billing
+  async createBillingAccount(billingData: any) {
+    return this.request('/api/billing/accounts', {
+      method: 'POST',
+      body: JSON.stringify(billingData)
+    });
+  }
+
+  async getBillingAccount(userId: string) {
+    return this.request(`/api/billing/accounts/${userId}`);
+  }
+
+  async createSubscription(subscriptionData: any) {
+    return this.request('/api/billing/subscriptions', {
+      method: 'POST',
+      body: JSON.stringify(subscriptionData)
+    });
+  }
+
+  async processPayment(paymentData: any) {
+    return this.request('/api/billing/transactions', {
+      method: 'POST',
+      body: JSON.stringify(paymentData)
+    });
+  }
+
+  // User Management
+  async updateUserType(userId: string, userType: string, capabilities?: any[]) {
+    return this.request(`/api/users/${userId}/type`, {
+      method: 'PUT',
+      body: JSON.stringify({ userType, capabilities })
+    });
+  }
+
+  async getUserTiers() {
+    return this.request('/api/users/tiers');
+  }
 }
 
 export const api = new ApiService();

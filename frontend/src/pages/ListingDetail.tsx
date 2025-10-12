@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useParams, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { getListing } from '../services/listings';
 import Layout from '../components/layout/Layout';
@@ -7,16 +7,61 @@ import PageHeader from '../components/layout/PageHeader';
 import ImageGallery from '../components/listing/ImageGallery';
 import ContactForm from '../components/listing/ContactForm';
 import BoatSpecs from '../components/listing/BoatSpecs';
+import FinanceCalculator from '../components/listing/FinanceCalculator';
+import { 
+  updateListingMetaTags, 
+  updateListingStructuredData, 
+  updateCanonicalUrl, 
+  cleanupListingSEO,
+  shareListing 
+} from '../utils/seo';
 
 export default function ListingDetail() {
-  const { id } = useParams<{ id: string }>();
+  const { identifier, slug } = useParams<{ identifier?: string; slug?: string }>();
+  const location = useLocation();
+  const navigate = useNavigate();
   const [showContactForm, setShowContactForm] = useState(false);
 
+  // Determine if we're using slug or ID-based URL
+  const isSlugRoute = location.pathname.startsWith('/boat/');
+  const queryIdentifier = isSlugRoute ? slug : identifier;
+
   const { data, isLoading, error } = useQuery({
-    queryKey: ['listing', id],
-    queryFn: () => getListing(id!),
-    enabled: !!id,
+    queryKey: ['listing', queryIdentifier, isSlugRoute ? 'slug' : 'id'],
+    queryFn: () => {
+      if (isSlugRoute) {
+        // Call API with slug parameter
+        return getListing(queryIdentifier!, { bySlug: true });
+      } else {
+        // Call API with ID parameter
+        return getListing(queryIdentifier!);
+      }
+    },
+    enabled: !!queryIdentifier,
   });
+
+  // SEO and URL management
+  useEffect(() => {
+    if (data?.listing) {
+      const listing = data.listing;
+      
+      // If we have an enhanced listing with a slug and we're on an ID-based URL, redirect to slug URL
+      if ('slug' in listing && listing.slug && !isSlugRoute) {
+        navigate(`/boat/${listing.slug}`, { replace: true });
+        return;
+      }
+      
+      // Update SEO meta tags and structured data
+      updateListingMetaTags(listing);
+      updateListingStructuredData(listing);
+      updateCanonicalUrl(listing);
+    }
+    
+    // Cleanup function
+    return () => {
+      cleanupListingSEO();
+    };
+  }, [data?.listing, isSlugRoute, navigate]);
 
   const listing = data?.listing;
 
@@ -82,16 +127,40 @@ export default function ListingDetail() {
     );
   }
 
+  const handleShare = async () => {
+    if (listing) {
+      try {
+        await shareListing(listing);
+      } catch (error) {
+        console.error('Failed to share listing:', error);
+      }
+    }
+  };
+
   const contactButton = (
-    <button
-      onClick={() => setShowContactForm(true)}
-      className="btn-primary"
-    >
-      <span className="flex items-center space-x-2">
-        <span>📧</span>
-        <span>Contact Owner</span>
-      </span>
-    </button>
+    <div className="flex space-x-3">
+      <button
+        onClick={handleShare}
+        className="btn-secondary"
+        title="Share this listing"
+      >
+        <span className="flex items-center space-x-2">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z" />
+          </svg>
+          <span>Share</span>
+        </span>
+      </button>
+      <button
+        onClick={() => setShowContactForm(true)}
+        className="btn-primary"
+      >
+        <span className="flex items-center space-x-2">
+          <span>📧</span>
+          <span>Contact Owner</span>
+        </span>
+      </button>
+    </div>
   );
 
   return (
@@ -152,7 +221,7 @@ export default function ListingDetail() {
 
             {/* Features */}
             {listing.features.length > 0 && (
-              <div className="card p-6">
+              <div className="card p-6 mb-6">
                 <h2 className="text-xl font-semibold text-navy-900 mb-4">
                   <span className="mr-2">⭐</span>Features & Equipment
                 </h2>
@@ -166,6 +235,13 @@ export default function ListingDetail() {
                 </div>
               </div>
             )}
+
+            {/* Finance Calculator */}
+            <FinanceCalculator
+              boatPrice={listing.price}
+              listingId={listing.listingId}
+              className="mb-6"
+            />
           </div>
 
           {/* Sidebar */}

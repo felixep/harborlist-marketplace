@@ -42,15 +42,18 @@ A comprehensive **serverless boat marketplace platform** built on **AWS cloud in
 
 ### Backend (`backend/`)
 - **Runtime**: Node.js 18 with TypeScript
-- **Architecture**: Microservices using AWS Lambda
+- **Architecture**: Enhanced microservices using AWS Lambda
 - **Services**:
   - `auth-service` - User authentication & JWT management
-  - `listing` - Boat listing CRUD operations
-  - `admin-service` - Administrative functions & dashboard
-  - `search` - Search functionality with filters
-  - `media` - Image upload and processing
-  - `email` - Notification services
-  - `stats-service` - Analytics and reporting
+  - `listing` - Enhanced boat listing operations with multi-engine support and moderation
+  - `admin-service` - Comprehensive administrative functions with functional dashboard sections
+  - `user-service` - User tier management, premium memberships, and sales role support
+  - `billing-service` - Payment processing, subscription management, and financial reporting
+  - `finance-service` - Loan calculations, payment scenarios, and calculation persistence
+  - `search` - Advanced search functionality with engine configuration filters
+  - `media` - Image upload and processing with optimization
+  - `email` - Notification services with moderation and billing alerts
+  - `stats-service` - Enhanced analytics and business intelligence reporting
 
 ### Shared Types (`packages/shared-types/`)
 - **Package**: `@harborlist/shared-types` npm workspace package
@@ -70,19 +73,27 @@ A comprehensive **serverless boat marketplace platform** built on **AWS cloud in
 ## 🎯 Key Features
 
 ### User-Facing Features
-- **Boat Marketplace**: Browse, search, and filter boat listings
-- **Listing Management**: Create, edit, and manage boat listings
-- **Media Upload**: Multi-image upload with processing
-- **Search & Filters**: Advanced filtering by location, price, type
-- **User Authentication**: Secure JWT-based auth system
+- **Enhanced Boat Marketplace**: Browse, search, and filter boat listings with multi-engine support
+- **Multi-Engine Listings**: Create detailed listings with multiple engines, specifications, and total horsepower
+- **Finance Calculator**: Interactive loan calculator with payment scenarios and sharing capabilities
+- **User Tier System**: Individual, dealer, and premium membership tiers with enhanced features
+- **SEO-Friendly URLs**: Clean, shareable URLs without exposing internal IDs
+- **Content Moderation**: Quality-assured listings through professional review process
+- **Media Upload**: Multi-image upload with processing and optimization
+- **Advanced Search & Filters**: Filter by engine configuration, total horsepower, and boat specifications
+- **User Authentication**: Secure JWT-based auth system with tier-based access control
 
 ### Admin Features
-- **Admin Dashboard**: Comprehensive platform management
-- **User Management**: Monitor and manage user accounts  
-- **Listing Oversight**: Review and moderate listings
-- **Analytics**: Platform statistics and performance metrics
-- **Audit Logging**: Complete action tracking for compliance
-- **Security Monitoring**: Login attempts and session management
+- **Comprehensive Admin Dashboard**: Full platform management with functional sections
+- **Content Moderation Workflow**: Professional listing review queue with assignment and priority management
+- **User & Tier Management**: Complete user lifecycle management with premium membership controls
+- **Billing Management**: Customer billing, payment processing, and financial reporting
+- **Sales Role Support**: Customer assignment and plan management for sales representatives
+- **System Monitoring**: Real-time health monitoring with performance metrics and alerting
+- **Analytics Dashboard**: Comprehensive platform usage analytics and business intelligence
+- **Support Management**: Ticket management and customer communication tools
+- **Audit Logging**: Complete action tracking with search, filtering, and compliance reporting
+- **Platform Settings**: System configuration management with feature flags and deployment controls
 
 ## 🚀 Getting Started
 

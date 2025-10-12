@@ -272,9 +272,11 @@ cleanup_local() {
     # Stop all running containers
     log_step "Stopping all HarborList containers..."
     if command -v docker-compose &> /dev/null; then
-        docker-compose -f "${PROJECT_ROOT}/docker-compose.local.yml" down --remove-orphans || true
+        docker-compose -f "${PROJECT_ROOT}/docker-compose.local.yml" --profile enhanced down --remove-orphans || true
+        docker-compose -f "${PROJECT_ROOT}/docker-compose.local.yml" --profile basic down --remove-orphans || true
     else
-        docker compose -f "${PROJECT_ROOT}/docker-compose.local.yml" down --remove-orphans || true
+        docker compose -f "${PROJECT_ROOT}/docker-compose.local.yml" --profile enhanced down --remove-orphans || true
+        docker compose -f "${PROJECT_ROOT}/docker-compose.local.yml" --profile basic down --remove-orphans || true
     fi
     
     # Remove all containers (including stopped ones)

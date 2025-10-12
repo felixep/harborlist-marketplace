@@ -30,23 +30,23 @@ graph TB
         end
         
         subgraph "Component Categories"
-            AdminComp[admin/<br/>👤 Admin Portal Components<br/>• User Management<br/>• Analytics Dashboards<br/>• Content Moderation]
+            AdminComp[admin/<br/>👤 Enhanced Admin Portal Components<br/>• Functional Dashboard Sections<br/>• User Tier Management<br/>• Content Moderation Queue<br/>• Billing Management<br/>• Sales Role Interface]
             
-            AuthComp[auth/<br/>🔐 Authentication Components<br/>• Login Forms<br/>• Registration<br/>• MFA Setup]
+            AuthComp[auth/<br/>🔐 Enhanced Authentication Components<br/>• User Type Selection<br/>• Premium Registration<br/>• User Onboarding<br/>• Tier-based Features]
             
             CommonComp[common/<br/>🔄 Shared UI Components<br/>• Buttons, Inputs<br/>• Modals, Alerts<br/>• Loading States]
             
             LayoutComp[layout/<br/>🏗️ Layout & Navigation<br/>• Header, Footer<br/>• Sidebar Navigation<br/>• Responsive Layout]
             
-            ListingComp[listing/<br/>🚢 Boat Listing Components<br/>• Listing Cards<br/>• Detail Views<br/>• Creation Forms]
+            ListingComp[listing/<br/>🚢 Enhanced Boat Listing Components<br/>• Multi-Engine Forms<br/>• Finance Calculator<br/>• SEO-Friendly URLs<br/>• Moderation Status]
             
-            SearchComp[search/<br/>🔍 Search & Filter Components<br/>• Search Bar<br/>• Filter Panels<br/>• Results Display]
+            SearchComp[search/<br/>🔍 Enhanced Search & Filter Components<br/>• Engine Configuration Filters<br/>• Total Horsepower Search<br/>• Advanced Specifications<br/>• Results Display]
         end
         
         subgraph "Page Structure"
-            AdminPages[admin/<br/>📊 Admin Dashboard Pages<br/>• Analytics Overview<br/>• User Management<br/>• System Configuration]
+            AdminPages[admin/<br/>📊 Enhanced Admin Dashboard Pages<br/>• Functional Analytics Dashboard<br/>• User Tier Management<br/>• Content Moderation Queue<br/>• Billing Management<br/>• Sales Management<br/>• System Monitoring]
             
-            PublicPages[*.tsx<br/>🌐 Public Marketplace Pages<br/>• Homepage<br/>• Listing Details<br/>• Search Results]
+            PublicPages[*.tsx<br/>🌐 Enhanced Public Marketplace Pages<br/>• Multi-Engine Listings<br/>• Finance Calculator<br/>• Premium Registration<br/>• User Onboarding]
         end
         
         subgraph "Build & Testing"

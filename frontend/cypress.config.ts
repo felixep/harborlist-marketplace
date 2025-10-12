@@ -16,6 +16,37 @@ export default defineConfig({
       ADMIN_EMAIL: 'admin@harbotlist.com',
       ADMIN_PASSWORD: 'AdminTest123!',
       API_URL: 'http://localhost:3000'
+    },
+    setupNodeEvents(on, config) {
+      // Database and test data management tasks
+      on('task', {
+        resetDatabase() {
+          // Reset test database to clean state
+          return require('./cypress/tasks/database').resetDatabase();
+        },
+        
+        createTestUser(userData) {
+          // Create test user in database
+          return require('./cypress/tasks/database').createTestUser(userData);
+        },
+        
+        createTestListing(listingData) {
+          // Create test listing in database
+          return require('./cypress/tasks/database').createTestListing(listingData);
+        },
+        
+        waitForModeration(listingId) {
+          // Wait for listing to appear in moderation queue
+          return require('./cypress/tasks/database').waitForModeration(listingId);
+        },
+        
+        approveListing({ listingId, moderatorId }) {
+          // Approve listing through moderation workflow
+          return require('./cypress/tasks/database').approveListing(listingId, moderatorId);
+        }
+      });
+      
+      return config;
     }
   },
   component: {

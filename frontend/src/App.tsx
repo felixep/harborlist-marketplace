@@ -31,8 +31,12 @@ import CreateListing from './pages/CreateListing';
 import Profile from './pages/Profile';
 import { Login } from './pages/Login';
 import { Register } from './pages/Register';
+import { EnhancedRegister } from './pages/EnhancedRegister';
+import { Onboarding } from './pages/Onboarding';
+import { PremiumUpgrade } from './pages/PremiumUpgrade';
 import Sell from './pages/Sell';
 import Finance from './pages/Finance';
+import SharedCalculation from './pages/SharedCalculation';
 import About from './pages/About';
 import Valuation from './pages/Valuation';
 import Services from './pages/Services';
@@ -196,13 +200,18 @@ function App() {
                         <Routes>
                           <Route path="/" element={<Home />} />
                           <Route path="/search" element={<Search />} />
-                          <Route path="/listing/:id" element={<ListingDetail />} />
+                          <Route path="/listing/:identifier" element={<ListingDetail />} />
+                          <Route path="/boat/:slug" element={<ListingDetail />} />
                           <Route path="/login" element={<Login />} />
                           <Route path="/register" element={<Register />} />
+                          <Route path="/register-enhanced" element={<EnhancedRegister />} />
+                          <Route path="/onboarding" element={<Onboarding />} />
+                          <Route path="/upgrade" element={<PremiumUpgrade />} />
                           <Route path="/verify-email" element={<VerifyEmail />} />
                           <Route path="/registration-success" element={<RegistrationSuccess />} />
                           <Route path="/sell" element={<Sell />} />
                           <Route path="/finance" element={<Finance />} />
+                          <Route path="/finance/shared/:shareToken" element={<SharedCalculation />} />
                           <Route path="/about" element={<About />} />
                           <Route path="/valuation" element={<Valuation />} />
                           <Route path="/services" element={<Services />} />

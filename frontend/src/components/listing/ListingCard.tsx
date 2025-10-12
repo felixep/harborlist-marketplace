@@ -11,18 +11,18 @@
 
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Listing } from '@harborlist/shared-types';
+import { Listing, EnhancedListing } from '@harborlist/shared-types';
 
 /**
  * Props interface for the ListingCard component
  * 
  * @interface ListingCardProps
- * @property {Listing} listing - Complete listing data to display
+ * @property {Listing | EnhancedListing} listing - Complete listing data to display
  * @property {boolean} [featured=false] - Whether to display as a featured listing with special styling
  * @property {boolean} [compact=false] - Whether to use compact layout for smaller spaces
  */
 interface ListingCardProps {
-  listing: Listing;
+  listing: Listing | EnhancedListing;
   featured?: boolean;
   compact?: boolean;
 }
@@ -168,8 +168,53 @@ export default function ListingCard({ listing, featured = false, compact = false
   const mainImage = imageOptions[currentImageIndex];
   const cardClass = featured ? 'card-featured' : compact ? 'card-compact' : 'card-interactive';
 
+  // Check if this is an enhanced listing with multi-engine data
+  const isEnhancedListing = 'engines' in listing && listing.engines && listing.engines.length > 0;
+  const hasLegacyEngine = listing.boatDetails.engine;
+
+  /**
+   * Get engine configuration display text
+   */
+  const getEngineInfo = () => {
+    if (isEnhancedListing) {
+      const enhancedListing = listing as EnhancedListing;
+      const engineCount = enhancedListing.engines.length;
+      const totalHP = enhancedListing.totalHorsepower || 0;
+      
+      let configText = '';
+      if (engineCount === 1) configText = 'Single';
+      else if (engineCount === 2) configText = 'Twin';
+      else if (engineCount === 3) configText = 'Triple';
+      else if (engineCount === 4) configText = 'Quad';
+      else configText = `${engineCount}x`;
+      
+      return {
+        configuration: configText,
+        totalHorsepower: totalHP,
+        hasMultiEngine: engineCount > 1
+      };
+    } else if (hasLegacyEngine) {
+      return {
+        configuration: 'Engine',
+        engine: listing.boatDetails.engine,
+        hasMultiEngine: false
+      };
+    }
+    return null;
+  };
+
+  const engineInfo = getEngineInfo();
+
+  // Generate SEO-friendly URL
+  const getListingUrl = () => {
+    if (isEnhancedListing && (listing as EnhancedListing).slug) {
+      return `/boat/${(listing as EnhancedListing).slug}`;
+    }
+    return `/listing/${listing.listingId}`;
+  };
+
   return (
-    <Link to={`/listing/${listing.listingId}`} className="group block">
+    <Link to={getListingUrl()} className="group block">
       <article className={`card-hover relative overflow-hidden ${featured ? 'ring-2 ring-blue-200' : ''}`}>
         {/* Badges */}
         <div className="absolute top-4 left-4 z-10 flex flex-col gap-2">
@@ -278,10 +323,43 @@ export default function ListingCard({ listing, featured = false, compact = false
 
           {/* Boat Details */}
           <div className={`text-small text-neutral-600 mb-4 ${compact ? 'mb-3' : 'mb-4'}`}>
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between mb-2">
               <span><span className="font-medium">{listing.boatDetails.year}</span> • <span className="font-medium">{listing.boatDetails.length}'</span></span>
               <span className="text-neutral-500">{listing.boatDetails.type}</span>
             </div>
+            
+            {/* Engine Information */}
+            {engineInfo && (
+              <div className="flex items-center justify-between">
+                {engineInfo.totalHorsepower ? (
+                  <>
+                    <span className="flex items-center space-x-1">
+                      <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                      </svg>
+                      <span className="font-medium text-blue-600">
+                        {engineInfo.totalHorsepower.toLocaleString()} HP
+                      </span>
+                    </span>
+                    <span className="text-neutral-500">
+                      {engineInfo.configuration} Engine{engineInfo.hasMultiEngine ? 's' : ''}
+                    </span>
+                  </>
+                ) : engineInfo.engine ? (
+                  <>
+                    <span className="flex items-center space-x-1">
+                      <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
+                      </svg>
+                      <span className="font-medium text-gray-600 truncate max-w-24">
+                        {engineInfo.engine}
+                      </span>
+                    </span>
+                    <span className="text-neutral-500">Engine</span>
+                  </>
+                ) : null}
+              </div>
+            )}
           </div>
 
           {/* Features */}

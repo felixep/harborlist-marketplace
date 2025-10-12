@@ -20,23 +20,29 @@ graph TB
         BackendRoot[backend/src/<br/>🔧 Node.js 18 + TypeScript<br/>Microservices Architecture]
         
         subgraph "Core Services"
-            AdminService[admin-service/<br/>👤 Administrative Operations<br/>• RBAC Implementation<br/>• Analytics Dashboard<br/>• User Management<br/>• Audit Logging]
+            AdminService[admin-service/<br/>👤 Enhanced Administrative Operations<br/>• Functional Dashboard Sections<br/>• User Tier Management<br/>• Content Moderation Queue<br/>• Billing Administration<br/>• System Monitoring]
             
             AuthService[auth-service/<br/>🔐 Authentication & Security<br/>• JWT Token Management<br/>• MFA Support<br/>• Session Management<br/>• Password Security]
             
-            ListingService[listing/<br/>🚢 Boat Listing Management<br/>• CRUD Operations<br/>• Ownership Validation<br/>• Status Management<br/>• Business Rules]
+            ListingService[listing/<br/>🚢 Enhanced Boat Listing Management<br/>• Multi-Engine Support<br/>• Content Moderation Workflow<br/>• SEO-Friendly URLs<br/>• Advanced Validation]
             
-            ListingEnhanced[listing-service/<br/>🚢 Enhanced Listing Operations<br/>• Authentication Utilities<br/>• Advanced Validation<br/>• Extended Features]
+            UserService[user-service/<br/>👥 User Tier Management<br/>• User Type Management<br/>• Premium Membership<br/>• Sales Role Support<br/>• Capability Assignment]
+        end
+        
+        subgraph "Financial Services"
+            BillingService[billing-service/<br/>💳 Payment & Subscription Management<br/>• Payment Processing<br/>• Subscription Management<br/>• Financial Reporting<br/>• Dispute Resolution]
+            
+            FinanceService[finance-service/<br/>🧮 Finance Calculator Engine<br/>• Loan Calculations<br/>• Payment Scenarios<br/>• Calculation Persistence<br/>• Sharing Functionality]
         end
         
         subgraph "Specialized Services"
-            SearchService[search/<br/>🔍 Search & Filtering<br/>• DynamoDB-based Search<br/>• Advanced Filtering<br/>• Geospatial Queries<br/>• Performance Optimization]
+            SearchService[search/<br/>🔍 Enhanced Search & Filtering<br/>• Multi-Engine Filtering<br/>• Total Horsepower Search<br/>• Advanced Boat Specifications<br/>• Performance Optimization]
             
             MediaService[media/<br/>📸 Media Management<br/>• S3 Integration<br/>• Image Processing (Sharp)<br/>• Presigned URLs<br/>• CDN Integration]
             
-            EmailService[email/<br/>📧 Email Communications<br/>• SES Integration<br/>• Template Management<br/>• Notification System<br/>• Delivery Tracking]
+            EmailService[email/<br/>📧 Enhanced Email Communications<br/>• Moderation Notifications<br/>• Billing Alerts<br/>• User Tier Notifications<br/>• Template Management]
             
-            StatsService[stats-service/<br/>📊 Analytics & Metrics<br/>• Real-time Statistics<br/>• Business Intelligence<br/>• Performance Metrics<br/>• Reporting]
+            StatsService[stats-service/<br/>📊 Advanced Analytics & BI<br/>• User Behavior Analytics<br/>• Business Intelligence<br/>• Performance Metrics<br/>• Financial Reporting]
         end
         
         subgraph "Shared Infrastructure"

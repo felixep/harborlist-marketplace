@@ -162,6 +162,119 @@ check_docker_prerequisites() {
     print_success "All Docker prerequisites are available"
 }
 
+# Function to check AWS prerequisites
+check_aws_prerequisites() {
+    print_step "Checking AWS prerequisites..."
+    
+    local missing_deps=()
+    
+    if ! command_exists aws; then
+        missing_deps+=("aws-cli")
+    fi
+    
+    if ! command_exists cdk; then
+        missing_deps+=("aws-cdk")
+    fi
+    
+    # Check AWS credentials
+    if command_exists aws && ! aws sts get-caller-identity >/dev/null 2>&1; then
+        print_error "AWS credentials not configured or invalid"
+        print_info "Please configure AWS credentials using 'aws configure' or environment variables"
+        exit 1
+    fi
+    
+    if [ ${#missing_deps[@]} -ne 0 ]; then
+        print_error "Missing AWS dependencies: ${missing_deps[*]}"
+        print_info "Please install AWS CLI and CDK:"
+        print_info "  AWS CLI: https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html"
+        print_info "  AWS CDK: npm install -g aws-cdk"
+        exit 1
+    fi
+    
+    print_success "All AWS prerequisites are available"
+}
+
+# Function to deploy to AWS
+deploy_aws() {
+    local environment=$1
+    
+    print_step "Starting AWS deployment for environment: ${environment}..."
+    
+    cd "${PROJECT_ROOT}"
+    
+    # Build backend services
+    print_step "Building backend services..."
+    if [[ -f "backend/package.json" ]]; then
+        cd backend
+        npm install
+        npm run build
+        cd ..
+    else
+        print_warning "Backend package.json not found, skipping backend build"
+    fi
+    
+    # Build frontend
+    print_step "Building frontend..."
+    if [[ -f "frontend/package.json" ]]; then
+        cd frontend
+        npm install
+        npm run build
+        cd ..
+    else
+        print_warning "Frontend package.json not found, skipping frontend build"
+    fi
+    
+    # Deploy infrastructure
+    print_step "Deploying AWS infrastructure..."
+    cd infrastructure
+    
+    # Install CDK dependencies
+    if [[ -f "package.json" ]]; then
+        npm install
+    fi
+    
+    # Bootstrap CDK if needed
+    print_step "Bootstrapping CDK (if needed)..."
+    cdk bootstrap || print_warning "CDK bootstrap failed, continuing..."
+    
+    # Deploy the stack
+    print_step "Deploying CDK stack for ${environment}..."
+    case "${environment}" in
+        "dev")
+            cdk deploy HarborListStack-dev --require-approval never
+            ;;
+        "staging")
+            cdk deploy HarborListStack-staging --require-approval never
+            ;;
+        "prod")
+            print_warning "Production deployment requires manual approval"
+            cdk deploy HarborListStack-prod
+            ;;
+        *)
+            print_error "Unknown AWS environment: ${environment}"
+            exit 1
+            ;;
+    esac
+    
+    cd "${PROJECT_ROOT}"
+    
+    print_success "AWS deployment completed for environment: ${environment}!"
+    
+    # Display AWS access information
+    echo ""
+    print_info "AWS Environment Access Information:"
+    echo "  Environment: ${environment}"
+    echo "  Check AWS Console for deployed resources"
+    echo "  API Gateway URL will be displayed in CDK outputs"
+    echo "  Frontend URL will be displayed in CDK outputs"
+    
+    echo ""
+    print_info "Useful AWS commands:"
+    echo "  View stack outputs: cdk list"
+    echo "  View stack resources: aws cloudformation describe-stacks --stack-name HarborListStack-${environment}"
+    echo "  View logs: aws logs describe-log-groups --log-group-name-prefix /aws/lambda/HarborListStack"
+}
+
 # Function to deploy with Docker Compose
 deploy_local() {
     print_step "Starting local Docker Compose deployment..."
@@ -259,8 +372,12 @@ deploy_local() {
     print_info "Local Environment Access Information:"
     echo "  Frontend (Custom Domain): https://local.harborlist.com"
     echo "  Backend API (Custom Domain): https://local-api.harborlist.com"
+    echo "  Billing Service (Custom Domain): https://billing.local.harborlist.com"
+    echo "  Finance Service (Custom Domain): https://finance.local.harborlist.com"
     echo "  Frontend (Direct): http://localhost:3000"
     echo "  Backend API (Direct): http://localhost:3001"
+    echo "  Billing Service (Direct): http://localhost:3002"
+    echo "  Finance Service (Direct): http://localhost:3003"
     echo "  Traefik Dashboard: http://localhost:8088"
     echo "  DynamoDB Local: http://localhost:8000"
     echo "  DynamoDB Admin: http://localhost:8001"
@@ -283,6 +400,10 @@ deploy_local() {
     print_warning "Note: For custom domains to work, add these entries to your /etc/hosts file:"
     echo "  127.0.0.1 local.harborlist.com"
     echo "  127.0.0.1 local-api.harborlist.com"
+    echo "  127.0.0.1 billing.local.harborlist.com"
+    echo "  127.0.0.1 finance.local.harborlist.com"
+    echo "  127.0.0.1 mail.local.harborlist.com"
+    echo "  127.0.0.1 s3.local.harborlist.com"
     echo "  127.0.0.1 traefik.local.harborlist.com"
 }
 
@@ -316,9 +437,8 @@ main() {
         check_docker_prerequisites
         deploy_local
     else
-        print_error "AWS deployment not implemented in this simplified version"
-        print_info "For AWS deployment, use the CDK directly from the infrastructure folder"
-        exit 1
+        check_aws_prerequisites
+        deploy_aws "${environment}"
     fi
     
     print_success "Deployment process completed successfully!"

@@ -59,8 +59,14 @@ export async function getListings(params?: {
   return apiRequest(`/listings?${searchParams.toString()}`);
 }
 
-export async function getListing(id: string): Promise<{ listing: Listing }> {
-  return apiRequest(`/listings/${id}`);
+export async function getListing(
+  identifier: string, 
+  options?: { bySlug?: boolean }
+): Promise<{ listing: Listing }> {
+  if (options?.bySlug) {
+    return apiRequest(`/listings/by-slug/${identifier}`);
+  }
+  return apiRequest(`/listings/${identifier}`);
 }
 
 export async function createListing(listing: Omit<Listing, 'listingId' | 'createdAt' | 'updatedAt'>): Promise<{ listingId: string }> {

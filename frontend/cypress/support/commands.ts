@@ -32,6 +32,48 @@ declare global {
        * @example cy.mockAdminApi()
        */
       mockAdminApi(): Chainable<void>
+
+      /**
+       * Custom command to login as regular user
+       * @example cy.login('user@example.com', 'password')
+       */
+      login(email: string, password: string): Chainable<void>
+      
+      /**
+       * Custom command to logout regular user
+       * @example cy.logout()
+       */
+      logout(): Chainable<void>
+      
+      /**
+       * Custom command to create test user
+       * @example cy.createTestUser({email: 'test@example.com', userType: 'individual'})
+       */
+      createTestUser(userData: any): Chainable<any>
+      
+      /**
+       * Custom command to create test listing
+       * @example cy.createTestListing({title: 'Test Boat', price: 50000})
+       */
+      createTestListing(listingData: any): Chainable<any>
+      
+      /**
+       * Custom command to reset database
+       * @example cy.resetDatabase()
+       */
+      resetDatabase(): Chainable<void>
+      
+      /**
+       * Custom command to wait for moderation
+       * @example cy.waitForModeration('listing-id')
+       */
+      waitForModeration(listingId: string): Chainable<void>
+      
+      /**
+       * Custom command to approve listing
+       * @example cy.approveListing('listing-id', 'moderator-id')
+       */
+      approveListing(listingId: string, moderatorId: string): Chainable<void>
     }
   }
 }
@@ -99,3 +141,40 @@ Cypress.Commands.add('mockAdminApi', () => {
     fixture: 'admin/audit-logs.json'
   }).as('getAuditLogs')
 })
+
+// User workflow commands
+Cypress.Commands.add('login', (email: string, password: string) => {
+  cy.session([email, password], () => {
+    cy.visit('/login');
+    cy.get('[data-testid="email-input"]').type(email);
+    cy.get('[data-testid="password-input"]').type(password);
+    cy.get('[data-testid="login-submit"]').click();
+    cy.url().should('not.include', '/login');
+  });
+});
+
+Cypress.Commands.add('logout', () => {
+  cy.get('[data-testid="user-menu"]').click();
+  cy.get('[data-testid="logout-button"]').click();
+  cy.url().should('include', '/');
+});
+
+Cypress.Commands.add('createTestUser', (userData: any) => {
+  return cy.task('createTestUser', userData);
+});
+
+Cypress.Commands.add('createTestListing', (listingData: any) => {
+  return cy.task('createTestListing', listingData);
+});
+
+Cypress.Commands.add('resetDatabase', () => {
+  return cy.task('resetDatabase');
+});
+
+Cypress.Commands.add('waitForModeration', (listingId: string) => {
+  return cy.task('waitForModeration', listingId);
+});
+
+Cypress.Commands.add('approveListing', (listingId: string, moderatorId: string) => {
+  return cy.task('approveListing', { listingId, moderatorId });
+});

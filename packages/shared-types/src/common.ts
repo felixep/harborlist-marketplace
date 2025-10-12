@@ -514,8 +514,17 @@ export interface FlaggedListing {
 export interface ModerationDecision {
   action: 'approve' | 'reject' | 'request_changes';
   reason: string;
-  notes?: string;
+  notes?: string; // Internal notes for moderators
+  publicNotes?: string; // Notes visible to listing owner
   notifyUser: boolean;
+  changeRequests?: ChangeRequest[]; // Specific changes requested
+  confidence?: 'low' | 'medium' | 'high'; // Moderator confidence level
+}
+
+export interface ChangeRequest {
+  category: 'title' | 'description' | 'price' | 'images' | 'specifications' | 'other';
+  description: string;
+  required: boolean;
 }
 
 // ModerationStats moved to enhanced version below with ModerationWorkflow types
