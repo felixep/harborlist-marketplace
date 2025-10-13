@@ -69,7 +69,7 @@ export async function getJWKS(userPoolId: string, region: string, endpoint?: str
       throw new Error(`Failed to fetch JWKS: ${response.status} ${response.statusText}`);
     }
 
-    const jwks: JWKS = await response.json();
+    const jwks = await response.json() as JWKS;
     
     // Cache the JWKS
     jwksCache.set(cacheKey, {

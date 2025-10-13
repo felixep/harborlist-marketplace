@@ -4,6 +4,13 @@ export const config = {
   isDevelopment: import.meta.env.DEV,
   isProduction: import.meta.env.PROD,
   isLocal: import.meta.env.VITE_ENVIRONMENT === 'local',
+  
+  // AWS Cognito configuration for Staff User Pool
+  awsRegion: import.meta.env.VITE_AWS_REGION || 'us-east-1',
+  cognitoStaffPoolId: import.meta.env.VITE_COGNITO_STAFF_POOL_ID || 'us-east-1_STAFF_POOL',
+  cognitoStaffClientId: import.meta.env.VITE_COGNITO_STAFF_CLIENT_ID || 'staff-client-id',
+  cognitoCustomerPoolId: import.meta.env.VITE_COGNITO_CUSTOMER_POOL_ID || 'us-east-1_CUSTOMER_POOL',
+  cognitoCustomerClientId: import.meta.env.VITE_COGNITO_CUSTOMER_CLIENT_ID || 'customer-client-id',
 } as const;
 
 export const endpoints = {

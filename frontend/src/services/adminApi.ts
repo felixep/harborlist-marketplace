@@ -43,6 +43,37 @@ class AdminApiService {
     }, { component: 'AdminAuth', action: 'Login' });
   }
 
+  // Staff authentication endpoints for Cognito Staff User Pool
+  async staffLogin(email: string, password: string): Promise<any> {
+    return this.request('/auth/staff/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password })
+    }, { component: 'StaffAuth', action: 'Login' });
+  }
+
+  async staffRefreshToken(refreshToken: string): Promise<any> {
+    return this.request('/auth/staff/refresh', {
+      method: 'POST',
+      body: JSON.stringify({ refreshToken })
+    }, { component: 'StaffAuth', action: 'RefreshToken' });
+  }
+
+  async validateStaffToken(token: string): Promise<any> {
+    return this.request('/auth/staff/validate', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    }, { component: 'StaffAuth', action: 'ValidateToken' });
+  }
+
+  async staffVerifyMFA(mfaToken: string, mfaCode: string): Promise<any> {
+    return this.request('/auth/staff/verify-mfa', {
+      method: 'POST',
+      body: JSON.stringify({ mfaToken, mfaCode })
+    }, { component: 'StaffAuth', action: 'VerifyMFA' });
+  }
+
   async validateToken(): Promise<AdminValidateResponse> {
     return this.request<AdminValidateResponse>('/admin/auth/verify', {
       method: 'POST'

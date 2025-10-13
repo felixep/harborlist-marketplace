@@ -125,6 +125,9 @@ class CognitoAuthService implements AuthService {
         },
         ...(deviceId && {
           ContextData: {
+            IpAddress: '127.0.0.1',
+            ServerName: 'localhost',
+            ServerPath: '/auth/customer/login',
             HttpHeaders: [
               {
                 headerName: 'X-Device-ID',
@@ -197,10 +200,10 @@ class CognitoAuthService implements AuthService {
             Name: 'custom:customer_type',
             Value: userData.customerType,
           },
-          ...(userData.phone && [{
+          ...(userData.phone ? [{
             Name: 'phone_number',
             Value: userData.phone,
-          }]),
+          }] : []),
         ],
       });
 
@@ -347,27 +350,151 @@ class CognitoAuthService implements AuthService {
   }
 
   /**
-   * Staff authentication methods (placeholder implementations)
+   * Staff authentication methods
    */
 
   async staffLogin(email: string, password: string, deviceId?: string): Promise<StaffAuthResult> {
-    // TODO: Implement staff authentication in next task
-    throw new Error('Staff authentication not yet implemented');
+    try {
+      const command = new AdminInitiateAuthCommand({
+        UserPoolId: this.config.cognito.staff.poolId,
+        ClientId: this.config.cognito.staff.clientId,
+        AuthFlow: AuthFlowType.ADMIN_NO_SRP_AUTH,
+        AuthParameters: {
+          USERNAME: email,
+          PASSWORD: password,
+        },
+        ...(deviceId && {
+          ContextData: {
+            IpAddress: '127.0.0.1',
+            ServerName: 'localhost',
+            ServerPath: '/auth/staff/login',
+            HttpHeaders: [
+              {
+                headerName: 'X-Device-ID',
+                headerValue: deviceId,
+              },
+            ],
+          },
+        }),
+      });
+
+      const response = await this.staffCognitoClient.send(command);
+
+      // Handle MFA challenge (required for staff)
+      if (response.ChallengeName) {
+        return {
+          success: false,
+          requiresMFA: true,
+          mfaToken: response.Session,
+          error: 'MFA verification required',
+        };
+      }
+
+      // Extract tokens
+      if (!response.AuthenticationResult) {
+        return {
+          success: false,
+          error: 'Authentication failed',
+          errorCode: 'AUTH_FAILED',
+        };
+      }
+
+      const tokens: TokenSet = {
+        accessToken: response.AuthenticationResult.AccessToken!,
+        refreshToken: response.AuthenticationResult.RefreshToken!,
+        idToken: response.AuthenticationResult.IdToken,
+        tokenType: 'Bearer',
+        expiresIn: response.AuthenticationResult.ExpiresIn || 3600,
+      };
+
+      // Get staff user details and groups
+      const staffDetails = await this.getStaffUserDetails(response.AuthenticationResult.AccessToken!);
+      
+      return {
+        success: true,
+        tokens,
+        staff: staffDetails,
+      };
+    } catch (error: any) {
+      console.error('Staff login error:', error);
+      return this.handleCognitoError(error, 'staff') as StaffAuthResult;
+    }
   }
 
   async staffRefreshToken(refreshToken: string): Promise<TokenSet> {
-    // TODO: Implement staff token refresh in next task
-    throw new Error('Staff token refresh not yet implemented');
+    try {
+      const command = new AdminInitiateAuthCommand({
+        UserPoolId: this.config.cognito.staff.poolId,
+        ClientId: this.config.cognito.staff.clientId,
+        AuthFlow: AuthFlowType.REFRESH_TOKEN_AUTH,
+        AuthParameters: {
+          REFRESH_TOKEN: refreshToken,
+        },
+      });
+
+      const response = await this.staffCognitoClient.send(command);
+
+      if (!response.AuthenticationResult) {
+        throw new Error('Token refresh failed');
+      }
+
+      return {
+        accessToken: response.AuthenticationResult.AccessToken!,
+        refreshToken: refreshToken, // Refresh token doesn't change
+        idToken: response.AuthenticationResult.IdToken,
+        tokenType: 'Bearer',
+        expiresIn: response.AuthenticationResult.ExpiresIn || 3600,
+      };
+    } catch (error: any) {
+      console.error('Staff token refresh error:', error);
+      throw new Error('Token refresh failed');
+    }
   }
 
   async staffForgotPassword(email: string): Promise<{ success: boolean; message: string }> {
-    // TODO: Implement staff password reset in next task
-    throw new Error('Staff password reset not yet implemented');
+    try {
+      const command = new ForgotPasswordCommand({
+        ClientId: this.config.cognito.staff.clientId,
+        Username: email,
+      });
+
+      await this.staffCognitoClient.send(command);
+
+      return {
+        success: true,
+        message: 'Password reset code sent to your email',
+      };
+    } catch (error: any) {
+      console.error('Staff forgot password error:', error);
+      return {
+        success: false,
+        message: this.getCognitoErrorMessage(error),
+      };
+    }
   }
 
   async staffConfirmForgotPassword(email: string, confirmationCode: string, newPassword: string): Promise<{ success: boolean; message: string }> {
-    // TODO: Implement staff password reset confirmation in next task
-    throw new Error('Staff password reset confirmation not yet implemented');
+    try {
+      const command = new ConfirmForgotPasswordCommand({
+        ClientId: this.config.cognito.staff.clientId,
+        Username: email,
+        ConfirmationCode: confirmationCode,
+        Password: newPassword,
+      });
+
+      await this.staffCognitoClient.send(command);
+
+      return {
+        success: true,
+        message: 'Password reset successfully',
+      };
+    } catch (error: any) {
+      console.error('Staff confirm forgot password error:', error);
+      return {
+        success: false,
+        message: this.getCognitoErrorMessage(error),
+      };
+    }
   }
 
   /**
@@ -409,8 +536,76 @@ class CognitoAuthService implements AuthService {
   }
 
   async validateStaffToken(token: string): Promise<StaffClaims> {
-    // TODO: Implement staff token validation in next task
-    throw new Error('Staff token validation not yet implemented');
+    try {
+      // Validate JWT token using Cognito JWKS
+      const verified = await validateJWTToken(
+        token,
+        this.config.cognito.staff.poolId,
+        this.config.cognito.staff.clientId,
+        this.config.deployment.region,
+        this.config.cognito.staff.endpoint
+      );
+
+      // Enhanced security: Check token expiration with shorter TTL for staff
+      const now = Math.floor(Date.now() / 1000);
+      const tokenAge = now - verified.iat;
+      const maxStaffTokenAge = this.config.security.staffSessionTTL;
+      
+      if (tokenAge > maxStaffTokenAge) {
+        throw new Error('Staff token has exceeded maximum session duration');
+      }
+
+      // Parse permissions from custom attribute
+      let permissions: AdminPermission[] = [];
+      try {
+        const permissionsStr = verified['custom:permissions'];
+        if (permissionsStr) {
+          permissions = JSON.parse(permissionsStr);
+        }
+      } catch (error) {
+        console.warn('Failed to parse staff permissions from token, using role-based permissions');
+      }
+
+      // Determine role from groups
+      const groups = verified['cognito:groups'] || [];
+      let staffRole = StaffRole.TEAM_MEMBER; // Default role
+      
+      // Find the highest precedence role
+      for (const role of Object.values(StaffRole)) {
+        if (groups.includes(role)) {
+          staffRole = role;
+          break; // Roles are ordered by precedence in enum
+        }
+      }
+
+      // If no permissions in token, use role-based permissions
+      if (permissions.length === 0) {
+        permissions = this.getStaffPermissions(staffRole);
+      }
+
+      // Extract staff claims with enhanced security validation
+      const staffClaims: StaffClaims = {
+        sub: verified.sub,
+        email: verified.email,
+        email_verified: verified.email_verified,
+        name: verified.name,
+        'custom:permissions': verified['custom:permissions'] || JSON.stringify(permissions),
+        'custom:team': verified['custom:team'],
+        'cognito:groups': groups,
+        permissions,
+        role: staffRole,
+        iss: verified.iss,
+        aud: verified.aud,
+        token_use: verified.token_use,
+        iat: verified.iat,
+        exp: verified.exp,
+      };
+
+      return staffClaims;
+    } catch (error: any) {
+      console.error('Staff token validation error:', error);
+      throw new Error('Invalid staff token');
+    }
   }
 
   /**
@@ -529,6 +724,64 @@ class CognitoAuthService implements AuthService {
     }
   }
 
+  private async getStaffUserDetails(accessToken: string) {
+    try {
+      const command = new GetUserCommand({
+        AccessToken: accessToken,
+      });
+
+      const response = await this.staffCognitoClient.send(command);
+      
+      const getAttributeValue = (name: string) => {
+        const attr = response.UserAttributes?.find(attr => attr.Name === name);
+        return attr?.Value || '';
+      };
+
+      // Get user groups to determine role
+      const groupsCommand = new AdminListGroupsForUserCommand({
+        UserPoolId: this.config.cognito.staff.poolId,
+        Username: response.Username!,
+      });
+
+      const groupsResponse = await this.staffCognitoClient.send(groupsCommand);
+      const userGroups = groupsResponse.Groups || [];
+      
+      // Determine staff role from groups (highest precedence wins)
+      let staffRole = StaffRole.TEAM_MEMBER; // Default role
+      let highestPrecedence = 999;
+      
+      for (const group of userGroups) {
+        const groupName = group.GroupName;
+        if (groupName && Object.values(StaffRole).includes(groupName as StaffRole)) {
+          const precedence = group.Precedence || 999;
+          if (precedence < highestPrecedence) {
+            highestPrecedence = precedence;
+            staffRole = groupName as StaffRole;
+          }
+        }
+      }
+
+      // Get permissions based on role
+      const permissions = this.getStaffPermissions(staffRole);
+
+      // Check if MFA is enabled
+      const mfaEnabled = getAttributeValue('custom:mfa_enabled') === 'true';
+
+      return {
+        id: response.Username!,
+        email: getAttributeValue('email'),
+        name: getAttributeValue('name'),
+        role: staffRole,
+        permissions,
+        team: getAttributeValue('custom:team'),
+        mfaEnabled,
+      };
+    } catch (error: any) {
+      console.error('Error getting staff user details:', error);
+      throw new Error('Failed to get staff user details');
+    }
+  }
+
   private async addCustomerToGroup(username: string, customerType: CustomerTier) {
     try {
       const groupName = `${customerType}-customers`;
@@ -547,7 +800,11 @@ class CognitoAuthService implements AuthService {
   }
 
   private getCustomerPermissions(customerType: CustomerTier): string[] {
-    return CUSTOMER_PERMISSIONS[customerType] || CUSTOMER_PERMISSIONS[CustomerTier.INDIVIDUAL];
+    return [...(CUSTOMER_PERMISSIONS[customerType] || CUSTOMER_PERMISSIONS[CustomerTier.INDIVIDUAL])];
+  }
+
+  private getStaffPermissions(staffRole: StaffRole): AdminPermission[] {
+    return [...(STAFF_PERMISSIONS[staffRole] || STAFF_PERMISSIONS[StaffRole.TEAM_MEMBER])];
   }
 
   private handleCognitoError(error: any, userType: 'customer' | 'staff'): CustomerAuthResult | StaffAuthResult {
@@ -595,8 +852,6 @@ class CognitoAuthService implements AuthService {
         return error.message || 'Authentication failed';
     }
   }
-
-
 }
 
 /**
@@ -609,33 +864,6 @@ export { CognitoAuthService };
 
 /**
  * Main Lambda handler for AWS Cognito dual-pool authentication service
- * 
- * Handles authentication operations for both customer and staff user pools:
- * - Customer endpoints: /auth/customer/* (Individual/Dealer/Premium tiers)
- * - Staff endpoints: /auth/staff/* (Super Admin/Admin/Manager/Team Member roles)
- * - Token validation and refresh for both user types
- * - MFA setup and verification
- * - Password reset functionality
- * - Session management and logout
- * 
- * Supported endpoints:
- * - POST /auth/customer/login - Customer authentication
- * - POST /auth/customer/register - Customer registration
- * - POST /auth/customer/refresh - Customer token refresh
- * - POST /auth/customer/logout - Customer logout
- * - POST /auth/customer/forgot-password - Customer password reset
- * - POST /auth/customer/confirm-forgot-password - Customer password reset confirmation
- * - POST /auth/customer/confirm-signup - Customer email verification
- * - POST /auth/customer/resend-confirmation - Resend customer verification code
- * - POST /auth/staff/login - Staff authentication (existing admin interface)
- * - POST /auth/staff/refresh - Staff token refresh
- * - POST /auth/staff/logout - Staff logout
- * - GET /health - Health check endpoint
- * 
- * @param event - API Gateway proxy event containing request details
- * @returns Promise<APIGatewayProxyResult> - Standardized API response
- * 
- * @throws {Error} When Cognito operations fail or invalid requests are made
  */
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   const requestId = event.requestContext.requestId;
@@ -680,7 +908,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       return await handleCustomerResendConfirmation(body, requestId, clientInfo);
     }
 
-    // Staff authentication endpoints (placeholder for next task)
+    // Staff authentication endpoints
     if (path.includes('/auth/staff/login') && method === 'POST') {
       return await handleStaffLogin(body, requestId, clientInfo);
     } else if (path.includes('/auth/staff/refresh') && method === 'POST') {
@@ -747,631 +975,54 @@ async function logAuditEvent(
 }
 
 /**
- * Customer authentication handler functions
- */
-
-/**
- * Handles customer login authentication via Customer User Pool
- * 
- * Authenticates customers (Individual/Dealer/Premium) using AWS Cognito
- * with support for MFA challenges and tier-based permissions.
- * 
- * @param body - Login request containing email, password, and optional deviceId
- * @param requestId - Unique request identifier for tracking
- * @param clientInfo - Client metadata (IP address, user agent)
- * @returns Promise<APIGatewayProxyResult> - Authentication result with tokens or MFA requirement
- */
-const handleCustomerLogin = async (
-  body: { email: string; password: string; deviceId?: string },
-  requestId: string,
-  clientInfo: { ipAddress: string; userAgent: string }
-): Promise<APIGatewayProxyResult> => {
-  const { email, password, deviceId } = body;
-
-  if (!email || !password) {
-    return createErrorResponse(400, 'MISSING_FIELDS', 'Email and password are required', requestId);
-  }
-
-  if (!validateEmail(email)) {
-    return createErrorResponse(400, 'INVALID_EMAIL', 'Invalid email format', requestId);
-  }
-
-  try {
-    // Log login attempt
-    await logAuditEvent('CUSTOMER_LOGIN_ATTEMPT', 'customer', { email }, clientInfo, requestId);
-
-    const result = await authService.customerLogin(email, password, deviceId);
-
-    if (result.success) {
-      // Log successful login
-      await logAuditEvent('CUSTOMER_LOGIN_SUCCESS', 'customer', { 
-        userId: result.customer?.id,
-        customerType: result.customer?.customerType 
-      }, clientInfo, requestId, result.customer?.id);
-
-      return createResponse(200, {
-        success: true,
-        tokens: result.tokens,
-        customer: result.customer,
-        message: 'Login successful'
-      });
-    } else {
-      // Log failed login
-      await logAuditEvent('CUSTOMER_LOGIN_FAILED', 'customer', { 
-        email,
-        error: result.error,
-        errorCode: result.errorCode 
-      }, clientInfo, requestId);
-
-      if (result.requiresMFA) {
-        return createResponse(200, {
-          requiresMFA: true,
-          mfaToken: result.mfaToken,
-          message: result.error || 'MFA verification required'
-        });
-      }
-
-      return createErrorResponse(401, result.errorCode || 'AUTH_FAILED', result.error || 'Authentication failed', requestId);
-    }
-  } catch (error) {
-    console.error('Customer login error:', error);
-    await logAuditEvent('CUSTOMER_LOGIN_ERROR', 'customer', { email, error: error instanceof Error ? error.message : String(error) }, clientInfo, requestId);
-    return createErrorResponse(500, 'INTERNAL_ERROR', 'Login failed', requestId);
-  }
-};
-
-/**
- * Handles customer registration via Customer User Pool
- * 
- * Registers new customers with tier assignment and email verification.
- * 
- * @param body - Registration request containing customer details
- * @param requestId - Unique request identifier for tracking
- * @param clientInfo - Client metadata (IP address, user agent)
- * @returns Promise<APIGatewayProxyResult> - Registration result
- */
-const handleCustomerRegister = async (
-  body: CustomerRegistration,
-  requestId: string,
-  clientInfo: { ipAddress: string; userAgent: string }
-): Promise<APIGatewayProxyResult> => {
-  const { email, password, name, phone, customerType, agreeToTerms } = body;
-
-  if (!email || !password || !name || !customerType || !agreeToTerms) {
-    return createErrorResponse(400, 'MISSING_FIELDS', 'Email, password, name, customer type, and terms agreement are required', requestId);
-  }
-
-  if (!validateEmail(email)) {
-    return createErrorResponse(400, 'INVALID_EMAIL', 'Invalid email format', requestId);
-  }
-
-  if (!Object.values(CustomerTier).includes(customerType)) {
-    return createErrorResponse(400, 'INVALID_CUSTOMER_TYPE', 'Invalid customer type', requestId);
-  }
-
-  try {
-    // Log registration attempt
-    await logAuditEvent('CUSTOMER_REGISTER_ATTEMPT', 'customer', { email, customerType }, clientInfo, requestId);
-
-    const result = await authService.customerRegister(body);
-
-    if (result.success) {
-      // Log successful registration
-      await logAuditEvent('CUSTOMER_REGISTER_SUCCESS', 'customer', { email, customerType }, clientInfo, requestId);
-
-      return createResponse(201, {
-        success: true,
-        message: result.message,
-        requiresVerification: result.requiresVerification
-      });
-    } else {
-      // Log failed registration
-      await logAuditEvent('CUSTOMER_REGISTER_FAILED', 'customer', { email, error: result.message }, clientInfo, requestId);
-
-      return createErrorResponse(400, 'REGISTRATION_FAILED', result.message, requestId);
-    }
-  } catch (error) {
-    console.error('Customer registration error:', error);
-    await logAuditEvent('CUSTOMER_REGISTER_ERROR', 'customer', { email, error: error instanceof Error ? error.message : String(error) }, clientInfo, requestId);
-    return createErrorResponse(500, 'INTERNAL_ERROR', 'Registration failed', requestId);
-  }
-};
-
-/**
- * Handles customer token refresh
- */
-const handleCustomerRefresh = async (
-  body: { refreshToken: string },
-  requestId: string,
-  clientInfo: { ipAddress: string; userAgent: string }
-): Promise<APIGatewayProxyResult> => {
-  const { refreshToken } = body;
-
-  if (!refreshToken) {
-    return createErrorResponse(400, 'MISSING_FIELDS', 'Refresh token is required', requestId);
-  }
-
-  try {
-    const tokens = await authService.customerRefreshToken(refreshToken);
-
-    // Log token refresh
-    await logAuditEvent('CUSTOMER_TOKEN_REFRESH', 'customer', {}, clientInfo, requestId);
-
-    return createResponse(200, {
-      success: true,
-      tokens,
-      message: 'Token refreshed successfully'
-    });
-  } catch (error) {
-    console.error('Customer token refresh error:', error);
-    await logAuditEvent('CUSTOMER_TOKEN_REFRESH_FAILED', 'customer', { error: error instanceof Error ? error.message : String(error) }, clientInfo, requestId);
-    return createErrorResponse(401, 'TOKEN_REFRESH_FAILED', 'Token refresh failed', requestId);
-  }
-};
-
-/**
- * Handles customer logout
- */
-const handleCustomerLogout = async (
-  event: APIGatewayProxyEvent,
-  requestId: string,
-  clientInfo: { ipAddress: string; userAgent: string }
-): Promise<APIGatewayProxyResult> => {
-  try {
-    const token = event.headers.Authorization?.replace('Bearer ', '');
-    if (!token) {
-      return createErrorResponse(400, 'MISSING_TOKEN', 'Authorization token required', requestId);
-    }
-
-    const result = await authService.logout(token, 'customer');
-
-    if (result.success) {
-      await logAuditEvent('CUSTOMER_LOGOUT', 'customer', {}, clientInfo, requestId);
-      return createResponse(200, { success: true, message: result.message });
-    } else {
-      return createErrorResponse(500, 'LOGOUT_FAILED', result.message, requestId);
-    }
-  } catch (error) {
-    console.error('Customer logout error:', error);
-    return createErrorResponse(500, 'INTERNAL_ERROR', 'Logout failed', requestId);
-  }
-};
-
-/**
- * Handles customer forgot password
- */
-const handleCustomerForgotPassword = async (
-  body: { email: string },
-  requestId: string,
-  clientInfo: { ipAddress: string; userAgent: string }
-): Promise<APIGatewayProxyResult> => {
-  const { email } = body;
-
-  if (!email || !validateEmail(email)) {
-    return createErrorResponse(400, 'INVALID_EMAIL', 'Valid email is required', requestId);
-  }
-
-  try {
-    const result = await authService.customerForgotPassword(email);
-
-    // Log password reset request (don't log whether user exists)
-    await logAuditEvent('CUSTOMER_PASSWORD_RESET_REQUEST', 'customer', { email }, clientInfo, requestId);
-
-    return createResponse(200, {
-      success: result.success,
-      message: result.message
-    });
-  } catch (error) {
-    console.error('Customer forgot password error:', error);
-    return createErrorResponse(500, 'INTERNAL_ERROR', 'Password reset request failed', requestId);
-  }
-};
-
-/**
- * Handles customer forgot password confirmation
- */
-const handleCustomerConfirmForgotPassword = async (
-  body: { email: string; confirmationCode: string; newPassword: string },
-  requestId: string,
-  clientInfo: { ipAddress: string; userAgent: string }
-): Promise<APIGatewayProxyResult> => {
-  const { email, confirmationCode, newPassword } = body;
-
-  if (!email || !confirmationCode || !newPassword) {
-    return createErrorResponse(400, 'MISSING_FIELDS', 'Email, confirmation code, and new password are required', requestId);
-  }
-
-  if (!validateEmail(email)) {
-    return createErrorResponse(400, 'INVALID_EMAIL', 'Valid email is required', requestId);
-  }
-
-  try {
-    const result = await authService.customerConfirmForgotPassword(email, confirmationCode, newPassword);
-
-    if (result.success) {
-      await logAuditEvent('CUSTOMER_PASSWORD_RESET_SUCCESS', 'customer', { email }, clientInfo, requestId);
-    } else {
-      await logAuditEvent('CUSTOMER_PASSWORD_RESET_FAILED', 'customer', { email, error: result.message }, clientInfo, requestId);
-    }
-
-    return createResponse(200, {
-      success: result.success,
-      message: result.message
-    });
-  } catch (error) {
-    console.error('Customer confirm forgot password error:', error);
-    return createErrorResponse(500, 'INTERNAL_ERROR', 'Password reset confirmation failed', requestId);
-  }
-};
-
-/**
- * Handles customer email verification
- */
-const handleCustomerConfirmSignUp = async (
-  body: { email: string; confirmationCode: string },
-  requestId: string,
-  clientInfo: { ipAddress: string; userAgent: string }
-): Promise<APIGatewayProxyResult> => {
-  const { email, confirmationCode } = body;
-
-  if (!email || !confirmationCode) {
-    return createErrorResponse(400, 'MISSING_FIELDS', 'Email and confirmation code are required', requestId);
-  }
-
-  if (!validateEmail(email)) {
-    return createErrorResponse(400, 'INVALID_EMAIL', 'Valid email is required', requestId);
-  }
-
-  try {
-    const result = await authService.customerConfirmSignUp(email, confirmationCode);
-
-    if (result.success) {
-      await logAuditEvent('CUSTOMER_EMAIL_VERIFIED', 'customer', { email }, clientInfo, requestId);
-    } else {
-      await logAuditEvent('CUSTOMER_EMAIL_VERIFICATION_FAILED', 'customer', { email, error: result.message }, clientInfo, requestId);
-    }
-
-    return createResponse(200, {
-      success: result.success,
-      message: result.message
-    });
-  } catch (error) {
-    console.error('Customer confirm sign up error:', error);
-    return createErrorResponse(500, 'INTERNAL_ERROR', 'Email verification failed', requestId);
-  }
-};
-
-/**
- * Handles customer resend confirmation code
- */
-const handleCustomerResendConfirmation = async (
-  body: { email: string },
-  requestId: string,
-  clientInfo: { ipAddress: string; userAgent: string }
-): Promise<APIGatewayProxyResult> => {
-  const { email } = body;
-
-  if (!email || !validateEmail(email)) {
-    return createErrorResponse(400, 'INVALID_EMAIL', 'Valid email is required', requestId);
-  }
-
-  try {
-    const result = await authService.customerResendConfirmation(email);
-
-    // Log resend confirmation attempt
-    await logAuditEvent('CUSTOMER_RESEND_CONFIRMATION', 'customer', { email }, clientInfo, requestId);
-
-    return createResponse(200, {
-      success: result.success,
-      message: result.message
-    });
-  } catch (error) {
-    console.error('Customer resend confirmation error:', error);
-    return createErrorResponse(500, 'INTERNAL_ERROR', 'Resend confirmation failed', requestId);
-  }
-};
-
-/**
- * Staff authentication handler functions (placeholder implementations)
- */
-
-/**
- * Handles staff login authentication via Staff User Pool
- * TODO: Implement in next task
- */
-const handleStaffLogin = async (
-  body: { email: string; password: string; mfaCode?: string; deviceId?: string },
-  requestId: string,
-  clientInfo: { ipAddress: string; userAgent: string }
-): Promise<APIGatewayProxyResult> => {
-  return createErrorResponse(501, 'NOT_IMPLEMENTED', 'Staff authentication not yet implemented', requestId);
-};
-
-/**
- * Handles staff token refresh
- * TODO: Implement in next task
- */
-const handleStaffRefresh = async (
-  body: { refreshToken: string },
-  requestId: string,
-  clientInfo: { ipAddress: string; userAgent: string }
-): Promise<APIGatewayProxyResult> => {
-  return createErrorResponse(501, 'NOT_IMPLEMENTED', 'Staff token refresh not yet implemented', requestId);
-};
-
-/**
- * Handles staff logout
- * TODO: Implement in next task
- */
-const handleStaffLogout = async (
-  event: APIGatewayProxyEvent,
-  requestId: string,
-  clientInfo: { ipAddress: string; userAgent: string }
-): Promise<APIGatewayProxyResult> => {
-  return createErrorResponse(501, 'NOT_IMPLEMENTED', 'Staff logout not yet implemented', requestId);
-};
-/**
- * Utility functions
- */
-
-/**
- * Validates email format using regex
+ * Email validation utility
  */
 function validateEmail(email: string): boolean {
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   return emailRegex.test(email);
 }
 
- getting user by ID:', error);
-    return null;
-  }
+// Handler functions (placeholder implementations)
+async function handleCustomerLogin(body: any, requestId: string, clientInfo: any): Promise<APIGatewayProxyResult> {
+  return createErrorResponse(501, 'NOT_IMPLEMENTED', 'Handler not implemented', requestId);
 }
 
-async function getUserByResetToken(token: string): Promise<User | null> {
-  try {
-    const result = await docClient.send(new QueryCommand({
-      TableName: USERS_TABLE,
-      IndexName: 'password-reset-token-index',
-      KeyConditionExpression: 'passwordResetToken = :token',
-      ExpressionAttributeValues: {
-        ':token': token
-      }
-    }));
-
-    return result.Items && result.Items.length > 0 ? result.Items[0] as User : null;
-  } catch (error) {
-    console.error('Error getting user by reset token:', error);
-    return null;
-  }
+async function handleCustomerRegister(body: any, requestId: string, clientInfo: any): Promise<APIGatewayProxyResult> {
+  return createErrorResponse(501, 'NOT_IMPLEMENTED', 'Handler not implemented', requestId);
 }
 
-async function updateUser(userId: string, updates: Partial<User>): Promise<void> {
-  try {
-    const updateExpression: string[] = [];
-    const expressionAttributeNames: Record<string, string> = {};
-    const expressionAttributeValues: Record<string, any> = {};
-
-    Object.entries(updates).forEach(([key, value], index) => {
-      if (value !== undefined) {
-        const attrName = `#attr${index}`;
-        const attrValue = `:val${index}`;
-        updateExpression.push(`${attrName} = ${attrValue}`);
-        expressionAttributeNames[attrName] = key;
-        expressionAttributeValues[attrValue] = value;
-      }
-    });
-
-    if (updateExpression.length === 0) return;
-
-    // Always update the updatedAt timestamp
-    updateExpression.push('#updatedAt = :updatedAt');
-    expressionAttributeNames['#updatedAt'] = 'updatedAt';
-    expressionAttributeValues[':updatedAt'] = new Date().toISOString();
-
-    await docClient.send(new UpdateCommand({
-      TableName: USERS_TABLE,
-      Key: { id: userId },
-      UpdateExpression: `SET ${updateExpression.join(', ')}`,
-      ExpressionAttributeNames: expressionAttributeNames,
-      ExpressionAttributeValues: expressionAttributeValues
-    }));
-  } catch (error) {
-    console.error('Error updating user:', error);
-    throw error;
-  }
+async function handleCustomerRefresh(body: any, requestId: string, clientInfo: any): Promise<APIGatewayProxyResult> {
+  return createErrorResponse(501, 'NOT_IMPLEMENTED', 'Handler not implemented', requestId);
 }
 
-async function handleFailedLogin(user: User, clientInfo: { ipAddress: string; userAgent: string }): Promise<void> {
-  const newAttempts = (user.loginAttempts || 0) + 1;
-  const updates: Partial<User> = { loginAttempts: newAttempts };
-
-  if (shouldLockAccount(newAttempts)) {
-    updates.lockedUntil = calculateLockoutExpiry();
-  }
-
-  await updateUser(user.id, updates);
-  await logAuditEvent('FAILED_LOGIN_ATTEMPT', 'security', { 
-    userId: user.id, 
-    attempts: newAttempts,
-    locked: !!updates.lockedUntil 
-  }, clientInfo, '', user.id);
+async function handleCustomerLogout(event: any, requestId: string, clientInfo: any): Promise<APIGatewayProxyResult> {
+  return createErrorResponse(501, 'NOT_IMPLEMENTED', 'Handler not implemented', requestId);
 }
 
-async function resetLoginAttempts(userId: string): Promise<void> {
-  await updateUser(userId, { 
-    loginAttempts: 0, 
-    lockedUntil: undefined 
-  });
+async function handleCustomerForgotPassword(body: any, requestId: string, clientInfo: any): Promise<APIGatewayProxyResult> {
+  return createErrorResponse(501, 'NOT_IMPLEMENTED', 'Handler not implemented', requestId);
 }
 
-async function createUserSession(
-  user: User, 
-  deviceId: string, 
-  clientInfo: { ipAddress: string; userAgent: string },
-  isAdmin: boolean = false
-): Promise<LoginResult> {
-  // Create session
-  const session = createAuthSession(user.id, deviceId, clientInfo);
-  
-  // Store session in database
-  await docClient.send(new PutCommand({
-    TableName: SESSIONS_TABLE,
-    Item: session
-  }));
-
-  // Create tokens
-  const accessToken = createAccessToken(user, session.sessionId, deviceId);
-  const refreshToken = createRefreshToken(user.id, session.sessionId);
-
-  // Update last login (skip if fails in development)
-  try {
-    await updateUser(user.id, { lastLogin: new Date().toISOString() });
-  } catch (updateError) {
-    console.error('Failed to update user last login (non-critical):', updateError);
-  }
-
-  return {
-    success: true,
-    tokens: {
-      accessToken,
-      refreshToken,
-      expiresIn: AUTH_CONFIG.ACCESS_TOKEN_EXPIRY_SECONDS,
-      tokenType: 'Bearer'
-    },
-    user: {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      role: user.role,
-      permissions: user.permissions,
-      mfaEnabled: user.mfaEnabled
-    }
-  };
+async function handleCustomerConfirmForgotPassword(body: any, requestId: string, clientInfo: any): Promise<APIGatewayProxyResult> {
+  return createErrorResponse(501, 'NOT_IMPLEMENTED', 'Handler not implemented', requestId);
 }
 
-async function getSession(sessionId: string): Promise<AuthSession | null> {
-  try {
-    const result = await docClient.send(new GetCommand({
-      TableName: SESSIONS_TABLE,
-      Key: { sessionId }
-    }));
-
-    return result.Item as AuthSession || null;
-  } catch (error) {
-    console.error('Error getting session:', error);
-    return null;
-  }
+async function handleCustomerConfirmSignUp(body: any, requestId: string, clientInfo: any): Promise<APIGatewayProxyResult> {
+  return createErrorResponse(501, 'NOT_IMPLEMENTED', 'Handler not implemented', requestId);
 }
 
-async function updateSessionActivity(sessionId: string): Promise<void> {
-  try {
-    await docClient.send(new UpdateCommand({
-      TableName: SESSIONS_TABLE,
-      Key: { sessionId },
-      UpdateExpression: 'SET lastActivity = :lastActivity',
-      ExpressionAttributeValues: {
-        ':lastActivity': new Date().toISOString()
-      }
-    }));
-  } catch (error) {
-    console.error('Error updating session activity:', error);
-  }
+async function handleCustomerResendConfirmation(body: any, requestId: string, clientInfo: any): Promise<APIGatewayProxyResult> {
+  return createErrorResponse(501, 'NOT_IMPLEMENTED', 'Handler not implemented', requestId);
 }
 
-async function invalidateSession(sessionId: string): Promise<void> {
-  try {
-    await docClient.send(new UpdateCommand({
-      TableName: SESSIONS_TABLE,
-      Key: { sessionId },
-      UpdateExpression: 'SET isActive = :isActive',
-      ExpressionAttributeValues: {
-        ':isActive': false
-      }
-    }));
-  } catch (error) {
-    console.error('Error invalidating session:', error);
-  }
+async function handleStaffLogin(body: any, requestId: string, clientInfo: any): Promise<APIGatewayProxyResult> {
+  return createErrorResponse(501, 'NOT_IMPLEMENTED', 'Handler not implemented', requestId);
 }
 
-async function invalidateAllUserSessions(userId: string): Promise<void> {
-  try {
-    // Query all active sessions for user
-    const result = await docClient.send(new QueryCommand({
-      TableName: SESSIONS_TABLE,
-      IndexName: 'userId-index',
-      KeyConditionExpression: 'userId = :userId',
-      FilterExpression: 'isActive = :isActive',
-      ExpressionAttributeValues: {
-        ':userId': userId,
-        ':isActive': true
-      }
-    }));
-
-    // Invalidate each session
-    if (result.Items) {
-      for (const session of result.Items) {
-        await invalidateSession(session.sessionId);
-      }
-    }
-  } catch (error) {
-    console.error('Error invalidating user sessions:', error);
-  }
+async function handleStaffRefresh(body: any, requestId: string, clientInfo: any): Promise<APIGatewayProxyResult> {
+  return createErrorResponse(501, 'NOT_IMPLEMENTED', 'Handler not implemented', requestId);
 }
 
-async function logLoginAttempt(
-  email: string, 
-  clientInfo: { ipAddress: string; userAgent: string }, 
-  success: boolean,
-  type: string = 'user'
-): Promise<void> {
-  try {
-    const loginAttempt: LoginAttempt = {
-      id: crypto.randomUUID(),
-      email,
-      ipAddress: clientInfo.ipAddress,
-      userAgent: clientInfo.userAgent,
-      success,
-      timestamp: new Date().toISOString(),
-      failureReason: success ? undefined : 'Invalid credentials'
-    };
-
-    await docClient.send(new PutCommand({
-      TableName: LOGIN_ATTEMPTS_TABLE,
-      Item: loginAttempt
-    }));
-  } catch (error) {
-    console.error('Error logging login attempt:', error);
-  }
-}
-
-async function logAuditEvent(
-  action: string,
-  resource: string,
-  details: Record<string, any>,
-  clientInfo: { ipAddress: string; userAgent: string },
-  requestId: string,
-  userId?: string
-): Promise<void> {
-  try {
-    const auditLog: AuditLog = {
-      id: crypto.randomUUID(),
-      userId: userId || 'system',
-      userEmail: details.email || 'system',
-      action,
-      resource,
-      resourceId: details.resourceId,
-      details,
-      ipAddress: clientInfo.ipAddress,
-      userAgent: clientInfo.userAgent,
-      timestamp: new Date().toISOString(),
-      sessionId: details.sessionId || requestId
-    };
-
-    await docClient.send(new PutCommand({
-      TableName: AUDIT_LOGS_TABLE,
-      Item: auditLog
-    }));
-  } catch (error) {
-    console.error('Error logging audit event:', error);
-  }
+async function handleStaffLogout(event: any, requestId: string, clientInfo: any): Promise<APIGatewayProxyResult> {
+  return createErrorResponse(501, 'NOT_IMPLEMENTED', 'Handler not implemented', requestId);
 }
