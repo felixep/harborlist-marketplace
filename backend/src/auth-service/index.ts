@@ -1101,6 +1101,574 @@ class CognitoAuthService implements AuthService {
     }
   }
 
+  /**
+   * Customer tier management methods
+   */
+
+  async assignCustomerTier(email: string, newTier: CustomerTier, adminUserId?: string): Promise<{ success: boolean; message: string }> {
+    try {
+      // Get current user details
+      const getUserCommand = new AdminGetUserCommand({
+        UserPoolId: this.config.cognito.customer.poolId,
+        Username: email,
+      });
+
+      const userResponse = await this.customerCognitoClient.send(getUserCommand);
+      if (!userResponse.Username) {
+        return {
+          success: false,
+          message: 'Customer not found',
+        };
+      }
+
+      // Get current groups
+      const listGroupsCommand = new AdminListGroupsForUserCommand({
+        UserPoolId: this.config.cognito.customer.poolId,
+        Username: email,
+      });
+
+      const groupsResponse = await this.customerCognitoClient.send(listGroupsCommand);
+      const currentGroups = groupsResponse.Groups || [];
+
+      // Remove from all customer tier groups
+      for (const group of currentGroups) {
+        if (group.GroupName?.endsWith('-customers')) {
+          const removeCommand = new AdminRemoveUserFromGroupCommand({
+            UserPoolId: this.config.cognito.customer.poolId,
+            Username: email,
+            GroupName: group.GroupName,
+          });
+          await this.customerCognitoClient.send(removeCommand);
+        }
+      }
+
+      // Add to new tier group
+      await this.addCustomerToGroup(email, newTier);
+
+      // Update custom attribute
+      const updateAttributesCommand = new AdminUpdateUserAttributesCommand({
+        UserPoolId: this.config.cognito.customer.poolId,
+        Username: email,
+        UserAttributes: [
+          {
+            Name: 'custom:customer_type',
+            Value: newTier,
+          },
+        ],
+      });
+
+      await this.customerCognitoClient.send(updateAttributesCommand);
+
+      // Log tier change
+      await logAuthEvent({
+        eventType: 'TIER_CHANGE' as any,
+        userType: 'customer',
+        userId: userResponse.Username,
+        email,
+        ipAddress: 'system',
+        userAgent: 'auth-service',
+        timestamp: new Date().toISOString(),
+        success: true,
+        additionalData: { 
+          newTier, 
+          adminUserId,
+          previousGroups: currentGroups.map(g => g.GroupName).filter(Boolean)
+        },
+      });
+
+      return {
+        success: true,
+        message: `Customer tier updated to ${newTier}`,
+      };
+    } catch (error: any) {
+      console.error('Error assigning customer tier:', error);
+      return {
+        success: false,
+        message: this.getCognitoErrorMessage(error),
+      };
+    }
+  }
+
+  async modifyCustomerTier(email: string, targetTier: CustomerTier, adminUserId: string): Promise<{ success: boolean; message: string; previousTier?: CustomerTier }> {
+    try {
+      // Get current customer details
+      const getUserCommand = new AdminGetUserCommand({
+        UserPoolId: this.config.cognito.customer.poolId,
+        Username: email,
+      });
+
+      const userResponse = await this.customerCognitoClient.send(getUserCommand);
+      if (!userResponse.Username) {
+        return {
+          success: false,
+          message: 'Customer not found',
+        };
+      }
+
+      // Get current tier from attributes
+      const currentTierAttr = userResponse.UserAttributes?.find(attr => attr.Name === 'custom:customer_type');
+      const currentTier = currentTierAttr?.Value as CustomerTier;
+
+      if (currentTier === targetTier) {
+        return {
+          success: true,
+          message: `Customer is already in ${targetTier} tier`,
+          previousTier: currentTier,
+        };
+      }
+
+      // Use assignCustomerTier to handle the change
+      const result = await this.assignCustomerTier(email, targetTier, adminUserId);
+
+      return {
+        ...result,
+        previousTier: currentTier,
+      };
+    } catch (error: any) {
+      console.error('Error modifying customer tier:', error);
+      return {
+        success: false,
+        message: this.getCognitoErrorMessage(error),
+      };
+    }
+  }
+
+  async validateCustomerTierAccess(email: string, requiredFeature: string): Promise<{ hasAccess: boolean; customerTier?: CustomerTier; message?: string }> {
+    try {
+      // Get customer details
+      const getUserCommand = new AdminGetUserCommand({
+        UserPoolId: this.config.cognito.customer.poolId,
+        Username: email,
+      });
+
+      const userResponse = await this.customerCognitoClient.send(getUserCommand);
+      if (!userResponse.Username) {
+        return {
+          hasAccess: false,
+          message: 'Customer not found',
+        };
+      }
+
+      // Get customer tier
+      const tierAttr = userResponse.UserAttributes?.find(attr => attr.Name === 'custom:customer_type');
+      const customerTier = tierAttr?.Value as CustomerTier || CustomerTier.INDIVIDUAL;
+
+      // Get permissions for tier
+      const permissions = this.getCustomerPermissions(customerTier);
+
+      // Handle Premium tier inheritance logic
+      let hasAccess = permissions.includes(requiredFeature);
+      
+      if (!hasAccess && customerTier === CustomerTier.PREMIUM) {
+        // Premium customers inherit Individual and Dealer permissions
+        const individualPermissions = this.getCustomerPermissions(CustomerTier.INDIVIDUAL);
+        const dealerPermissions = this.getCustomerPermissions(CustomerTier.DEALER);
+        hasAccess = individualPermissions.includes(requiredFeature) || dealerPermissions.includes(requiredFeature);
+      }
+
+      return {
+        hasAccess,
+        customerTier,
+        message: hasAccess ? 'Access granted' : `Feature '${requiredFeature}' requires higher tier`,
+      };
+    } catch (error: any) {
+      console.error('Error validating customer tier access:', error);
+      return {
+        hasAccess: false,
+        message: 'Error validating access',
+      };
+    }
+  }
+
+  async getCustomerTierInfo(email: string): Promise<{ success: boolean; customerTier?: CustomerTier; permissions?: string[]; groups?: string[]; message?: string }> {
+    try {
+      // Get customer details
+      const getUserCommand = new AdminGetUserCommand({
+        UserPoolId: this.config.cognito.customer.poolId,
+        Username: email,
+      });
+
+      const userResponse = await this.customerCognitoClient.send(getUserCommand);
+      if (!userResponse.Username) {
+        return {
+          success: false,
+          message: 'Customer not found',
+        };
+      }
+
+      // Get customer tier
+      const tierAttr = userResponse.UserAttributes?.find(attr => attr.Name === 'custom:customer_type');
+      const customerTier = tierAttr?.Value as CustomerTier || CustomerTier.INDIVIDUAL;
+
+      // Get groups
+      const listGroupsCommand = new AdminListGroupsForUserCommand({
+        UserPoolId: this.config.cognito.customer.poolId,
+        Username: email,
+      });
+
+      const groupsResponse = await this.customerCognitoClient.send(listGroupsCommand);
+      const groups = groupsResponse.Groups?.map(g => g.GroupName).filter((name): name is string => Boolean(name)) || [];
+
+      // Get permissions (including Premium inheritance)
+      let permissions = this.getCustomerPermissions(customerTier);
+      
+      if (customerTier === CustomerTier.PREMIUM) {
+        // Premium customers inherit all lower tier permissions
+        const individualPermissions = this.getCustomerPermissions(CustomerTier.INDIVIDUAL);
+        const dealerPermissions = this.getCustomerPermissions(CustomerTier.DEALER);
+        permissions = [...new Set([...permissions, ...individualPermissions, ...dealerPermissions])];
+      }
+
+      return {
+        success: true,
+        customerTier,
+        permissions,
+        groups,
+      };
+    } catch (error: any) {
+      console.error('Error getting customer tier info:', error);
+      return {
+        success: false,
+        message: this.getCognitoErrorMessage(error),
+      };
+    }
+  }
+
+  /**
+   * Staff role management methods
+   */
+
+  async assignStaffRole(email: string, newRole: StaffRole, permissions: AdminPermission[], adminUserId: string, team?: string): Promise<{ success: boolean; message: string }> {
+    try {
+      // Get current user details
+      const getUserCommand = new AdminGetUserCommand({
+        UserPoolId: this.config.cognito.staff.poolId,
+        Username: email,
+      });
+
+      const userResponse = await this.staffCognitoClient.send(getUserCommand);
+      if (!userResponse.Username) {
+        return {
+          success: false,
+          message: 'Staff member not found',
+        };
+      }
+
+      // Get current groups
+      const listGroupsCommand = new AdminListGroupsForUserCommand({
+        UserPoolId: this.config.cognito.staff.poolId,
+        Username: email,
+      });
+
+      const groupsResponse = await this.staffCognitoClient.send(listGroupsCommand);
+      const currentGroups = groupsResponse.Groups || [];
+
+      // Remove from all staff role groups
+      for (const group of currentGroups) {
+        if (Object.values(StaffRole).includes(group.GroupName as StaffRole)) {
+          const removeCommand = new AdminRemoveUserFromGroupCommand({
+            UserPoolId: this.config.cognito.staff.poolId,
+            Username: email,
+            GroupName: group.GroupName,
+          });
+          await this.staffCognitoClient.send(removeCommand);
+        }
+      }
+
+      // Add to new role group
+      const addToGroupCommand = new AdminAddUserToGroupCommand({
+        UserPoolId: this.config.cognito.staff.poolId,
+        Username: email,
+        GroupName: newRole,
+      });
+      await this.staffCognitoClient.send(addToGroupCommand);
+
+      // Update custom attributes
+      const updateAttributesCommand = new AdminUpdateUserAttributesCommand({
+        UserPoolId: this.config.cognito.staff.poolId,
+        Username: email,
+        UserAttributes: [
+          {
+            Name: 'custom:permissions',
+            Value: JSON.stringify(permissions),
+          },
+          ...(team ? [{
+            Name: 'custom:team',
+            Value: team,
+          }] : []),
+        ],
+      });
+
+      await this.staffCognitoClient.send(updateAttributesCommand);
+
+      // Log role change
+      await logAuthEvent({
+        eventType: 'ROLE_CHANGE' as any,
+        userType: 'staff',
+        userId: userResponse.Username,
+        email,
+        ipAddress: 'system',
+        userAgent: 'auth-service',
+        timestamp: new Date().toISOString(),
+        success: true,
+        additionalData: { 
+          newRole, 
+          permissions,
+          team,
+          adminUserId,
+          previousGroups: currentGroups.map(g => g.GroupName).filter(Boolean)
+        },
+      });
+
+      return {
+        success: true,
+        message: `Staff role updated to ${newRole}`,
+      };
+    } catch (error: any) {
+      console.error('Error assigning staff role:', error);
+      return {
+        success: false,
+        message: this.getCognitoErrorMessage(error),
+      };
+    }
+  }
+
+  async modifyStaffPermissions(email: string, permissions: AdminPermission[], adminUserId: string): Promise<{ success: boolean; message: string; previousPermissions?: AdminPermission[] }> {
+    try {
+      // Get current staff details
+      const getUserCommand = new AdminGetUserCommand({
+        UserPoolId: this.config.cognito.staff.poolId,
+        Username: email,
+      });
+
+      const userResponse = await this.staffCognitoClient.send(getUserCommand);
+      if (!userResponse.Username) {
+        return {
+          success: false,
+          message: 'Staff member not found',
+        };
+      }
+
+      // Get current permissions
+      const currentPermissionsAttr = userResponse.UserAttributes?.find(attr => attr.Name === 'custom:permissions');
+      let previousPermissions: AdminPermission[] = [];
+      
+      if (currentPermissionsAttr?.Value) {
+        try {
+          previousPermissions = JSON.parse(currentPermissionsAttr.Value);
+        } catch (error) {
+          console.warn('Failed to parse existing permissions, using role-based permissions');
+        }
+      }
+
+      // Update permissions
+      const updateAttributesCommand = new AdminUpdateUserAttributesCommand({
+        UserPoolId: this.config.cognito.staff.poolId,
+        Username: email,
+        UserAttributes: [
+          {
+            Name: 'custom:permissions',
+            Value: JSON.stringify(permissions),
+          },
+        ],
+      });
+
+      await this.staffCognitoClient.send(updateAttributesCommand);
+
+      // Log permission change
+      await logAuthEvent({
+        eventType: 'PERMISSION_CHANGE' as any,
+        userType: 'staff',
+        userId: userResponse.Username,
+        email,
+        ipAddress: 'system',
+        userAgent: 'auth-service',
+        timestamp: new Date().toISOString(),
+        success: true,
+        additionalData: { 
+          newPermissions: permissions,
+          previousPermissions,
+          adminUserId
+        },
+      });
+
+      return {
+        success: true,
+        message: 'Staff permissions updated successfully',
+        previousPermissions,
+      };
+    } catch (error: any) {
+      console.error('Error modifying staff permissions:', error);
+      return {
+        success: false,
+        message: this.getCognitoErrorMessage(error),
+      };
+    }
+  }
+
+  async assignStaffToTeam(email: string, team: string, adminUserId: string): Promise<{ success: boolean; message: string; previousTeam?: string }> {
+    try {
+      // Get current staff details
+      const getUserCommand = new AdminGetUserCommand({
+        UserPoolId: this.config.cognito.staff.poolId,
+        Username: email,
+      });
+
+      const userResponse = await this.staffCognitoClient.send(getUserCommand);
+      if (!userResponse.Username) {
+        return {
+          success: false,
+          message: 'Staff member not found',
+        };
+      }
+
+      // Get current team
+      const currentTeamAttr = userResponse.UserAttributes?.find(attr => attr.Name === 'custom:team');
+      const previousTeam = currentTeamAttr?.Value;
+
+      // Update team assignment
+      const updateAttributesCommand = new AdminUpdateUserAttributesCommand({
+        UserPoolId: this.config.cognito.staff.poolId,
+        Username: email,
+        UserAttributes: [
+          {
+            Name: 'custom:team',
+            Value: team,
+          },
+        ],
+      });
+
+      await this.staffCognitoClient.send(updateAttributesCommand);
+
+      // Log team assignment
+      await logAuthEvent({
+        eventType: 'TEAM_ASSIGNMENT' as any,
+        userType: 'staff',
+        userId: userResponse.Username,
+        email,
+        ipAddress: 'system',
+        userAgent: 'auth-service',
+        timestamp: new Date().toISOString(),
+        success: true,
+        additionalData: { 
+          newTeam: team,
+          previousTeam,
+          adminUserId
+        },
+      });
+
+      return {
+        success: true,
+        message: `Staff member assigned to team: ${team}`,
+        previousTeam,
+      };
+    } catch (error: any) {
+      console.error('Error assigning staff to team:', error);
+      return {
+        success: false,
+        message: this.getCognitoErrorMessage(error),
+      };
+    }
+  }
+
+  async getStaffRoleInfo(email: string): Promise<{ success: boolean; role?: StaffRole; permissions?: AdminPermission[]; team?: string; groups?: string[]; message?: string }> {
+    try {
+      // Get staff details
+      const getUserCommand = new AdminGetUserCommand({
+        UserPoolId: this.config.cognito.staff.poolId,
+        Username: email,
+      });
+
+      const userResponse = await this.staffCognitoClient.send(getUserCommand);
+      if (!userResponse.Username) {
+        return {
+          success: false,
+          message: 'Staff member not found',
+        };
+      }
+
+      // Get groups
+      const listGroupsCommand = new AdminListGroupsForUserCommand({
+        UserPoolId: this.config.cognito.staff.poolId,
+        Username: email,
+      });
+
+      const groupsResponse = await this.staffCognitoClient.send(listGroupsCommand);
+      const groups = groupsResponse.Groups?.map(g => g.GroupName).filter((name): name is string => Boolean(name)) || [];
+
+      // Determine role from groups
+      let role = StaffRole.TEAM_MEMBER; // Default role
+      for (const staffRole of Object.values(StaffRole)) {
+        if (groups.includes(staffRole)) {
+          role = staffRole;
+          break; // Roles are ordered by precedence
+        }
+      }
+
+      // Get permissions from custom attribute
+      const permissionsAttr = userResponse.UserAttributes?.find(attr => attr.Name === 'custom:permissions');
+      let permissions: AdminPermission[] = [];
+      
+      if (permissionsAttr?.Value) {
+        try {
+          permissions = JSON.parse(permissionsAttr.Value);
+        } catch (error) {
+          console.warn('Failed to parse permissions, using role-based permissions');
+          permissions = this.getStaffPermissions(role);
+        }
+      } else {
+        permissions = this.getStaffPermissions(role);
+      }
+
+      // Get team
+      const teamAttr = userResponse.UserAttributes?.find(attr => attr.Name === 'custom:team');
+      const team = teamAttr?.Value;
+
+      return {
+        success: true,
+        role,
+        permissions,
+        team,
+        groups,
+      };
+    } catch (error: any) {
+      console.error('Error getting staff role info:', error);
+      return {
+        success: false,
+        message: this.getCognitoErrorMessage(error),
+      };
+    }
+  }
+
+  async validateStaffPermission(email: string, requiredPermission: AdminPermission): Promise<{ hasPermission: boolean; role?: StaffRole; message?: string }> {
+    try {
+      const roleInfo = await this.getStaffRoleInfo(email);
+      
+      if (!roleInfo.success) {
+        return {
+          hasPermission: false,
+          message: roleInfo.message,
+        };
+      }
+
+      const hasPermission = roleInfo.permissions?.includes(requiredPermission) || 
+                           roleInfo.role === StaffRole.SUPER_ADMIN || // Super admin has all permissions
+                           false;
+
+      return {
+        hasPermission,
+        role: roleInfo.role,
+        message: hasPermission ? 'Permission granted' : `Permission '${requiredPermission}' denied`,
+      };
+    } catch (error: any) {
+      console.error('Error validating staff permission:', error);
+      return {
+        hasPermission: false,
+        message: 'Error validating permission',
+      };
+    }
+  }
+
   private getCustomerPermissions(customerType: CustomerTier): string[] {
     return [...(CUSTOMER_PERMISSIONS[customerType] || CUSTOMER_PERMISSIONS[CustomerTier.INDIVIDUAL])];
   }

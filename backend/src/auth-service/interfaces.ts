@@ -212,14 +212,27 @@ export interface AuthService {
   validateStaffToken(token: string): Promise<StaffClaims>;
   
   // MFA methods
-  customerSetupMFA(accessToken: string): Promise<{ secretCode: string; qrCodeUrl: string }>;
-  customerVerifyMFA(accessToken: string, mfaCode: string): Promise<{ success: boolean; message: string }>;
-  staffSetupMFA(accessToken: string): Promise<{ secretCode: string; qrCodeUrl: string }>;
-  staffVerifyMFA(accessToken: string, mfaCode: string): Promise<{ success: boolean; message: string }>;
+  customerSetupMFA(accessToken: string, clientInfo: any): Promise<{ secretCode: string; qrCodeUrl: string }>;
+  customerVerifyMFA(accessToken: string, mfaCode: string, clientInfo: any): Promise<{ success: boolean; message: string }>;
+  staffSetupMFA(accessToken: string, clientInfo: any): Promise<{ secretCode: string; qrCodeUrl: string }>;
+  staffVerifyMFA(accessToken: string, mfaCode: string, clientInfo: any): Promise<{ success: boolean; message: string }>;
   
   // Session management
-  logout(accessToken: string, userType: 'customer' | 'staff'): Promise<{ success: boolean; message: string }>;
-  logoutAllDevices(accessToken: string, userType: 'customer' | 'staff'): Promise<{ success: boolean; message: string }>;
+  logout(accessToken: string, userType: 'customer' | 'staff', clientInfo: any, sessionId?: string): Promise<{ success: boolean; message: string }>;
+  logoutAllDevices(accessToken: string, userType: 'customer' | 'staff', clientInfo: any): Promise<{ success: boolean; message: string }>;
+  
+  // Customer tier management
+  assignCustomerTier(email: string, newTier: CustomerTier, adminUserId?: string): Promise<{ success: boolean; message: string }>;
+  modifyCustomerTier(email: string, targetTier: CustomerTier, adminUserId: string): Promise<{ success: boolean; message: string; previousTier?: CustomerTier }>;
+  validateCustomerTierAccess(email: string, requiredFeature: string): Promise<{ hasAccess: boolean; customerTier?: CustomerTier; message?: string }>;
+  getCustomerTierInfo(email: string): Promise<{ success: boolean; customerTier?: CustomerTier; permissions?: string[]; groups?: string[]; message?: string }>;
+  
+  // Staff role management
+  assignStaffRole(email: string, newRole: StaffRole, permissions: AdminPermission[], adminUserId: string, team?: string): Promise<{ success: boolean; message: string }>;
+  modifyStaffPermissions(email: string, permissions: AdminPermission[], adminUserId: string): Promise<{ success: boolean; message: string; previousPermissions?: AdminPermission[] }>;
+  assignStaffToTeam(email: string, team: string, adminUserId: string): Promise<{ success: boolean; message: string; previousTeam?: string }>;
+  getStaffRoleInfo(email: string): Promise<{ success: boolean; role?: StaffRole; permissions?: AdminPermission[]; team?: string; groups?: string[]; message?: string }>;
+  validateStaffPermission(email: string, requiredPermission: AdminPermission): Promise<{ hasPermission: boolean; role?: StaffRole; message?: string }>;
 }
 
 /**
