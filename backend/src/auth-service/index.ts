@@ -78,6 +78,9 @@ import { AdminPermission } from '../types/common';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import { validateJWTToken } from './jwt-utils';
+import { mfaService } from './mfa-service';
+import { logAuthEvent } from './audit-service';
+import { securityService, checkRateLimit } from './security-service';
 
 /**
  * AWS Cognito dual-pool authentication service implementation
@@ -113,8 +116,50 @@ class CognitoAuthService implements AuthService {
    * Customer authentication methods
    */
 
-  async customerLogin(email: string, password: string, deviceId?: string): Promise<CustomerAuthResult> {
+  async customerLogin(email: string, password: string, clientInfo: any, deviceId?: string): Promise<CustomerAuthResult> {
     try {
+      // Check rate limiting
+      const rateLimitResult = await checkRateLimit(email, 'login', 'customer', clientInfo.ipAddress, clientInfo.userAgent);
+      if (!rateLimitResult.allowed) {
+        await logAuthEvent({
+          eventType: 'FAILED_LOGIN',
+          userType: 'customer',
+          email,
+          ipAddress: clientInfo.ipAddress,
+          userAgent: clientInfo.userAgent,
+          timestamp: new Date().toISOString(),
+          success: false,
+          errorCode: 'RATE_LIMITED',
+          additionalData: { rateLimitResult },
+        });
+
+        return {
+          success: false,
+          error: 'Too many login attempts. Please try again later.',
+          errorCode: 'RATE_LIMITED',
+        };
+      }
+
+      // Check if IP is blocked
+      if (await securityService.isIPBlocked(clientInfo.ipAddress)) {
+        await logAuthEvent({
+          eventType: 'FAILED_LOGIN',
+          userType: 'customer',
+          email,
+          ipAddress: clientInfo.ipAddress,
+          userAgent: clientInfo.userAgent,
+          timestamp: new Date().toISOString(),
+          success: false,
+          errorCode: 'IP_BLOCKED',
+        });
+
+        return {
+          success: false,
+          error: 'Access denied from this IP address.',
+          errorCode: 'IP_BLOCKED',
+        };
+      }
+
       const command = new AdminInitiateAuthCommand({
         UserPoolId: this.config.cognito.customer.poolId,
         ClientId: this.config.cognito.customer.clientId,
@@ -125,8 +170,8 @@ class CognitoAuthService implements AuthService {
         },
         ...(deviceId && {
           ContextData: {
-            IpAddress: '127.0.0.1',
-            ServerName: 'localhost',
+            IpAddress: clientInfo.ipAddress,
+            ServerName: 'harborlist.com',
             ServerPath: '/auth/customer/login',
             HttpHeaders: [
               {
@@ -142,6 +187,17 @@ class CognitoAuthService implements AuthService {
 
       // Handle MFA challenge
       if (response.ChallengeName) {
+        await logAuthEvent({
+          eventType: 'LOGIN',
+          userType: 'customer',
+          email,
+          ipAddress: clientInfo.ipAddress,
+          userAgent: clientInfo.userAgent,
+          timestamp: new Date().toISOString(),
+          success: true,
+          additionalData: { requiresMFA: true, challengeName: response.ChallengeName },
+        });
+
         return {
           success: false,
           requiresMFA: true,
@@ -152,6 +208,17 @@ class CognitoAuthService implements AuthService {
 
       // Extract tokens
       if (!response.AuthenticationResult) {
+        await logAuthEvent({
+          eventType: 'FAILED_LOGIN',
+          userType: 'customer',
+          email,
+          ipAddress: clientInfo.ipAddress,
+          userAgent: clientInfo.userAgent,
+          timestamp: new Date().toISOString(),
+          success: false,
+          errorCode: 'AUTH_FAILED',
+        });
+
         return {
           success: false,
           error: 'Authentication failed',
@@ -170,6 +237,31 @@ class CognitoAuthService implements AuthService {
       // Get user details and groups
       const userDetails = await this.getCustomerUserDetails(response.AuthenticationResult.AccessToken!);
       
+      // Validate customer claims and create session
+      const claims = await this.validateCustomerToken(tokens.accessToken);
+      const session = await securityService.createSession(
+        userDetails.id,
+        'customer',
+        userDetails.email,
+        clientInfo.ipAddress,
+        clientInfo.userAgent,
+        claims,
+        deviceId
+      );
+
+      // Log successful login
+      await logAuthEvent({
+        eventType: 'LOGIN',
+        userType: 'customer',
+        userId: userDetails.id,
+        email,
+        ipAddress: clientInfo.ipAddress,
+        userAgent: clientInfo.userAgent,
+        timestamp: new Date().toISOString(),
+        success: true,
+        additionalData: { sessionId: session.sessionId, customerType: userDetails.customerType },
+      });
+      
       return {
         success: true,
         tokens,
@@ -177,6 +269,20 @@ class CognitoAuthService implements AuthService {
       };
     } catch (error: any) {
       console.error('Customer login error:', error);
+      
+      // Log failed login
+      await logAuthEvent({
+        eventType: 'FAILED_LOGIN',
+        userType: 'customer',
+        email,
+        ipAddress: clientInfo.ipAddress,
+        userAgent: clientInfo.userAgent,
+        timestamp: new Date().toISOString(),
+        success: false,
+        errorCode: error.name,
+        additionalData: { error: error.message },
+      });
+
       return this.handleCognitoError(error, 'customer');
     }
   }
@@ -353,8 +459,50 @@ class CognitoAuthService implements AuthService {
    * Staff authentication methods
    */
 
-  async staffLogin(email: string, password: string, deviceId?: string): Promise<StaffAuthResult> {
+  async staffLogin(email: string, password: string, clientInfo: any, deviceId?: string): Promise<StaffAuthResult> {
     try {
+      // Check rate limiting (stricter for staff)
+      const rateLimitResult = await checkRateLimit(email, 'login', 'staff', clientInfo.ipAddress, clientInfo.userAgent);
+      if (!rateLimitResult.allowed) {
+        await logAuthEvent({
+          eventType: 'FAILED_LOGIN',
+          userType: 'staff',
+          email,
+          ipAddress: clientInfo.ipAddress,
+          userAgent: clientInfo.userAgent,
+          timestamp: new Date().toISOString(),
+          success: false,
+          errorCode: 'RATE_LIMITED',
+          additionalData: { rateLimitResult },
+        });
+
+        return {
+          success: false,
+          error: 'Too many login attempts. Please try again later.',
+          errorCode: 'RATE_LIMITED',
+        };
+      }
+
+      // Check if IP is blocked
+      if (await securityService.isIPBlocked(clientInfo.ipAddress)) {
+        await logAuthEvent({
+          eventType: 'FAILED_LOGIN',
+          userType: 'staff',
+          email,
+          ipAddress: clientInfo.ipAddress,
+          userAgent: clientInfo.userAgent,
+          timestamp: new Date().toISOString(),
+          success: false,
+          errorCode: 'IP_BLOCKED',
+        });
+
+        return {
+          success: false,
+          error: 'Access denied from this IP address.',
+          errorCode: 'IP_BLOCKED',
+        };
+      }
+
       const command = new AdminInitiateAuthCommand({
         UserPoolId: this.config.cognito.staff.poolId,
         ClientId: this.config.cognito.staff.clientId,
@@ -365,8 +513,8 @@ class CognitoAuthService implements AuthService {
         },
         ...(deviceId && {
           ContextData: {
-            IpAddress: '127.0.0.1',
-            ServerName: 'localhost',
+            IpAddress: clientInfo.ipAddress,
+            ServerName: 'admin.harborlist.com',
             ServerPath: '/auth/staff/login',
             HttpHeaders: [
               {
@@ -382,6 +530,17 @@ class CognitoAuthService implements AuthService {
 
       // Handle MFA challenge (required for staff)
       if (response.ChallengeName) {
+        await logAuthEvent({
+          eventType: 'LOGIN',
+          userType: 'staff',
+          email,
+          ipAddress: clientInfo.ipAddress,
+          userAgent: clientInfo.userAgent,
+          timestamp: new Date().toISOString(),
+          success: true,
+          additionalData: { requiresMFA: true, challengeName: response.ChallengeName },
+        });
+
         return {
           success: false,
           requiresMFA: true,
@@ -392,6 +551,17 @@ class CognitoAuthService implements AuthService {
 
       // Extract tokens
       if (!response.AuthenticationResult) {
+        await logAuthEvent({
+          eventType: 'FAILED_LOGIN',
+          userType: 'staff',
+          email,
+          ipAddress: clientInfo.ipAddress,
+          userAgent: clientInfo.userAgent,
+          timestamp: new Date().toISOString(),
+          success: false,
+          errorCode: 'AUTH_FAILED',
+        });
+
         return {
           success: false,
           error: 'Authentication failed',
@@ -410,6 +580,31 @@ class CognitoAuthService implements AuthService {
       // Get staff user details and groups
       const staffDetails = await this.getStaffUserDetails(response.AuthenticationResult.AccessToken!);
       
+      // Validate staff claims and create session
+      const claims = await this.validateStaffToken(tokens.accessToken);
+      const session = await securityService.createSession(
+        staffDetails.id,
+        'staff',
+        staffDetails.email,
+        clientInfo.ipAddress,
+        clientInfo.userAgent,
+        claims,
+        deviceId
+      );
+
+      // Log successful login
+      await logAuthEvent({
+        eventType: 'LOGIN',
+        userType: 'staff',
+        userId: staffDetails.id,
+        email,
+        ipAddress: clientInfo.ipAddress,
+        userAgent: clientInfo.userAgent,
+        timestamp: new Date().toISOString(),
+        success: true,
+        additionalData: { sessionId: session.sessionId, role: staffDetails.role },
+      });
+      
       return {
         success: true,
         tokens,
@@ -417,6 +612,20 @@ class CognitoAuthService implements AuthService {
       };
     } catch (error: any) {
       console.error('Staff login error:', error);
+      
+      // Log failed login
+      await logAuthEvent({
+        eventType: 'FAILED_LOGIN',
+        userType: 'staff',
+        email,
+        ipAddress: clientInfo.ipAddress,
+        userAgent: clientInfo.userAgent,
+        timestamp: new Date().toISOString(),
+        success: false,
+        errorCode: error.name,
+        additionalData: { error: error.message },
+      });
+
       return this.handleCognitoError(error, 'staff') as StaffAuthResult;
     }
   }
@@ -609,42 +818,83 @@ class CognitoAuthService implements AuthService {
   }
 
   /**
-   * MFA methods (placeholder implementations)
+   * MFA methods - integrated with MFA service
    */
 
-  async customerSetupMFA(accessToken: string): Promise<{ secretCode: string; qrCodeUrl: string }> {
-    // TODO: Implement customer MFA setup
-    throw new Error('Customer MFA setup not yet implemented');
+  async customerSetupMFA(accessToken: string, clientInfo: any): Promise<{ secretCode: string; qrCodeUrl: string }> {
+    const result = await mfaService.setupCustomerTOTP(accessToken, clientInfo);
+    if (!result.success) {
+      throw new Error(result.error || 'MFA setup failed');
+    }
+    return {
+      secretCode: result.secretCode!,
+      qrCodeUrl: result.qrCodeUrl!,
+    };
   }
 
-  async customerVerifyMFA(accessToken: string, mfaCode: string): Promise<{ success: boolean; message: string }> {
-    // TODO: Implement customer MFA verification
-    throw new Error('Customer MFA verification not yet implemented');
+  async customerVerifyMFA(accessToken: string, mfaCode: string, clientInfo: any): Promise<{ success: boolean; message: string }> {
+    const result = await mfaService.verifyTOTPSetup(accessToken, mfaCode, 'customer', clientInfo);
+    return {
+      success: result.success,
+      message: result.message,
+    };
   }
 
-  async staffSetupMFA(accessToken: string): Promise<{ secretCode: string; qrCodeUrl: string }> {
-    // TODO: Implement staff MFA setup
-    throw new Error('Staff MFA setup not yet implemented');
+  async staffSetupMFA(accessToken: string, clientInfo: any): Promise<{ secretCode: string; qrCodeUrl: string }> {
+    const result = await mfaService.setupStaffTOTP(accessToken, clientInfo);
+    if (!result.success) {
+      throw new Error(result.error || 'MFA setup failed');
+    }
+    return {
+      secretCode: result.secretCode!,
+      qrCodeUrl: result.qrCodeUrl!,
+    };
   }
 
-  async staffVerifyMFA(accessToken: string, mfaCode: string): Promise<{ success: boolean; message: string }> {
-    // TODO: Implement staff MFA verification
-    throw new Error('Staff MFA verification not yet implemented');
+  async staffVerifyMFA(accessToken: string, mfaCode: string, clientInfo: any): Promise<{ success: boolean; message: string }> {
+    const result = await mfaService.verifyTOTPSetup(accessToken, mfaCode, 'staff', clientInfo);
+    return {
+      success: result.success,
+      message: result.message,
+    };
   }
 
   /**
    * Session management methods
    */
 
-  async logout(accessToken: string, userType: 'customer' | 'staff'): Promise<{ success: boolean; message: string }> {
+  async logout(accessToken: string, userType: 'customer' | 'staff', clientInfo: any, sessionId?: string): Promise<{ success: boolean; message: string }> {
     try {
       const client = userType === 'customer' ? this.customerCognitoClient : this.staffCognitoClient;
       
+      // Get user details for logging
+      const getUserCommand = new GetUserCommand({ AccessToken: accessToken });
+      const userResponse = await client.send(getUserCommand);
+      const email = this.getAttributeValue(userResponse.UserAttributes, 'email');
+
+      // Invalidate session if provided
+      if (sessionId) {
+        await securityService.invalidateSession(sessionId, 'logout');
+      }
+
       const command = new GlobalSignOutCommand({
         AccessToken: accessToken,
       });
 
       await client.send(command);
+
+      // Log successful logout
+      await logAuthEvent({
+        eventType: 'LOGOUT',
+        userType,
+        userId: userResponse.Username,
+        email,
+        ipAddress: clientInfo.ipAddress,
+        userAgent: clientInfo.userAgent,
+        timestamp: new Date().toISOString(),
+        success: true,
+        additionalData: { sessionId },
+      });
 
       return {
         success: true,
@@ -652,6 +902,19 @@ class CognitoAuthService implements AuthService {
       };
     } catch (error: any) {
       console.error('Logout error:', error);
+      
+      // Log failed logout
+      await logAuthEvent({
+        eventType: 'LOGOUT',
+        userType,
+        ipAddress: clientInfo.ipAddress,
+        userAgent: clientInfo.userAgent,
+        timestamp: new Date().toISOString(),
+        success: false,
+        errorCode: error.name,
+        additionalData: { error: error.message },
+      });
+
       return {
         success: false,
         message: 'Logout failed',
@@ -659,7 +922,7 @@ class CognitoAuthService implements AuthService {
     }
   }
 
-  async logoutAllDevices(accessToken: string, userType: 'customer' | 'staff'): Promise<{ success: boolean; message: string }> {
+  async logoutAllDevices(accessToken: string, userType: 'customer' | 'staff', clientInfo: any): Promise<{ success: boolean; message: string }> {
     try {
       const client = userType === 'customer' ? this.customerCognitoClient : this.staffCognitoClient;
       const poolId = userType === 'customer' ? this.config.cognito.customer.poolId : this.config.cognito.staff.poolId;
@@ -669,6 +932,13 @@ class CognitoAuthService implements AuthService {
         AccessToken: accessToken,
       });
       const userResponse = await client.send(getUserCommand);
+      const email = this.getAttributeValue(userResponse.UserAttributes, 'email');
+
+      // Invalidate all user sessions
+      const invalidatedCount = await securityService.invalidateAllUserSessions(
+        userResponse.Username!,
+        'logout_all_devices'
+      );
 
       // Sign out user from all devices
       const signOutCommand = new AdminUserGlobalSignOutCommand({
@@ -678,12 +948,44 @@ class CognitoAuthService implements AuthService {
 
       await client.send(signOutCommand);
 
+      // Log successful logout from all devices
+      await logAuthEvent({
+        eventType: 'LOGOUT',
+        userType,
+        userId: userResponse.Username,
+        email,
+        ipAddress: clientInfo.ipAddress,
+        userAgent: clientInfo.userAgent,
+        timestamp: new Date().toISOString(),
+        success: true,
+        additionalData: { 
+          logoutType: 'all_devices',
+          invalidatedSessions: invalidatedCount 
+        },
+      });
+
       return {
         success: true,
         message: 'Logged out from all devices successfully',
       };
     } catch (error: any) {
       console.error('Logout all devices error:', error);
+      
+      // Log failed logout
+      await logAuthEvent({
+        eventType: 'LOGOUT',
+        userType,
+        ipAddress: clientInfo.ipAddress,
+        userAgent: clientInfo.userAgent,
+        timestamp: new Date().toISOString(),
+        success: false,
+        errorCode: error.name,
+        additionalData: { 
+          logoutType: 'all_devices',
+          error: error.message 
+        },
+      });
+
       return {
         success: false,
         message: 'Logout from all devices failed',
@@ -851,6 +1153,12 @@ class CognitoAuthService implements AuthService {
       default:
         return error.message || 'Authentication failed';
     }
+  }
+
+  private getAttributeValue(attributes: AttributeType[] | undefined, name: string): string {
+    if (!attributes) return '';
+    const attr = attributes.find(attr => attr.Name === name);
+    return attr?.Value || '';
   }
 }
 

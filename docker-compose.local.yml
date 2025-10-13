@@ -126,13 +126,25 @@ services:
       - SESSIONS_TABLE=harborlist-sessions
       - LOGIN_ATTEMPTS_TABLE=harborlist-login-attempts
       - AUDIT_LOGS_TABLE=harborlist-audit-logs
-      # Cognito Configuration for LocalStack
+      # Cognito Configuration for LocalStack - Dual Auth Pools
       - COGNITO_ENDPOINT=http://localstack:4566
       - IS_LOCALSTACK=true
+      # Customer User Pool Configuration
       - CUSTOMER_USER_POOL_ID=us-east-1_000000001
       - CUSTOMER_USER_POOL_CLIENT_ID=customer-client-local
+      - CUSTOMER_USER_POOL_REGION=us-east-1
+      # Staff User Pool Configuration  
       - STAFF_USER_POOL_ID=us-east-1_000000002
       - STAFF_USER_POOL_CLIENT_ID=staff-client-local
+      - STAFF_USER_POOL_REGION=us-east-1
+      # Auth Service Configuration
+      - AUTH_SERVICE_ENDPOINT=http://backend:3001/auth
+      - CUSTOMER_AUTH_ENDPOINT=http://backend:3001/auth/customer
+      - STAFF_AUTH_ENDPOINT=http://backend:3001/auth/staff
+      # Token Configuration
+      - CUSTOMER_TOKEN_TTL=86400
+      - STAFF_TOKEN_TTL=28800
+      - JWT_ALGORITHM=RS256
       # Enhanced feature tables
       - ENGINES_TABLE=harborlist-engines
       - BILLING_ACCOUNTS_TABLE=harborlist-billing-accounts
@@ -183,20 +195,26 @@ services:
       - "4566:4566"
       - "4510-4559:4510-4559"
     environment:
-      - SERVICES=s3,ses,cloudwatch,logs,cognito-idp,cognito-identity,lambda,iam
+      - SERVICES=s3,ses,cloudwatch,logs,cognito-idp,cognito-identity,lambda,iam,apigateway
       - DEBUG=1
       - DATA_DIR=/var/lib/localstack
       - LAMBDA_EXECUTOR=local
       - DOCKER_HOST=unix:///var/run/docker.sock
       - PERSISTENCE=1
       - SKIP_INFRA_DOWNLOADS=1
-      # Cognito-specific configuration
+      # Cognito-specific configuration for dual auth pools
       - COGNITO_PROVIDER_DEVELOPER_USER_IDENTITY_POOL_ID=us-east-1:00000000-0000-0000-0000-000000000000
       - COGNITO_PROVIDER_DEVELOPER_USER_IDENTITY_POOL_NAME=harborlist_local_identity_pool
       - COGNITO_PROVIDER_DEVELOPER_USER_IDENTITY_POOL_REGION=us-east-1
-      # Lambda configuration for Cognito triggers
+      # Enhanced Cognito configuration
+      - COGNITO_REMOVE_EXPIRED_TOKENS_SCHEDULE=0
+      - COGNITO_JWT_SECRET=local-dev-cognito-secret-harborlist-2025
+      # Lambda configuration for Cognito triggers and authorizers
       - LAMBDA_REMOTE_DOCKER=0
       - LAMBDA_DOCKER_NETWORK=harborlist-local
+      - LAMBDA_RUNTIME_ENVIRONMENT_TIMEOUT=30
+      # API Gateway configuration for authorizers
+      - APIGATEWAY_ENFORCE_SECURE_CONNECTIONS=0
     volumes:
       - localstack_data:/var/lib/localstack
       - /var/run/docker.sock:/var/run/docker.sock
@@ -251,12 +269,22 @@ services:
           echo 'Waiting for LocalStack Cognito service...'
           sleep 2
         done &&
+        echo 'Waiting for Lambda service...' &&
+        until curl -s http://localstack:4566/_localstack/health | grep -q '\"lambda\": \"available\"'; do
+          echo 'Waiting for LocalStack Lambda service...'
+          sleep 2
+        done &&
         echo 'LocalStack is ready. Running setup scripts...' &&
         chmod +x /tools/development/setup-s3-buckets.sh &&
         chmod +x /scripts/setup-local-cognito.sh &&
+        chmod +x /scripts/setup-local-dynamodb.sh &&
+        echo 'Setting up S3 buckets...' &&
         LOCALSTACK_ENDPOINT=http://localstack:4566 /tools/development/setup-s3-buckets.sh &&
-        echo 'Setting up Cognito User Pools...' &&
-        /scripts/setup-local-cognito.sh
+        echo 'Setting up DynamoDB tables...' &&
+        LOCALSTACK_ENDPOINT=http://localstack:4566 /scripts/setup-local-dynamodb.sh &&
+        echo 'Setting up Cognito User Pools for dual auth...' &&
+        LOCALSTACK_ENDPOINT=http://localstack:4566 /scripts/setup-local-cognito.sh &&
+        echo 'LocalStack initialization completed successfully!'
       "
 
   # DynamoDB Admin UI
@@ -321,6 +349,13 @@ services:
       - PAYPAL_CLIENT_SECRET=local_paypal_client_secret
       - PAYMENT_PROCESSOR=stripe
       - SERVICE_PORT=3002
+      # Cognito Configuration for LocalStack - Dual Auth Pools
+      - COGNITO_ENDPOINT=http://localstack:4566
+      - IS_LOCALSTACK=true
+      - CUSTOMER_USER_POOL_ID=us-east-1_000000001
+      - CUSTOMER_USER_POOL_CLIENT_ID=customer-client-local
+      - STAFF_USER_POOL_ID=us-east-1_000000002
+      - STAFF_USER_POOL_CLIENT_ID=staff-client-local
     depends_on:
       - dynamodb-local
     networks:
@@ -369,6 +404,13 @@ services:
       - USERS_TABLE=harborlist-users
       - FINANCE_CALCULATIONS_TABLE=harborlist-finance-calculations
       - SERVICE_PORT=3003
+      # Cognito Configuration for LocalStack - Dual Auth Pools
+      - COGNITO_ENDPOINT=http://localstack:4566
+      - IS_LOCALSTACK=true
+      - CUSTOMER_USER_POOL_ID=us-east-1_000000001
+      - CUSTOMER_USER_POOL_CLIENT_ID=customer-client-local
+      - STAFF_USER_POOL_ID=us-east-1_000000002
+      - STAFF_USER_POOL_CLIENT_ID=staff-client-local
     depends_on:
       - dynamodb-local
     networks:
