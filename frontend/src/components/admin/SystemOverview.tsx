@@ -2,7 +2,7 @@ import React from 'react';
 import { 
   ServerIcon, 
   CloudIcon, 
-  DatabaseIcon, 
+  CircleStackIcon, 
   CpuChipIcon,
   ClockIcon,
   ExclamationTriangleIcon,
@@ -136,7 +136,7 @@ const SystemOverview: React.FC<SystemOverviewProps> = ({
     switch (serviceName.toLowerCase()) {
       case 'database':
       case 'dynamodb':
-        return <DatabaseIcon className="h-6 w-6" />;
+        return <CircleStackIcon className="h-6 w-6" />;
       case 'api':
       case 'gateway':
         return <CloudIcon className="h-6 w-6" />;

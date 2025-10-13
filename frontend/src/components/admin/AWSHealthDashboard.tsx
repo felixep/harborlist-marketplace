@@ -1,6 +1,6 @@
 import React from 'react';
 import { 
-  CircleStackIcon as DatabaseIcon, 
+  CircleStackIcon, 
   ServerIcon, 
   CloudIcon,
   ExclamationTriangleIcon,
@@ -198,7 +198,7 @@ export const AWSHealthDashboard: React.FC<AWSHealthDashboardProps> = ({
         <HealthServiceCard
           title="DynamoDB"
           status={services.database.status}
-          icon={<DatabaseIcon className="h-6 w-6" />}
+          icon={<CircleStackIcon className="h-6 w-6" />}
           responseTime={services.database.responseTime}
           message={services.database.message}
           metrics={services.database.details ? [
