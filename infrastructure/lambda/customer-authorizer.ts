@@ -24,6 +24,14 @@ import {
 } from 'aws-lambda';
 import { validateJWTToken } from '../../backend/src/auth-service/jwt-utils';
 import { CustomerClaims, CustomerTier, CUSTOMER_PERMISSIONS } from '../../backend/src/auth-service/interfaces';
+import { 
+  AuthErrorCodes,
+  createAuthError,
+  createCrossPoolError,
+  logAuthError,
+  logAuthorizationError,
+  extractUserTypeFromToken
+} from '../../backend/src/auth-service/auth-errors';
 
 /**
  * Environment configuration interface
@@ -97,18 +105,21 @@ function generateCustomerAllowPolicy(
 }
 
 /**
- * Generate deny policy with error context
+ * Generate deny policy with comprehensive error context
  */
 function generateDenyPolicy(
   principalId: string,
   resource: string,
-  errorCode: string,
-  errorMessage: string
+  errorCode: AuthErrorCodes,
+  errorMessage: string,
+  additionalContext?: Record<string, any>
 ): APIGatewayAuthorizerResult {
   const context = {
     errorCode,
     errorMessage,
     timestamp: new Date().toISOString(),
+    userType: 'customer',
+    ...additionalContext,
   };
 
   return generatePolicy(principalId, 'Deny', resource, context);
@@ -140,11 +151,20 @@ export const handler = async (
   // Extract token from Authorization header
   if (!authorizationToken || !authorizationToken.startsWith('Bearer ')) {
     console.log('Missing or invalid authorization token format');
+    
+    const authError = createAuthError(
+      { name: 'InvalidTokenException', message: 'Missing or invalid authorization token format' },
+      'customer',
+      { endpoint: methodArn }
+    );
+    
+    await logAuthError(authError, 'customer_authorizer_invalid_format').catch(console.error);
+    
     return generateDenyPolicy(
       'unknown',
       methodArn,
-      'INVALID_TOKEN_FORMAT',
-      'Authorization token must be in Bearer format'
+      AuthErrorCodes.TOKEN_INVALID,
+      authError.userMessage
     );
   }
 
@@ -170,11 +190,24 @@ export const handler = async (
     // Validate this is a customer pool token (prevent cross-pool access)
     if (!validateCustomerPoolToken(verifiedToken)) {
       console.log('Cross-pool access attempt detected - not a customer token');
+      
+      // Determine the actual token type
+      const tokenUserType = extractUserTypeFromToken(token);
+      
+      const crossPoolError = createCrossPoolError(
+        tokenUserType || 'staff', // Assume staff if we can't determine
+        'customer',
+        { endpoint: methodArn }
+      );
+      
+      await logAuthorizationError(crossPoolError, 'cross_pool_access_attempt').catch(console.error);
+      
       return generateDenyPolicy(
         verifiedToken.sub || 'unknown',
         methodArn,
-        'CROSS_POOL_ACCESS',
-        'Staff tokens cannot access customer endpoints'
+        crossPoolError.code,
+        crossPoolError.userMessage,
+        { crossPoolAttempt: true, tokenUserType }
       );
     }
 
@@ -201,11 +234,25 @@ export const handler = async (
     const now = Math.floor(Date.now() / 1000);
     if (customerClaims.exp < now) {
       console.log('Token has expired');
+      
+      const expiredError = createAuthError(
+        { name: 'ExpiredTokenException', message: 'Token has expired' },
+        'customer',
+        { 
+          email: customerClaims.email,
+          endpoint: methodArn,
+          tokenExpiry: customerClaims.exp,
+          currentTime: now
+        }
+      );
+      
+      await logAuthError(expiredError, 'customer_authorizer_expired_token').catch(console.error);
+      
       return generateDenyPolicy(
         customerClaims.sub,
         methodArn,
-        'TOKEN_EXPIRED',
-        'Access token has expired'
+        AuthErrorCodes.TOKEN_EXPIRED,
+        expiredError.userMessage
       );
     }
 
@@ -221,26 +268,32 @@ export const handler = async (
   } catch (error: any) {
     console.error('Token validation failed:', error);
 
-    // Determine error type for appropriate response
-    let errorCode = 'INVALID_TOKEN';
-    let errorMessage = 'Invalid or expired token';
-
-    if (error.message?.includes('Token is expired')) {
-      errorCode = 'TOKEN_EXPIRED';
-      errorMessage = 'Access token has expired';
-    } else if (error.message?.includes('Invalid signature')) {
-      errorCode = 'INVALID_SIGNATURE';
-      errorMessage = 'Token signature is invalid';
-    } else if (error.message?.includes('Invalid audience')) {
-      errorCode = 'INVALID_AUDIENCE';
-      errorMessage = 'Token audience is invalid';
-    }
+    // Create comprehensive auth error
+    const authError = createAuthError(
+      error,
+      'customer',
+      { 
+        endpoint: methodArn,
+        operation: 'token_validation'
+      }
+    );
+    
+    // Log the error for audit purposes
+    await logAuthError(authError, 'customer_authorizer_validation_failed', {
+      originalError: error.message,
+      tokenPresent: !!token,
+      tokenLength: token?.length
+    }).catch(console.error);
 
     return generateDenyPolicy(
       'unknown',
       methodArn,
-      errorCode,
-      errorMessage
+      authError.code,
+      authError.userMessage,
+      { 
+        validationFailed: true,
+        originalError: error.name
+      }
     );
   }
 };

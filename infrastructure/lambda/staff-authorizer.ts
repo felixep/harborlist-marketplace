@@ -26,6 +26,14 @@ import {
 import { validateJWTToken } from '../../backend/src/auth-service/jwt-utils';
 import { StaffClaims, StaffRole, STAFF_PERMISSIONS } from '../../backend/src/auth-service/interfaces';
 import { AdminPermission } from '../../backend/src/types/common';
+import { 
+  AuthErrorCodes,
+  createAuthError,
+  createCrossPoolError,
+  logAuthError,
+  logAuthorizationError,
+  extractUserTypeFromToken
+} from '../../backend/src/auth-service/auth-errors';
 
 /**
  * Environment configuration interface
@@ -103,18 +111,21 @@ function generateStaffAllowPolicy(
 }
 
 /**
- * Generate deny policy with error context
+ * Generate deny policy with comprehensive error context
  */
 function generateDenyPolicy(
   principalId: string,
   resource: string,
-  errorCode: string,
-  errorMessage: string
+  errorCode: AuthErrorCodes,
+  errorMessage: string,
+  additionalContext?: Record<string, any>
 ): APIGatewayAuthorizerResult {
   const context = {
     errorCode,
     errorMessage,
     timestamp: new Date().toISOString(),
+    userType: 'staff',
+    ...additionalContext,
   };
 
   return generatePolicy(principalId, 'Deny', resource, context);
@@ -176,11 +187,20 @@ export const handler = async (
   // Extract token from Authorization header
   if (!authorizationToken || !authorizationToken.startsWith('Bearer ')) {
     console.log('Missing or invalid authorization token format');
+    
+    const authError = createAuthError(
+      { name: 'InvalidTokenException', message: 'Missing or invalid authorization token format' },
+      'staff',
+      { endpoint: methodArn }
+    );
+    
+    await logAuthError(authError, 'staff_authorizer_invalid_format').catch(console.error);
+    
     return generateDenyPolicy(
       'unknown',
       methodArn,
-      'INVALID_TOKEN_FORMAT',
-      'Authorization token must be in Bearer format'
+      AuthErrorCodes.TOKEN_INVALID,
+      authError.userMessage
     );
   }
 
@@ -206,11 +226,24 @@ export const handler = async (
     // Validate this is a staff pool token (prevent cross-pool access)
     if (!validateStaffPoolToken(verifiedToken)) {
       console.log('Cross-pool access attempt detected - not a staff token');
+      
+      // Determine the actual token type
+      const tokenUserType = extractUserTypeFromToken(token);
+      
+      const crossPoolError = createCrossPoolError(
+        tokenUserType || 'customer', // Assume customer if we can't determine
+        'staff',
+        { endpoint: methodArn }
+      );
+      
+      await logAuthorizationError(crossPoolError, 'cross_pool_access_attempt').catch(console.error);
+      
       return generateDenyPolicy(
         verifiedToken.sub || 'unknown',
         methodArn,
-        'CROSS_POOL_ACCESS',
-        'Customer tokens cannot access staff endpoints'
+        crossPoolError.code,
+        crossPoolError.userMessage,
+        { crossPoolAttempt: true, tokenUserType }
       );
     }
 
@@ -223,22 +256,51 @@ export const handler = async (
         tokenAge,
         maxAge: config.staffSessionTTL,
       });
+      
+      const sessionExpiredError = createAuthError(
+        { name: 'SessionExpiredException', message: 'Staff session has exceeded maximum duration' },
+        'staff',
+        { 
+          email: verifiedToken.email,
+          endpoint: methodArn,
+          tokenAge,
+          maxSessionAge: config.staffSessionTTL
+        }
+      );
+      
+      await logAuthError(sessionExpiredError, 'staff_authorizer_session_expired').catch(console.error);
+      
       return generateDenyPolicy(
         verifiedToken.sub,
         methodArn,
-        'SESSION_EXPIRED',
-        'Staff token has exceeded maximum session duration'
+        AuthErrorCodes.TOKEN_EXPIRED,
+        sessionExpiredError.userMessage,
+        { sessionExpired: true, tokenAge, maxAge: config.staffSessionTTL }
       );
     }
 
     // Check standard token expiration
     if (verifiedToken.exp < now) {
       console.log('Token has expired');
+      
+      const expiredError = createAuthError(
+        { name: 'ExpiredTokenException', message: 'Token has expired' },
+        'staff',
+        { 
+          email: verifiedToken.email,
+          endpoint: methodArn,
+          tokenExpiry: verifiedToken.exp,
+          currentTime: now
+        }
+      );
+      
+      await logAuthError(expiredError, 'staff_authorizer_expired_token').catch(console.error);
+      
       return generateDenyPolicy(
         verifiedToken.sub,
         methodArn,
-        'TOKEN_EXPIRED',
-        'Access token has expired'
+        AuthErrorCodes.TOKEN_EXPIRED,
+        expiredError.userMessage
       );
     }
 
@@ -280,26 +342,35 @@ export const handler = async (
   } catch (error: any) {
     console.error('Token validation failed:', error);
 
-    // Determine error type for appropriate response
-    let errorCode = 'INVALID_TOKEN';
-    let errorMessage = 'Invalid or expired token';
-
-    if (error.message?.includes('Token is expired')) {
-      errorCode = 'TOKEN_EXPIRED';
-      errorMessage = 'Access token has expired';
-    } else if (error.message?.includes('Invalid signature')) {
-      errorCode = 'INVALID_SIGNATURE';
-      errorMessage = 'Token signature is invalid';
-    } else if (error.message?.includes('Invalid audience')) {
-      errorCode = 'INVALID_AUDIENCE';
-      errorMessage = 'Token audience is invalid';
-    }
+    // Create comprehensive auth error
+    const authError = createAuthError(
+      error,
+      'staff',
+      { 
+        endpoint: methodArn,
+        operation: 'token_validation',
+        enhancedSecurity: true
+      }
+    );
+    
+    // Log the error for audit purposes
+    await logAuthError(authError, 'staff_authorizer_validation_failed', {
+      originalError: error.message,
+      tokenPresent: !!token,
+      tokenLength: token?.length,
+      staffAuthorizer: true
+    }).catch(console.error);
 
     return generateDenyPolicy(
       'unknown',
       methodArn,
-      errorCode,
-      errorMessage
+      authError.code,
+      authError.userMessage,
+      { 
+        validationFailed: true,
+        originalError: error.name,
+        staffAuthorizer: true
+      }
     );
   }
 };
