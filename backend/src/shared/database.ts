@@ -132,16 +132,10 @@ export class DatabaseService {
    * ```
    */
   async createListing(listing: Listing): Promise<void> {
-    // Add id field for DynamoDB primary key
-    const listingWithId = {
-      ...listing,
-      id: listing.listingId, // Use listingId as the id for DynamoDB
-    };
-
     await docClient.send(new PutCommand({
       TableName: LISTINGS_TABLE,
-      Item: listingWithId,
-      ConditionExpression: 'attribute_not_exists(id)',
+      Item: listing,
+      ConditionExpression: 'attribute_not_exists(listingId)',
     }));
   }
 
@@ -167,7 +161,7 @@ export class DatabaseService {
   async getListing(listingId: string): Promise<Listing | null> {
     const result = await docClient.send(new GetCommand({
       TableName: LISTINGS_TABLE,
-      Key: { id: listingId },
+      Key: { listingId: listingId },
     }));
 
     return result.Item as Listing || null;
@@ -314,7 +308,7 @@ export class DatabaseService {
 
     await docClient.send(new UpdateCommand({
       TableName: LISTINGS_TABLE,
-      Key: { id: listingId },
+      Key: { listingId: listingId },
       UpdateExpression: `SET ${updateExpression.join(', ')}`,
       ExpressionAttributeNames: expressionAttributeNames,
       ExpressionAttributeValues: expressionAttributeValues,
@@ -342,7 +336,7 @@ export class DatabaseService {
   async deleteListing(listingId: string): Promise<void> {
     await docClient.send(new DeleteCommand({
       TableName: LISTINGS_TABLE,
-      Key: { id: listingId },
+      Key: { listingId: listingId },
     }));
   }
 
@@ -2632,7 +2626,7 @@ export class DatabaseService {
         ConditionExpression: 'attribute_not_exists(id)',
       };
 
-      await this.docClient.put(params);
+      await docClient.send(new PutCommand(params));
     } catch (error) {
       console.error('Error creating payment method:', error);
       throw new Error(`Failed to create payment method: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -2657,7 +2651,7 @@ export class DatabaseService {
         ScanIndexForward: false, // Most recent first
       };
 
-      const result = await this.docClient.query(params);
+      const result = await docClient.send(new QueryCommand(params));
       return result.Items || [];
     } catch (error) {
       console.error('Error getting user payment methods:', error);
@@ -2678,7 +2672,7 @@ export class DatabaseService {
         Key: { id: paymentMethodId },
       };
 
-      const result = await this.docClient.get(params);
+      const result = await docClient.send(new GetCommand(params));
       return result.Item || null;
     } catch (error) {
       console.error('Error getting payment method:', error);
@@ -2687,13 +2681,13 @@ export class DatabaseService {
   }
 
   /**
-   * Updates a payment method
+   * Updates a payment method record
    * 
    * @param paymentMethodId - Payment method ID to update
    * @param updates - Updates to apply
    * @returns Promise<void> - Resolves when payment method is updated
    */
-  async updatePaymentMethod(paymentMethodId: string, updates: any): Promise<void> {
+  async updatePaymentMethodRecord(paymentMethodId: string, updates: any): Promise<void> {
     try {
       const updateExpressions: string[] = [];
       const expressionAttributeNames: Record<string, string> = {};
@@ -2717,7 +2711,7 @@ export class DatabaseService {
         ConditionExpression: 'attribute_exists(id)',
       };
 
-      await this.docClient.update(params);
+      await docClient.send(new UpdateCommand(params));
     } catch (error) {
       console.error('Error updating payment method:', error);
       throw new Error(`Failed to update payment method: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -2738,7 +2732,7 @@ export class DatabaseService {
         ConditionExpression: 'attribute_exists(id)',
       };
 
-      await this.docClient.delete(params);
+      await docClient.send(new DeleteCommand(params));
     } catch (error) {
       console.error('Error deleting payment method:', error);
       throw new Error(`Failed to delete payment method: ${error instanceof Error ? error.message : 'Unknown error'}`);

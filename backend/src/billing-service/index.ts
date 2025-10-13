@@ -367,6 +367,11 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
  */
 async function createBillingAccount(event: APIGatewayProxyEvent, requestId: string): Promise<APIGatewayProxyResult> {
   try {
+    // Check if payment processor is available
+    if (!paymentProcessor) {
+      return createErrorResponse(500, 'PAYMENT_PROCESSOR_UNAVAILABLE', 'Payment processor is not available', requestId);
+    }
+
     const userId = getUserId(event);
     const body = parseBody<{
       plan: string;
@@ -588,7 +593,7 @@ async function cancelBillingAccount(billingId: string, event: APIGatewayProxyEve
     }
 
     // Cancel subscription in payment processor if exists
-    if (existingAccount.subscriptionId) {
+    if (existingAccount.subscriptionId && paymentProcessor) {
       await paymentProcessor.cancelSubscription(existingAccount.subscriptionId);
     }
 
@@ -627,6 +632,11 @@ async function cancelBillingAccount(billingId: string, event: APIGatewayProxyEve
  */
 async function processPayment(event: APIGatewayProxyEvent, requestId: string): Promise<APIGatewayProxyResult> {
   try {
+    // Check if payment processor is available
+    if (!paymentProcessor) {
+      return createErrorResponse(500, 'PAYMENT_PROCESSOR_UNAVAILABLE', 'Payment processor is not available', requestId);
+    }
+
     const userId = getUserId(event);
     const body = parseBody<{
       amount: number;
@@ -742,6 +752,11 @@ async function createSubscription(event: APIGatewayProxyEvent, requestId: string
       return createErrorResponse(404, 'BILLING_ACCOUNT_NOT_FOUND', 'No billing account found for user', requestId);
     }
 
+    // Check if payment processor is available
+    if (!paymentProcessor) {
+      return createErrorResponse(500, 'PAYMENT_PROCESSOR_UNAVAILABLE', 'Payment processor is not available', requestId);
+    }
+
     // Calculate pricing
     const pricing = calculateSubscriptionPricing(body.plan!, body.billingCycle!);
 
@@ -806,6 +821,11 @@ async function createSubscription(event: APIGatewayProxyEvent, requestId: string
  */
 async function updateSubscription(subscriptionId: string, event: APIGatewayProxyEvent, requestId: string): Promise<APIGatewayProxyResult> {
   try {
+    // Check if payment processor is available
+    if (!paymentProcessor) {
+      return createErrorResponse(500, 'PAYMENT_PROCESSOR_UNAVAILABLE', 'Payment processor is not available', requestId);
+    }
+
     const userId = getUserId(event);
     const body = parseBody<{
       plan?: string;
@@ -819,7 +839,11 @@ async function updateSubscription(subscriptionId: string, event: APIGatewayProxy
     }
 
     // Update subscription in payment processor
-    await paymentProcessor.updateSubscription(subscriptionId, body);
+    const updateData = {
+      ...(body.plan && { plan: body.plan }),
+      ...(body.billingCycle && { billingCycle: body.billingCycle })
+    } as any; // Type assertion to handle interface mismatch
+    await paymentProcessor.updateSubscription(subscriptionId, updateData);
 
     // Calculate new pricing if plan or cycle changed
     let updates: Partial<BillingAccount> = { updatedAt: Date.now() };
@@ -870,6 +894,11 @@ async function updateSubscription(subscriptionId: string, event: APIGatewayProxy
  */
 async function cancelSubscription(subscriptionId: string, event: APIGatewayProxyEvent, requestId: string): Promise<APIGatewayProxyResult> {
   try {
+    // Check if payment processor is available
+    if (!paymentProcessor) {
+      return createErrorResponse(500, 'PAYMENT_PROCESSOR_UNAVAILABLE', 'Payment processor is not available', requestId);
+    }
+
     const userId = getUserId(event);
 
     // Get user's billing account
@@ -916,6 +945,11 @@ async function cancelSubscription(subscriptionId: string, event: APIGatewayProxy
  */
 async function processRefund(event: APIGatewayProxyEvent, requestId: string): Promise<APIGatewayProxyResult> {
   try {
+    // Check if payment processor is available
+    if (!paymentProcessor) {
+      return createErrorResponse(500, 'PAYMENT_PROCESSOR_UNAVAILABLE', 'Payment processor is not available', requestId);
+    }
+
     const body = parseBody<{
       transactionId: string;
       amount?: number;
@@ -1045,6 +1079,11 @@ async function getTransactionHistory(event: APIGatewayProxyEvent, requestId: str
  */
 async function upgradeMembership(event: APIGatewayProxyEvent, requestId: string): Promise<APIGatewayProxyResult> {
   try {
+    // Check if payment processor is available
+    if (!paymentProcessor) {
+      return createErrorResponse(500, 'PAYMENT_PROCESSOR_UNAVAILABLE', 'Payment processor is not available', requestId);
+    }
+
     const userId = getUserId(event);
     const body = parseBody<{
       newPlan: string;
@@ -1342,6 +1381,11 @@ async function downgradeMembership(event: APIGatewayProxyEvent, requestId: strin
  */
 async function renewMembership(event: APIGatewayProxyEvent, requestId: string): Promise<APIGatewayProxyResult> {
   try {
+    // Check if payment processor is available
+    if (!paymentProcessor) {
+      return createErrorResponse(500, 'PAYMENT_PROCESSOR_UNAVAILABLE', 'Payment processor is not available', requestId);
+    }
+
     const userId = getUserId(event);
     const body = parseBody<{
       billingCycle?: 'monthly' | 'yearly';
@@ -1954,13 +1998,9 @@ async function updateEnhancedSubscription(subscriptionId: string, event: APIGate
     }>(event);
 
     // Verify user owns the subscription
-    const billingAccount = await db.getBillingAccountBySubscription(subscriptionId);
-    if (!billingAccount) {
-      return createErrorResponse(404, 'NOT_FOUND', 'Subscription not found', requestId);
-    }
-
-    if (billingAccount.userId !== userId) {
-      return createErrorResponse(403, 'FORBIDDEN', 'You can only update your own subscription', requestId);
+    const billingAccount = await db.getBillingAccountByUser(userId);
+    if (!billingAccount || billingAccount.subscriptionId !== subscriptionId) {
+      return createErrorResponse(404, 'NOT_FOUND', 'Subscription not found or not owned by user', requestId);
     }
 
     const request: UpdateSubscriptionRequest = {
@@ -2003,13 +2043,9 @@ async function cancelEnhancedSubscription(subscriptionId: string, event: APIGate
     const body = parseBody<{ immediate?: boolean }>(event);
 
     // Verify user owns the subscription
-    const billingAccount = await db.getBillingAccountBySubscription(subscriptionId);
-    if (!billingAccount) {
-      return createErrorResponse(404, 'NOT_FOUND', 'Subscription not found', requestId);
-    }
-
-    if (billingAccount.userId !== userId) {
-      return createErrorResponse(403, 'FORBIDDEN', 'You can only cancel your own subscription', requestId);
+    const billingAccount = await db.getBillingAccountByUser(userId);
+    if (!billingAccount || billingAccount.subscriptionId !== subscriptionId) {
+      return createErrorResponse(404, 'NOT_FOUND', 'Subscription not found or not owned by user', requestId);
     }
 
     await subscriptionManager.cancelSubscription(subscriptionId, body.immediate || false);
@@ -2120,8 +2156,8 @@ async function processPaymentRetries(event: APIGatewayProxyEvent, requestId: str
     return createErrorResponse(500, 'RETRY_ERROR', 'Failed to process payment retries', requestId);
   }
 }
-/
-**
+
+/**
  * Creates a new payment method for a user
  * 
  * @param event - API Gateway event containing payment method data
@@ -2130,6 +2166,11 @@ async function processPaymentRetries(event: APIGatewayProxyEvent, requestId: str
  */
 async function createPaymentMethod(event: APIGatewayProxyEvent, requestId: string): Promise<APIGatewayProxyResult> {
   try {
+    // Check if payment processor is available
+    if (!paymentProcessor) {
+      return createErrorResponse(500, 'PAYMENT_PROCESSOR_UNAVAILABLE', 'Payment processor is not available', requestId);
+    }
+
     const userId = getUserId(event);
     const body = parseBody<{
       type: 'card' | 'bank_account' | 'paypal';

@@ -15,25 +15,28 @@ interface UserFilters {
 }
 
 interface UserGroup {
-  groupId: string;
+  id: string;
   name: string;
   description: string;
-  memberCount: number;
   permissions: string[];
+  color: string;
+  memberCount?: number;
 }
 
 const UserManagement: React.FC = () => {
   const { showSuccess, showError, showWarning, showInfo } = useToast();
-  const { isLoading, updateUserStatus, executeCustomOperation } = useAdminOperations();
+  const { isLoading, updateUserStatus } = useAdminOperations();
   
+  // Tab state
+  const [activeTab, setActiveTab] = useState<'users' | 'groups'>('users');
+  
+  // User management state
   const [users, setUsers] = useState<EnhancedUser[]>([]);
   const [filteredUsers, setFilteredUsers] = useState<EnhancedUser[]>([]);
   const [userTiers, setUserTiers] = useState<UserTier[]>([]);
-  const [userGroups, setUserGroups] = useState<UserGroup[]>([]);
   const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
   const [selectedUser, setSelectedUser] = useState<EnhancedUser | null>(null);
   const [showUserModal, setShowUserModal] = useState(false);
-  const [showGroupModal, setShowGroupModal] = useState(false);
   const [showBulkActions, setShowBulkActions] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(20);
@@ -46,11 +49,44 @@ const UserManagement: React.FC = () => {
     premiumStatus: ''
   });
 
+  // Group management state
+  const [userGroups, setUserGroups] = useState<UserGroup[]>([]);
+  const [showGroupModal, setShowGroupModal] = useState(false);
+  const [selectedGroup, setSelectedGroup] = useState<UserGroup | null>(null);
+  const [groupFormData, setGroupFormData] = useState({
+    name: '',
+    description: '',
+    color: '#3B82F6',
+    permissions: [] as string[]
+  });
+  const [availablePermissions] = useState([
+    'browse_listings',
+    'contact_sellers', 
+    'save_favorites',
+    'create_listings',
+    'manage_listings',
+    'view_analytics',
+    'bulk_operations',
+    'advanced_analytics',
+    'api_access',
+    'white_label',
+    'moderate_content',
+    'manage_users',
+    'view_reports'
+  ]);
+
   useEffect(() => {
     loadUsers();
     loadUserTiers();
     loadUserGroups();
   }, []);
+
+  // Reload user groups when users change to update member counts
+  useEffect(() => {
+    if (users.length > 0) {
+      loadUserGroups();
+    }
+  }, [users]);
 
   useEffect(() => {
     applyFilters();
@@ -68,19 +104,120 @@ const UserManagement: React.FC = () => {
   const loadUserTiers = async () => {
     try {
       const response = await adminApi.get('/user-tiers');
-      setUserTiers(response.data || []);
+      setUserTiers(Array.isArray(response.data) ? response.data : []);
     } catch (error) {
       showError('Error', 'Failed to load user tiers');
+      setUserTiers([]);
     }
   };
 
   const loadUserGroups = async () => {
     try {
       const response = await adminApi.get('/user-groups');
-      setUserGroups(response.data || []);
+      const groups = Array.isArray(response.data) ? response.data : [];
+      
+      // Calculate member counts based on user types (conceptual mapping)
+      const groupsWithCounts = groups.map(group => ({
+        ...group,
+        memberCount: calculateGroupMemberCount(group.id)
+      }));
+      
+      setUserGroups(groupsWithCounts);
     } catch (error) {
       showError('Error', 'Failed to load user groups');
+      setUserGroups([]);
     }
+  };
+
+  const calculateGroupMemberCount = (groupId: string): number => {
+    // Conceptual mapping of user types to groups
+    switch (groupId) {
+      case 'buyers':
+        return users.filter(user => !user.userType || user.userType === 'individual').length;
+      case 'sellers':
+        return users.filter(user => user.userType === 'premium_individual').length;
+      case 'dealers':
+        return users.filter(user => user.userType === 'dealer' || user.userType === 'premium_dealer').length;
+      case 'moderators':
+        return users.filter(user => user.role === 'moderator' || user.role === 'admin' || user.role === 'super_admin').length;
+      default:
+        return 0;
+    }
+  };
+
+  // Group management functions
+  const handleCreateGroup = async () => {
+    try {
+      const response = await adminApi.post('/user-groups', groupFormData);
+      const newGroup: UserGroup = {
+        ...(response as any).group,
+        memberCount: 0
+      };
+      
+      setUserGroups([...userGroups, newGroup]);
+      setShowGroupModal(false);
+      resetGroupForm();
+      showSuccess('Success', 'Group created successfully');
+    } catch (error) {
+      showError('Error', 'Failed to create group');
+    }
+  };
+
+  const handleUpdateGroup = async () => {
+    if (!selectedGroup) return;
+    
+    try {
+      const response = await adminApi.put(`/user-groups/${selectedGroup.id}`, groupFormData);
+      const updatedGroups = userGroups.map(group => 
+        group.id === selectedGroup.id 
+          ? { ...(response as any).group, memberCount: group.memberCount }
+          : group
+      );
+      
+      setUserGroups(updatedGroups);
+      setShowGroupModal(false);
+      setSelectedGroup(null);
+      resetGroupForm();
+      showSuccess('Success', 'Group updated successfully');
+    } catch (error) {
+      showError('Error', 'Failed to update group');
+    }
+  };
+
+  const handleDeleteGroup = async (groupId: string) => {
+    try {
+      await adminApi.delete(`/user-groups/${groupId}`);
+      const updatedGroups = userGroups.filter(group => group.id !== groupId);
+      setUserGroups(updatedGroups);
+      showSuccess('Success', 'Group deleted successfully');
+    } catch (error) {
+      showError('Error', 'Failed to delete group');
+    }
+  };
+
+  const resetGroupForm = () => {
+    setGroupFormData({
+      name: '',
+      description: '',
+      color: '#3B82F6',
+      permissions: []
+    });
+  };
+
+  const openGroupModal = (group?: UserGroup) => {
+    if (group) {
+      setSelectedGroup(group);
+      setGroupFormData({
+        name: group.name,
+        description: group.description,
+        color: group.color,
+        permissions: group.permissions
+      });
+    } else {
+      setSelectedGroup(null);
+      resetGroupForm();
+    }
+    setShowGroupModal(true);
   };
 
   const applyFilters = () => {
@@ -95,7 +232,7 @@ const UserManagement: React.FC = () => {
     }
 
     if (filters.userType) {
-      filtered = filtered.filter(user => user.userType === filters.userType);
+      filtered = filtered.filter(user => (user.userType || 'basic') === filters.userType);
     }
 
     if (filters.status) {
@@ -207,8 +344,9 @@ const UserManagement: React.FC = () => {
     }
   };
 
-  const getUserTypeColor = (userType: string) => {
-    switch (userType) {
+  const getUserTypeColor = (userType: string | undefined) => {
+    switch (userType || 'basic') {
+      case 'basic': return 'bg-gray-100 text-gray-800';
       case 'premium_individual': return 'bg-purple-100 text-purple-800';
       case 'premium_dealer': return 'bg-indigo-100 text-indigo-800';
       case 'dealer': return 'bg-blue-100 text-blue-800';
@@ -239,24 +377,57 @@ const UserManagement: React.FC = () => {
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-bold text-gray-900">User Management</h1>
         <div className="flex space-x-2">
-          <button
-            onClick={() => setShowGroupModal(true)}
-            className="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
-          >
-            Manage Groups
-          </button>
-          <button
-            onClick={() => setShowBulkActions(!showBulkActions)}
-            disabled={selectedUsers.length === 0}
-            className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Bulk Actions ({selectedUsers.length})
-          </button>
+          {activeTab === 'users' && (
+            <button
+              onClick={() => setShowBulkActions(!showBulkActions)}
+              disabled={selectedUsers.length === 0}
+              className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Bulk Actions ({selectedUsers.length})
+            </button>
+          )}
+          {activeTab === 'groups' && (
+            <button
+              onClick={() => openGroupModal()}
+              className="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+            >
+              Create Group
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Filters */}
-      <div className="bg-white shadow rounded-lg mb-6">
+      {/* Tabs */}
+      <div className="border-b border-gray-200 mb-6">
+        <nav className="-mb-px flex space-x-8">
+          <button
+            onClick={() => setActiveTab('users')}
+            className={`py-2 px-1 border-b-2 font-medium text-sm ${
+              activeTab === 'users'
+                ? 'border-indigo-500 text-indigo-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            Users ({users.length})
+          </button>
+          <button
+            onClick={() => setActiveTab('groups')}
+            className={`py-2 px-1 border-b-2 font-medium text-sm ${
+              activeTab === 'groups'
+                ? 'border-indigo-500 text-indigo-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            Groups ({userGroups.length})
+          </button>
+        </nav>
+      </div>
+
+      {/* Users Tab Content */}
+      {activeTab === 'users' && (
+        <>
+          {/* Filters */}
+          <div className="bg-white shadow rounded-lg mb-6">
         <div className="px-6 py-4 border-b border-gray-200">
           <h2 className="text-lg font-medium text-gray-900">Filters</h2>
         </div>
@@ -280,10 +451,10 @@ const UserManagement: React.FC = () => {
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               >
                 <option value="">All Types</option>
-                <option value="individual">Individual</option>
-                <option value="dealer">Dealer</option>
+                <option value="basic">Basic</option>
                 <option value="premium_individual">Premium Individual</option>
                 <option value="premium_dealer">Premium Dealer</option>
+                <option value="dealer">Dealer</option>
               </select>
             </div>
             <div>
@@ -434,8 +605,8 @@ const UserManagement: React.FC = () => {
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getUserTypeColor(user.userType)}`}>
-                      {user.userType.replace('_', ' ')}
+                    <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getUserTypeColor(user.userType || 'basic')}`}>
+                      {(user.userType || 'basic').replace('_', ' ')}
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
@@ -533,14 +704,14 @@ const UserManagement: React.FC = () => {
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">User Type</label>
                   <select
-                    value={selectedUser.userType}
+                    value={selectedUser.userType || 'basic'}
                     onChange={(e) => handleUserTypeChange(selectedUser.id, e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   >
-                    <option value="individual">Individual</option>
-                    <option value="dealer">Dealer</option>
+                    <option value="basic">Basic</option>
                     <option value="premium_individual">Premium Individual</option>
                     <option value="premium_dealer">Premium Dealer</option>
+                    <option value="dealer">Dealer</option>
                   </select>
                 </div>
 
@@ -596,6 +767,212 @@ const UserManagement: React.FC = () => {
                   className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700"
                 >
                   Save Changes
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+        </>
+      )}
+
+      {/* Groups Tab Content */}
+      {activeTab === 'groups' && (
+        <>
+          <div className="bg-white shadow rounded-lg">
+            <div className="px-6 py-4 border-b border-gray-200">
+              <h2 className="text-lg font-medium text-gray-900">User Groups</h2>
+            </div>
+            <div className="p-6">
+              {userGroups.length === 0 ? (
+                <div className="text-center py-8">
+                  <div className="text-gray-500 mb-4">No groups found</div>
+                  <button
+                    onClick={() => openGroupModal()}
+                    className="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700"
+                  >
+                    Create Your First Group
+                  </button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {userGroups.map((group) => (
+                    <div key={group.id} className="border rounded-lg p-4 hover:shadow-md transition-shadow">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center space-x-2">
+                          <div 
+                            className="w-4 h-4 rounded-full" 
+                            style={{ backgroundColor: group.color }}
+                          ></div>
+                          <h3 className="font-medium text-gray-900">{group.name}</h3>
+                        </div>
+                        <div className="flex space-x-1">
+                          <button
+                            onClick={() => openGroupModal(group)}
+                            className="text-blue-600 hover:text-blue-800 text-sm"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (window.confirm('Are you sure you want to delete this group?')) {
+                                handleDeleteGroup(group.id);
+                              }
+                            }}
+                            className="text-red-600 hover:text-red-800 text-sm ml-2"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                      
+                      <p className="text-sm text-gray-600 mb-3">{group.description}</p>
+                      
+                      <div className="mb-3">
+                        <div className="text-xs font-medium text-gray-700 mb-1">Permissions:</div>
+                        <div className="flex flex-wrap gap-1">
+                          {group.permissions.slice(0, 3).map((permission) => (
+                            <span 
+                              key={permission}
+                              className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800"
+                            >
+                              {permission.replace(/_/g, ' ')}
+                            </span>
+                          ))}
+                          {group.permissions.length > 3 && (
+                            <span className="text-xs text-gray-500">
+                              +{group.permissions.length - 3} more
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      
+                      <div className="text-sm text-blue-600">
+                        {group.memberCount || 0} members
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Group Create/Edit Modal */}
+      {showGroupModal && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+          <div className="relative top-20 mx-auto p-5 border w-11/12 md:w-3/4 lg:w-1/2 shadow-lg rounded-md bg-white">
+            <div className="mt-3">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-medium text-gray-900">
+                  {selectedGroup ? 'Edit Group' : 'Create New Group'}
+                </h3>
+                <button
+                  onClick={() => {
+                    setShowGroupModal(false);
+                    setSelectedGroup(null);
+                    resetGroupForm();
+                  }}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Group Name</label>
+                  <input
+                    type="text"
+                    value={groupFormData.name}
+                    onChange={(e) => setGroupFormData(prev => ({ ...prev, name: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    placeholder="Enter group name"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                  <textarea
+                    value={groupFormData.description}
+                    onChange={(e) => setGroupFormData(prev => ({ ...prev, description: e.target.value }))}
+                    rows={3}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    placeholder="Enter group description"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Color</label>
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="color"
+                      value={groupFormData.color}
+                      onChange={(e) => setGroupFormData(prev => ({ ...prev, color: e.target.value }))}
+                      className="w-12 h-8 border border-gray-300 rounded cursor-pointer"
+                    />
+                    <input
+                      type="text"
+                      value={groupFormData.color}
+                      onChange={(e) => setGroupFormData(prev => ({ ...prev, color: e.target.value }))}
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                      placeholder="#3B82F6"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Permissions</label>
+                  <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto border border-gray-200 rounded-md p-3">
+                    {availablePermissions.map((permission) => (
+                      <label key={permission} className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          checked={groupFormData.permissions.includes(permission)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setGroupFormData(prev => ({
+                                ...prev,
+                                permissions: [...prev.permissions, permission]
+                              }));
+                            } else {
+                              setGroupFormData(prev => ({
+                                ...prev,
+                                permissions: prev.permissions.filter(p => p !== permission)
+                              }));
+                            }
+                          }}
+                          className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                        />
+                        <span className="text-sm text-gray-700">
+                          {permission.replace(/_/g, ' ')}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-end space-x-2 mt-6">
+                <button
+                  onClick={() => {
+                    setShowGroupModal(false);
+                    setSelectedGroup(null);
+                    resetGroupForm();
+                  }}
+                  className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={selectedGroup ? handleUpdateGroup : handleCreateGroup}
+                  disabled={!groupFormData.name.trim()}
+                  className="px-4 py-2 bg-indigo-600 text-white rounded-md text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {selectedGroup ? 'Update Group' : 'Create Group'}
                 </button>
               </div>
             </div>

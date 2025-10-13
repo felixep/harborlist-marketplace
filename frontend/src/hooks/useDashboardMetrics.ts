@@ -99,7 +99,13 @@ export const useDashboardMetrics = (refreshInterval: number = 30000): UseDashboa
   const fetchMetrics = useCallback(async () => {
     try {
       setError(null);
-      const response = await adminApi.getDashboardMetrics();
+      // Fetch both dashboard metrics and system health data
+      const [dashboardResponse, systemHealthResponse] = await Promise.all([
+        adminApi.getDashboardMetrics().catch(() => null), // Fallback if metrics endpoint fails
+        adminApi.getSystemHealth().catch(() => null) // Get system health data
+      ]);
+      
+      const response = dashboardResponse;
       
       // Transform the response to match our interface
       // Extract system health data from the new enhanced structure
@@ -196,61 +202,118 @@ export const useDashboardMetrics = (refreshInterval: number = 30000): UseDashboa
 
       const transformedAlerts: SystemAlert[] = systemHealthData.alerts || [];
 
-      // Process AWS health data if available
-      if (systemHealthData.environment && systemHealthData.services) {
+      // Process system health data from the dedicated endpoint
+      if (systemHealthResponse) {
+        const healthData = systemHealthResponse;
+        
+        // Use the same environment differentiation approach as the backend
+        // The backend provides deploymentTarget and isAWS flags
+        const environmentType = healthData.isAWS ? 'aws' : 'local';
+        const deploymentTarget = healthData.deploymentTarget || 'docker';
+        
         const awsHealthData: AWSHealthMetrics = {
           environment: {
-            type: systemHealthData.environment.type || 'local',
-            region: systemHealthData.environment.region || 'local',
-            functionName: systemHealthData.environment.functionName,
-            runtime: systemHealthData.environment.runtime || process.version,
-            version: systemHealthData.environment.version || '1.0.0'
+            type: environmentType,
+            region: healthData.region || 'local',
+            functionName: healthData.functionName,
+            runtime: healthData.runtime || `Node.js (${deploymentTarget})`,
+            version: healthData.version || '2.0.0'
           },
           services: {
             database: {
-              status: systemHealthData.services.database?.status === 'healthy' ? 'healthy' : 
-                     systemHealthData.services.database?.status === 'degraded' ? 'degraded' : 'unhealthy',
-              responseTime: systemHealthData.services.database?.responseTime || 0,
-              message: systemHealthData.services.database?.message || 'Unknown status',
-              details: systemHealthData.services.database?.details?.map((detail: any) => ({
-                tableName: detail.table || detail.tableName,
-                table: detail.table,
-                displayName: detail.displayName || detail.table || detail.tableName,
-                status: detail.status || 'UNKNOWN',
-                healthy: detail.healthy || false,
-                responseTime: detail.responseTime || 0,
-                itemCount: detail.itemCount,
-                throttledRequests: detail.throttledRequests || 0,
-                consumedCapacity: detail.consumedCapacity
-              }))
+              status: healthData.services?.database?.status === 'healthy' ? 'healthy' : 
+                     healthData.services?.database?.status === 'degraded' ? 'degraded' : 'unhealthy',
+              responseTime: parseInt(healthData.services?.database?.responseTime?.replace('ms', '') || '0'),
+              message: healthData.services?.database?.queryPerformance ? 
+                      `Performance: ${healthData.services.database.queryPerformance}` : 
+                      'Database operational',
+              details: healthData.services?.database ? [{
+                tableName: 'users',
+                table: 'users',
+                displayName: 'Users Table',
+                status: healthData.services.database.status?.toUpperCase() || 'HEALTHY',
+                healthy: healthData.services.database.status === 'healthy',
+                responseTime: parseInt(healthData.services.database.responseTime?.replace('ms', '') || '0'),
+                itemCount: undefined,
+                throttledRequests: 0,
+                consumedCapacity: undefined
+              }, {
+                tableName: 'listings',
+                table: 'listings', 
+                displayName: 'Listings Table',
+                status: healthData.services.database.status?.toUpperCase() || 'HEALTHY',
+                healthy: healthData.services.database.status === 'healthy',
+                responseTime: parseInt(healthData.services.database.responseTime?.replace('ms', '') || '0'),
+                itemCount: undefined,
+                throttledRequests: 0,
+                consumedCapacity: undefined
+              }] : []
             },
-            compute: systemHealthData.services.lambda ? {
-              status: systemHealthData.services.lambda.status === 'healthy' ? 'healthy' : 
-                     systemHealthData.services.lambda.status === 'degraded' ? 'degraded' : 'unhealthy',
-              responseTime: systemHealthData.services.lambda.responseTime || 0,
-              message: systemHealthData.services.lambda.message || 'Unknown status',
-              details: systemHealthData.services.lambda.details
+            compute: environmentType === 'aws' ? {
+              status: healthData.application?.status === 'healthy' ? 'healthy' : 'degraded',
+              responseTime: parseInt(healthData.application?.averageResponseTime?.replace('ms', '') || '0'),
+              message: `Active sessions: ${healthData.application?.activeSessions || 0}`,
+              details: {
+                errorRate: parseFloat(healthData.application?.errorRate?.replace('%', '') || '0') / 100,
+                averageDuration: parseInt(healthData.application?.averageResponseTime?.replace('ms', '') || '0'),
+                concurrency: healthData.application?.activeUsers || 0,
+                coldStarts: undefined
+              }
             } : undefined,
             api: {
-              status: systemHealthData.services.api?.status === 'healthy' ? 'healthy' : 
-                     systemHealthData.services.api?.status === 'degraded' ? 'degraded' : 'unhealthy',
-              responseTime: systemHealthData.services.api?.responseTime || 0,
-              message: systemHealthData.services.api?.message || 'Unknown status',
-              details: systemHealthData.services.api?.details
+              status: healthData.services?.api?.status === 'healthy' ? 'healthy' : 
+                     healthData.services?.api?.status === 'degraded' ? 'degraded' : 'unhealthy',
+              responseTime: parseInt(healthData.services?.api?.responseTime?.replace('ms', '') || '0'),
+              message: healthData.services?.api?.throughput ? 
+                      `Throughput: ${healthData.services.api.throughput}` : 
+                      'API operational',
+              details: healthData.services?.api ? {
+                requestRate: parseInt(healthData.services.api.throughput?.replace(/[^\d]/g, '') || '0'),
+                errorRate: parseFloat(healthData.services.api.errorRate?.replace('%', '') || '0') / 100,
+                latency: parseInt(healthData.services.api.responseTime?.replace('ms', '') || '0')
+              } : undefined
             }
           },
           performance: {
-            uptime: performance.uptime || 0,
-            memory: performance.memory || {
-              usage: { used: 0, total: 0, heap: 0, external: 0, rss: 0 },
-              percentage: 0,
-              status: 'healthy'
+            uptime: healthData.uptime?.totalHours ? healthData.uptime.totalHours * 3600 : 0,
+            memory: {
+              usage: {
+                used: healthData.performance?.memory ? 
+                      parseFloat(healthData.performance.memory.used?.replace(/[^\d.]/g, '') || '0') : 0,
+                total: healthData.performance?.memory ? 
+                       parseFloat(healthData.performance.memory.total?.replace(/[^\d.]/g, '') || '0') : 0,
+                heap: 0,
+                external: 0,
+                rss: 0
+              },
+              percentage: healthData.performance?.memory ? 
+                         parseInt(healthData.performance.memory.usage?.replace('%', '') || '0') : 0,
+              status: healthData.performance?.memory ? 
+                     (parseInt(healthData.performance.memory.usage?.replace('%', '') || '0') > 80 ? 'critical' : 
+                      parseInt(healthData.performance.memory.usage?.replace('%', '') || '0') > 60 ? 'warning' : 'healthy') : 'healthy'
             },
-            cpu: performance.cpu || { usage: 0, type: 'unknown' },
-            responseTime: performance.responseTime || 0
+            cpu: {
+              usage: healthData.performance?.cpu ? 
+                    parseInt(healthData.performance.cpu.usage?.replace('%', '') || '0') / 100 : 0,
+              cores: healthData.performance?.cpu?.cores,
+              type: environmentType === 'aws' ? 'lambda' : 'local'
+            },
+            responseTime: parseInt(healthData.application?.averageResponseTime?.replace('ms', '') || '0')
           },
-          alerts: transformedAlerts,
-          cloudwatch: systemHealthData.cloudwatch
+          alerts: healthData.alerts?.map((alert: any) => ({
+            id: alert.id,
+            type: alert.type,
+            severity: alert.severity,
+            title: alert.type?.charAt(0).toUpperCase() + alert.type?.slice(1) + ' Alert',
+            message: alert.message,
+            timestamp: alert.timestamp,
+            resolved: alert.resolved
+          })) || [],
+          cloudwatch: environmentType === 'aws' ? {
+            customMetrics: true,
+            alarmsActive: healthData.alerts?.filter((a: any) => !a.resolved).length || 0,
+            dashboardUrl: undefined
+          } : undefined
         };
         
         setAwsHealth(awsHealthData);

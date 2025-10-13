@@ -34,6 +34,7 @@ PERMISSIONS=""
 FORCE=false
 DRY_RUN=false
 RESET_PASSWORD=false
+UPDATE_ROLE=false
 
 # Environment-specific configurations
 get_env_config() {
@@ -89,6 +90,7 @@ $(print_color $YELLOW "OPTIONS:")
     -p, --password <pass>    Custom password (if not provided, one will be generated)
     -P, --permissions <list> Comma-separated permissions (overrides role defaults)
     --reset-password        Reset password if user already exists
+    --update-role           Update role for existing user
     -f, --force             Skip confirmation prompts
     -d, --dry-run           Show what would be done without executing
     -h, --help              Show this help message
@@ -116,6 +118,9 @@ $(print_color $YELLOW "EXAMPLES:")
 
     # Reset password for existing admin
     $0 --reset-password
+
+    # Update role for existing admin
+    $0 --email admin@harborlist.com --role super_admin --update-role
 
     # Create a production admin with custom password
     $0 --environment prod \\
@@ -293,6 +298,7 @@ create_admin_user() {
     [[ -n $PASSWORD ]] && cmd_args+=(--password "$PASSWORD")
     [[ -n $PERMISSIONS ]] && cmd_args+=(--permissions "$PERMISSIONS")
     [[ $RESET_PASSWORD == true ]] && cmd_args+=(--reset-password)
+    [[ $UPDATE_ROLE == true ]] && cmd_args+=(--update-role)
 
     if [[ $DRY_RUN == true ]]; then
         print_color $YELLOW "🧪 DRY RUN - Would execute:"
@@ -370,6 +376,10 @@ parse_arguments() {
                 ;;
             --reset-password)
                 RESET_PASSWORD=true
+                shift
+                ;;
+            --update-role)
+                UPDATE_ROLE=true
                 shift
                 ;;
             -f|--force)

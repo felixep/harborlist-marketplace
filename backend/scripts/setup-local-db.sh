@@ -76,6 +76,134 @@ create_simple_table() {
     fi
 }
 
+# Function to create listings table with proper schema and indexes
+create_listings_table() {
+    local table_name="harborlist-listings"
+    
+    echo "📊 Creating listings table: $table_name"
+    
+    # Check if table exists
+    if aws dynamodb describe-table --table-name "$table_name" --endpoint-url "$DYNAMODB_ENDPOINT" --region "$AWS_REGION" >/dev/null 2>&1; then
+        echo "   ✅ Table $table_name already exists"
+        return
+    fi
+
+    # Create listings table with listingId as primary key and slug GSI
+    aws dynamodb create-table \
+        --table-name "$table_name" \
+        --key-schema AttributeName=listingId,KeyType=HASH \
+        --attribute-definitions \
+            AttributeName=listingId,AttributeType=S \
+            AttributeName=slug,AttributeType=S \
+            AttributeName=ownerId,AttributeType=S \
+            AttributeName=status,AttributeType=S \
+        --provisioned-throughput ReadCapacityUnits=5,WriteCapacityUnits=5 \
+        --global-secondary-indexes \
+        '[{
+            "IndexName": "SlugIndex",
+            "KeySchema": [{"AttributeName": "slug", "KeyType": "HASH"}],
+            "Projection": {"ProjectionType": "ALL"},
+            "ProvisionedThroughput": {"ReadCapacityUnits": 5, "WriteCapacityUnits": 5}
+        },
+        {
+            "IndexName": "OwnerIndex",
+            "KeySchema": [{"AttributeName": "ownerId", "KeyType": "HASH"}],
+            "Projection": {"ProjectionType": "ALL"},
+            "ProvisionedThroughput": {"ReadCapacityUnits": 5, "WriteCapacityUnits": 5}
+        },
+        {
+            "IndexName": "StatusIndex",
+            "KeySchema": [{"AttributeName": "status", "KeyType": "HASH"}],
+            "Projection": {"ProjectionType": "ALL"},
+            "ProvisionedThroughput": {"ReadCapacityUnits": 5, "WriteCapacityUnits": 5}
+        }]' \
+        --endpoint-url "$DYNAMODB_ENDPOINT" \
+        --region "$AWS_REGION" >/dev/null 2>&1
+    
+    if [ $? -eq 0 ]; then
+        echo "   ✅ Listings table $table_name created successfully with SlugIndex, OwnerIndex, and StatusIndex GSIs"
+    else
+        echo "   ❌ Failed to create listings table $table_name"
+        return 1
+    fi
+}
+
+# Function to create users table with proper schema and indexes
+create_users_table() {
+    local table_name="harborlist-users"
+    
+    echo "📊 Creating users table: $table_name"
+    
+    # Check if table exists
+    if aws dynamodb describe-table --table-name "$table_name" --endpoint-url "$DYNAMODB_ENDPOINT" --region "$AWS_REGION" >/dev/null 2>&1; then
+        echo "   ✅ Table $table_name already exists"
+        return
+    fi
+
+    # Create users table with id as primary key and email GSI
+    aws dynamodb create-table \
+        --table-name "$table_name" \
+        --key-schema AttributeName=id,KeyType=HASH \
+        --attribute-definitions \
+            AttributeName=id,AttributeType=S \
+            AttributeName=email,AttributeType=S \
+        --provisioned-throughput ReadCapacityUnits=5,WriteCapacityUnits=5 \
+        --global-secondary-indexes \
+        '[{
+            "IndexName": "email-index",
+            "KeySchema": [{"AttributeName": "email", "KeyType": "HASH"}],
+            "Projection": {"ProjectionType": "ALL"},
+            "ProvisionedThroughput": {"ReadCapacityUnits": 5, "WriteCapacityUnits": 5}
+        }]' \
+        --endpoint-url "$DYNAMODB_ENDPOINT" \
+        --region "$AWS_REGION" >/dev/null 2>&1
+    
+    if [ $? -eq 0 ]; then
+        echo "   ✅ Users table $table_name created successfully with email-index GSI"
+    else
+        echo "   ❌ Failed to create users table $table_name"
+        return 1
+    fi
+}
+
+# Function to create engines table with proper schema and indexes
+create_engines_table() {
+    local table_name="harborlist-engines"
+    
+    echo "📊 Creating engines table: $table_name"
+    
+    # Check if table exists
+    if aws dynamodb describe-table --table-name "$table_name" --endpoint-url "$DYNAMODB_ENDPOINT" --region "$AWS_REGION" >/dev/null 2>&1; then
+        echo "   ✅ Table $table_name already exists"
+        return
+    fi
+
+    # Create engines table with engineId as primary key and listingId GSI
+    aws dynamodb create-table \
+        --table-name "$table_name" \
+        --key-schema AttributeName=engineId,KeyType=HASH \
+        --attribute-definitions \
+            AttributeName=engineId,AttributeType=S \
+            AttributeName=listingId,AttributeType=S \
+        --provisioned-throughput ReadCapacityUnits=5,WriteCapacityUnits=5 \
+        --global-secondary-indexes \
+        '[{
+            "IndexName": "ListingIndex",
+            "KeySchema": [{"AttributeName": "listingId", "KeyType": "HASH"}],
+            "Projection": {"ProjectionType": "ALL"},
+            "ProvisionedThroughput": {"ReadCapacityUnits": 5, "WriteCapacityUnits": 5}
+        }]' \
+        --endpoint-url "$DYNAMODB_ENDPOINT" \
+        --region "$AWS_REGION" >/dev/null 2>&1
+    
+    if [ $? -eq 0 ]; then
+        echo "   ✅ Engines table $table_name created successfully with ListingIndex GSI"
+    else
+        echo "   ❌ Failed to create engines table $table_name"
+        return 1
+    fi
+}
+
 # Function to create sessions table with sessionId as primary key (to match production)
 create_sessions_table() {
     local table_name="harborlist-sessions"
@@ -152,8 +280,8 @@ echo ""
 echo "🔧 Creating DynamoDB Tables..."
 
 # Create essential tables based on backend requirements
-create_simple_table "harborlist-users"
-create_simple_table "harborlist-listings"
+create_users_table  # Use specialized function for users table with EmailIndex GSI
+create_listings_table  # Use specialized function for listings table with SlugIndex GSI
 create_sessions_table  # Use specialized function for sessions table to match production
 create_simple_table "harborlist-login-attempts"
 create_simple_table "harborlist-audit-logs"
@@ -162,7 +290,7 @@ create_admin_sessions_table  # Use specialized function for admin sessions table
 create_simple_table "harborlist-analytics"
 
 # Enhanced feature tables for boat marketplace enhancements
-create_simple_table "harborlist-engines"
+create_engines_table  # Use specialized function for engines table with ListingIndex GSI
 create_simple_table "harborlist-billing-accounts"
 create_simple_table "harborlist-transactions"
 create_simple_table "harborlist-finance-calculations"

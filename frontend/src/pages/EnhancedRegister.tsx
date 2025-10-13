@@ -99,7 +99,8 @@ export const EnhancedRegister: React.FC = () => {
             </p>
           </div>
           
-          <div className="text-3xl mb-4">💎</div>
+          <div className="text-center">
+            <div className="text-3xl mb-4">💎</div>
             <h4 className="text-lg font-semibold text-gray-900 mb-2">
               Premium Features
             </h4>

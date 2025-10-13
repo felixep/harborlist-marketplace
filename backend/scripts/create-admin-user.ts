@@ -44,6 +44,7 @@ interface CreateAdminOptions {
   password?: string;
   permissions?: AdminPermission[];
   resetPassword?: boolean;
+  updateRole?: boolean;
 }
 
 async function checkUserExists(email: string): Promise<boolean> {
@@ -64,16 +65,21 @@ async function checkUserExists(email: string): Promise<boolean> {
 }
 
 async function createAdminUserInDB(options: CreateAdminOptions): Promise<User> {
-  const { email, name, role, password, permissions, resetPassword } = options;
+  const { email, name, role, password, permissions, resetPassword, updateRole } = options;
 
   // Check if user already exists
   const userExists = await checkUserExists(email);
   if (userExists) {
-    if (!resetPassword) {
-      console.log(`✅ User with email ${email} already exists. Use --reset-password to reset their password.`);
+    if (!resetPassword && !updateRole) {
+      console.log(`✅ User with email ${email} already exists. Use --reset-password to reset their password or --update-role to update their role.`);
       return null as any; // Exit gracefully without error
     }
-    console.log(`🔄 User exists. Resetting password for ${email}...`);
+    if (resetPassword) {
+      console.log(`🔄 User exists. Resetting password for ${email}...`);
+    }
+    if (updateRole) {
+      console.log(`🔄 User exists. Updating role to ${role} for ${email}...`);
+    }
   }
 
   // Generate a secure password if not provided
@@ -115,8 +121,8 @@ async function createAdminUserInDB(options: CreateAdminOptions): Promise<User> {
 
   let user: User;
 
-  if (userExists && resetPassword) {
-    // Update existing user's password
+  if (userExists && (resetPassword || updateRole)) {
+    // Update existing user's password and/or role
     const result = await docClient.send(new ScanCommand({
       TableName: USERS_TABLE,
       FilterExpression: 'email = :email',
@@ -127,16 +133,27 @@ async function createAdminUserInDB(options: CreateAdminOptions): Promise<User> {
 
     const existingUser = result.Items![0] as User;
     
-    // Update the user with new password
+    // Update the user with new password and/or role
     user = {
       ...existingUser,
-      password: hashedPassword,
       updatedAt: new Date().toISOString(),
-      loginAttempts: 0, // Reset login attempts
-      lockedUntil: undefined,
-      passwordResetToken: undefined,
-      passwordResetExpires: undefined
     };
+
+    // Update password if requested
+    if (resetPassword) {
+      user.password = hashedPassword;
+      user.loginAttempts = 0; // Reset login attempts
+      user.lockedUntil = undefined;
+      user.passwordResetToken = undefined;
+      user.passwordResetExpires = undefined;
+    }
+
+    // Update role and permissions if requested
+    if (updateRole) {
+      user.role = role;
+      user.permissions = userPermissions;
+      user.name = name; // Also update name if provided
+    }
 
     await docClient.send(new PutCommand({
       TableName: USERS_TABLE,
@@ -169,12 +186,28 @@ async function createAdminUserInDB(options: CreateAdminOptions): Promise<User> {
     }));
   }
 
-  if (userExists && resetPassword) {
-    console.log(`✅ Password reset successfully for existing user!`);
-    console.log(`📧 Email: ${email}`);
-    console.log(`👤 Name: ${user.name}`);
-    console.log(`🔐 New Password: ${userPassword}`);
-    console.log(`⚠️  IMPORTANT: Save this new password securely!`);
+  if (userExists && (resetPassword || updateRole)) {
+    if (resetPassword && updateRole) {
+      console.log(`✅ Password reset and role updated successfully for existing user!`);
+      console.log(`📧 Email: ${email}`);
+      console.log(`👤 Name: ${user.name}`);
+      console.log(`🔑 New Role: ${role}`);
+      console.log(`🛡️  New Permissions: ${userPermissions.join(', ')}`);
+      console.log(`🔐 New Password: ${userPassword}`);
+      console.log(`⚠️  IMPORTANT: Save this new password securely!`);
+    } else if (resetPassword) {
+      console.log(`✅ Password reset successfully for existing user!`);
+      console.log(`📧 Email: ${email}`);
+      console.log(`👤 Name: ${user.name}`);
+      console.log(`🔐 New Password: ${userPassword}`);
+      console.log(`⚠️  IMPORTANT: Save this new password securely!`);
+    } else if (updateRole) {
+      console.log(`✅ Role updated successfully for existing user!`);
+      console.log(`📧 Email: ${email}`);
+      console.log(`👤 Name: ${user.name}`);
+      console.log(`🔑 New Role: ${role}`);
+      console.log(`🛡️  New Permissions: ${userPermissions.join(', ')}`);
+    }
   } else {
     console.log(`✅ Admin user created successfully!`);
     console.log(`📧 Email: ${email}`);
@@ -257,6 +290,10 @@ function parseArguments(): CreateAdminOptions {
         options.resetPassword = true;
         i--; // No value needed for this flag
         break;
+      case '--update-role':
+        options.updateRole = true;
+        i--; // No value needed for this flag
+        break;
       default:
         if (key.startsWith('--')) {
           throw new Error(`Unknown option: ${key}`);
@@ -300,6 +337,7 @@ Optional Arguments:
   --role <role>       Admin role (default: super_admin)
   --password <pass>   Custom password (if not provided, one will be generated)
   --reset-password    Reset password if user already exists
+  --update-role       Update role for existing user
   --permissions <p>   Comma-separated list of permissions (overrides role defaults)
 
 Examples:
@@ -311,6 +349,9 @@ Examples:
 
   # Reset password for existing admin
   npm run create-admin -- --reset-password
+
+  # Update role for existing admin
+  npm run create-admin -- --email admin@harborlist.com --role super_admin --update-role
 
   # Create a moderator with custom password  
   npm run create-admin -- --email mod@harborlist.com --name "Content Moderator" --role moderator --password MySecurePass123!

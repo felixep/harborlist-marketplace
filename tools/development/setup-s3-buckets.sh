@@ -7,8 +7,8 @@ set -e
 
 echo "Setting up LocalStack S3 buckets..."
 
-# LocalStack endpoint
-LOCALSTACK_ENDPOINT="http://localhost:4566"
+# LocalStack endpoint (can be overridden by environment variable)
+LOCALSTACK_ENDPOINT="${LOCALSTACK_ENDPOINT:-http://localhost:4566}"
 
 # Bucket names (should match docker-compose.local.yml)
 MEDIA_BUCKET="harborlist-media-local"
@@ -54,6 +54,26 @@ create_bucket() {
         }
       ]
     }' 2>/dev/null || echo "Note: Could not set bucket policy (this is usually fine for local development)"
+  
+  # Set CORS configuration for cross-origin uploads
+  echo "Setting CORS configuration for ${bucket_name}..."
+  aws --endpoint-url="${LOCALSTACK_ENDPOINT}" s3api put-bucket-cors \
+    --bucket "${bucket_name}" \
+    --cors-configuration '{
+      "CORSRules": [
+        {
+          "AllowedHeaders": ["*"],
+          "AllowedMethods": ["GET", "PUT", "POST", "DELETE", "HEAD"],
+          "AllowedOrigins": [
+            "https://local.harborlist.com",
+            "http://localhost:3000",
+            "http://127.0.0.1:3000"
+          ],
+          "ExposeHeaders": ["ETag", "x-amz-meta-*"],
+          "MaxAgeSeconds": 3600
+        }
+      ]
+    }' 2>/dev/null || echo "Note: Could not set CORS configuration"
 }
 
 # Set AWS credentials for LocalStack

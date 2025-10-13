@@ -102,7 +102,7 @@ const SalesManagement: React.FC = () => {
   const loadAssignments = async () => {
     try {
       const response = await adminApi.get('/sales/assignments');
-      setAssignments(response.data || []);
+      setAssignments(Array.isArray(response.data) ? response.data : []);
     } catch (error) {
       showError('Error', 'Failed to load customer assignments');
     }
@@ -331,9 +331,9 @@ const SalesManagement: React.FC = () => {
             className="rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
           >
             <option value="">All Performance</option>
-            <option value="high">High (>100%)</option>
+            <option value="high">High (&gt;100%)</option>
             <option value="medium">Medium (75-100%)</option>
-            <option value="low">Low (<75%)</option>
+            <option value="low">Low (&lt;75%)</option>
           </select>
 
           <select

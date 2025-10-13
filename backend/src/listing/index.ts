@@ -508,9 +508,12 @@ async function getListings(event: APIGatewayProxyEvent, requestId: string): Prom
     );
     
     // Filter to only show approved/active listings for public view
-    const publicListings = listingsWithOwners.filter(listing => 
-      listing.status === 'approved' || listing.status === 'active'
-    );
+    // For development: show all listings including pending ones
+    const publicListings = process.env.NODE_ENV === 'development' 
+      ? listingsWithOwners 
+      : listingsWithOwners.filter(listing => 
+          listing.status === 'approved' || listing.status === 'active'
+        );
     
     const response: any = {
       listings: publicListings,

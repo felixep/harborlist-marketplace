@@ -1,6 +1,6 @@
-import jwt from 'jsonwebtoken';
+import * as jwt from 'jsonwebtoken';
 import { APIGatewayProxyEvent } from 'aws-lambda';
-import crypto from 'crypto';
+import * as crypto from 'crypto';
 // Note: speakeasy would need to be installed: npm install speakeasy @types/speakeasy
 // For now, we'll create a mock implementation
 import { User, UserRole, UserStatus, AdminPermission, AuthSession, AuditLog } from '../types/common';

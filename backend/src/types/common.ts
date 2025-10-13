@@ -93,7 +93,11 @@ export enum AdminPermission {
   FINANCIAL_ACCESS = 'financial_access',
   SYSTEM_CONFIG = 'system_config',
   ANALYTICS_VIEW = 'analytics_view',
-  AUDIT_LOG_VIEW = 'audit_log_view'
+  AUDIT_LOG_VIEW = 'audit_log_view',
+  TIER_MANAGEMENT = 'tier_management',
+  CAPABILITY_ASSIGNMENT = 'capability_assignment',
+  BILLING_MANAGEMENT = 'billing_management',
+  SALES_MANAGEMENT = 'sales_management'
 }
 
 export interface User {

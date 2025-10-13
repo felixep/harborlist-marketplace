@@ -1,5 +1,5 @@
-# Development Dockerfile for Backend
-FROM node:18-alpine
+# Development Dockerfile for Backend Services
+FROM node:18-alpine as base
 
 # Install system dependencies
 RUN apk add --no-cache zip
@@ -32,11 +32,31 @@ WORKDIR /workspace/backend
 # Copy backend source code
 COPY backend/ .
 
-# Build TypeScript (for development we still need compiled JS)
-RUN npm run build
+# Skip TypeScript build for development - use ts-node directly
+# RUN npm run build
 
-# Expose port
+# Main backend service (default)
+FROM base as backend
 EXPOSE 3001
-
-# Start development server with hot reload
 CMD ["npm", "run", "dev:local"]
+
+# Billing service
+FROM base as billing-service
+EXPOSE 3002
+ENV SERVICE_PORT=3002
+ENV SERVICE_NAME=billing-service
+CMD ["npm", "run", "dev:billing"]
+
+# Finance service
+FROM base as finance-service
+EXPOSE 3003
+ENV SERVICE_PORT=3003
+ENV SERVICE_NAME=finance-service
+CMD ["npm", "run", "dev:finance"]
+
+# User service
+FROM base as user-service
+EXPOSE 3004
+ENV SERVICE_PORT=3004
+ENV SERVICE_NAME=user-service
+CMD ["npm", "run", "dev:user"]

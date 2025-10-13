@@ -1,4 +1,12 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
+
+interface MediaItem {
+  id: string;
+  type: 'file' | 'existing';
+  file?: File;
+  url?: string;
+  isMain?: boolean;
+}
 
 interface MediaUploadProps {
   onUpload: (files: File[], type: 'images' | 'videos') => void;
@@ -10,14 +18,41 @@ interface MediaUploadProps {
 
 export default function MediaUpload({ onUpload, existingImages, existingVideos, uploading = false, uploadProgress = 0 }: MediaUploadProps) {
   const [dragActive, setDragActive] = useState(false);
-  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const MAX_IMAGES = 10;
+
+  // Initialize media items from existing images
+  useEffect(() => {
+    const existingItems: MediaItem[] = existingImages.map((url, index) => ({
+      id: `existing-${index}`,
+      type: 'existing',
+      url,
+      isMain: index === 0
+    }));
+    setMediaItems(existingItems);
+  }, [existingImages]);
 
   const handleFiles = (files: FileList) => {
     const validFiles: File[] = [];
+    const currentImageCount = mediaItems.filter(item => 
+      item.type === 'file' ? item.file?.type.startsWith('image/') : true
+    ).length;
     
     Array.from(files).forEach(file => {
-      if (file.type.startsWith('image/') || file.type.startsWith('video/')) {
+      if (file.type.startsWith('image/')) {
+        if (currentImageCount + validFiles.filter(f => f.type.startsWith('image/')).length >= MAX_IMAGES) {
+          alert(`Maximum ${MAX_IMAGES} images allowed. Please remove some images first.`);
+          return;
+        }
+        if (file.size <= 50 * 1024 * 1024) { // 50MB limit
+          validFiles.push(file);
+        } else {
+          alert(`${file.name} is too large. Maximum file size is 50MB.`);
+        }
+      } else if (file.type.startsWith('video/')) {
         if (file.size <= 50 * 1024 * 1024) { // 50MB limit
           validFiles.push(file);
         } else {
@@ -29,7 +64,15 @@ export default function MediaUpload({ onUpload, existingImages, existingVideos, 
     });
 
     if (validFiles.length > 0) {
-      setSelectedFiles(prev => [...prev, ...validFiles]);
+      const newMediaItems: MediaItem[] = validFiles.map((file, index) => ({
+        id: `file-${Date.now()}-${index}`,
+        type: 'file',
+        file,
+        isMain: mediaItems.length === 0 && index === 0 && file.type.startsWith('image/')
+      }));
+
+      setMediaItems(prev => [...prev, ...newMediaItems]);
+      
       const images = validFiles.filter(f => f.type.startsWith('image/'));
       const videos = validFiles.filter(f => f.type.startsWith('video/'));
       
@@ -48,7 +91,7 @@ export default function MediaUpload({ onUpload, existingImages, existingVideos, 
     }
   };
 
-  const handleDrop = (e: React.DragEvent) => {
+  const handleFileDrop = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
     setDragActive(false);
@@ -64,13 +107,56 @@ export default function MediaUpload({ onUpload, existingImages, existingVideos, 
     }
   };
 
-  const removeFile = (index: number) => {
-    setSelectedFiles(prev => prev.filter((_, i) => i !== index));
+  const removeMediaItem = (id: string) => {
+    setMediaItems(prev => {
+      const filtered = prev.filter(item => item.id !== id);
+      // If we removed the main image, make the first remaining image the main
+      if (filtered.length > 0 && !filtered.some(item => item.isMain)) {
+        const firstImage = filtered.find(item => 
+          item.type === 'file' ? item.file?.type.startsWith('image/') : true
+        );
+        if (firstImage) {
+          firstImage.isMain = true;
+        }
+      }
+      return filtered;
+    });
   };
 
-  const removeMedia = (url: string, type: 'images' | 'videos') => {
-    // This would be handled by parent component for existing media
-    console.log('Remove media:', url, type);
+  const setAsMain = (id: string) => {
+    setMediaItems(prev => prev.map(item => ({
+      ...item,
+      isMain: item.id === id
+    })));
+  };
+
+  const handleDragStart = (e: React.DragEvent, index: number) => {
+    setDraggedIndex(index);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  };
+
+  const handleReorderDrop = (e: React.DragEvent, dropIndex: number) => {
+    e.preventDefault();
+    
+    if (draggedIndex === null || draggedIndex === dropIndex) {
+      setDraggedIndex(null);
+      return;
+    }
+
+    setMediaItems(prev => {
+      const newItems = [...prev];
+      const draggedItem = newItems[draggedIndex];
+      newItems.splice(draggedIndex, 1);
+      newItems.splice(dropIndex, 0, draggedItem);
+      return newItems;
+    });
+    
+    setDraggedIndex(null);
   };
 
   return (
@@ -83,7 +169,7 @@ export default function MediaUpload({ onUpload, existingImages, existingVideos, 
         onDragEnter={handleDrag}
         onDragLeave={handleDrag}
         onDragOver={handleDrag}
-        onDrop={handleDrop}
+        onDrop={handleFileDrop}
       >
         <input
           ref={fileInputRef}
@@ -116,73 +202,86 @@ export default function MediaUpload({ onUpload, existingImages, existingVideos, 
         </div>
       </div>
 
-      {/* Selected Files Preview */}
-      {selectedFiles.length > 0 && (
+      {/* Media Gallery */}
+      {mediaItems.length > 0 && (
         <div>
-          <h4 className="font-medium text-gray-900 mb-3">Selected Files ({selectedFiles.length})</h4>
+          <div className="flex justify-between items-center mb-3">
+            <h4 className="font-medium text-gray-900">
+              Images ({mediaItems.filter(item => item.type === 'file' ? item.file?.type.startsWith('image/') : true).length}/{MAX_IMAGES})
+            </h4>
+            <p className="text-sm text-gray-500">Drag to reorder</p>
+          </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {selectedFiles.map((file, index) => (
-              <div key={index} className="relative group">
-                {file.type.startsWith('image/') ? (
-                  <img
-                    src={URL.createObjectURL(file)}
-                    alt={file.name}
-                    className="w-full h-24 object-cover rounded-lg"
-                  />
-                ) : (
-                  <div className="w-full h-24 bg-gray-200 rounded-lg flex items-center justify-center">
-                    <svg className="h-8 w-8 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
+            {mediaItems.map((item, index) => {
+              const isImage = item.type === 'file' ? item.file?.type.startsWith('image/') : true;
+              if (!isImage) return null;
+              
+              return (
+                <div 
+                  key={item.id} 
+                  className="relative group cursor-move"
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, index)}
+                  onDragOver={handleDragOver}
+                  onDrop={(e) => handleReorderDrop(e, index)}
+                >
+                  {item.type === 'file' && item.file ? (
+                    <img
+                      src={URL.createObjectURL(item.file)}
+                      alt={item.file.name}
+                      className="w-full h-24 object-cover rounded-lg border-2 border-transparent hover:border-blue-300 transition-colors"
+                    />
+                  ) : (
+                    <img
+                      src={item.url}
+                      alt={`Image ${index + 1}`}
+                      className="w-full h-24 object-cover rounded-lg border-2 border-transparent hover:border-blue-300 transition-colors"
+                    />
+                  )}
+                  
+                  {/* Remove button */}
+                  <button
+                    type="button"
+                    onClick={() => removeMediaItem(item.id)}
+                    className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    ×
+                  </button>
+                  
+                  {/* File name for new uploads */}
+                  {item.type === 'file' && item.file && (
+                    <div className="absolute bottom-1 left-1 bg-black bg-opacity-75 text-white text-xs px-2 py-1 rounded">
+                      {item.file.name.length > 15 ? `${item.file.name.substring(0, 15)}...` : item.file.name}
+                    </div>
+                  )}
+                  
+                  {/* Main image indicator */}
+                  {item.isMain && (
+                    <div className="absolute top-1 left-1 bg-blue-500 text-white text-xs px-2 py-1 rounded">
+                      Main
+                    </div>
+                  )}
+                  
+                  {/* Set as main button */}
+                  {!item.isMain && (
+                    <button
+                      type="button"
+                      onClick={() => setAsMain(item.id)}
+                      className="absolute bottom-1 right-1 bg-gray-800 bg-opacity-75 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      Set as Main
+                    </button>
+                  )}
+                  
+                  {/* Drag handle */}
+                  <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <svg className="w-6 h-6 text-white bg-black bg-opacity-50 rounded p-1" fill="currentColor" viewBox="0 0 20 20">
+                      <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
                     </svg>
                   </div>
-                )}
-                <button
-                  type="button"
-                  onClick={() => removeFile(index)}
-                  className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm opacity-0 group-hover:opacity-100 transition-opacity"
-                >
-                  ×
-                </button>
-                <div className="absolute bottom-1 left-1 bg-black bg-opacity-75 text-white text-xs px-2 py-1 rounded">
-                  {file.name.length > 15 ? `${file.name.substring(0, 15)}...` : file.name}
                 </div>
-                {index === 0 && file.type.startsWith('image/') && (
-                  <div className="absolute top-1 left-1 bg-blue-500 text-white text-xs px-2 py-1 rounded">
-                    Main
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Existing Images */}
-      {existingImages.length > 0 && (
-        <div>
-          <h4 className="font-medium text-gray-900 mb-3">Images ({existingImages.length})</h4>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {existingImages.map((url, index) => (
-              <div key={index} className="relative group">
-                <img
-                  src={url}
-                  alt={`Upload ${index + 1}`}
-                  className="w-full h-24 object-cover rounded-lg"
-                />
-                <button
-                  type="button"
-                  onClick={() => removeMedia(url, 'images')}
-                  className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm opacity-0 group-hover:opacity-100 transition-opacity"
-                >
-                  ×
-                </button>
-                {index === 0 && (
-                  <div className="absolute bottom-1 left-1 bg-blue-500 text-white text-xs px-2 py-1 rounded">
-                    Main
-                  </div>
-                )}
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
@@ -206,7 +305,7 @@ export default function MediaUpload({ onUpload, existingImages, existingVideos, 
                 </div>
                 <button
                   type="button"
-                  onClick={() => removeMedia(url, 'videos')}
+                  onClick={() => console.log('Remove video:', url)}
                   className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm opacity-0 group-hover:opacity-100 transition-opacity"
                 >
                   ×
@@ -221,10 +320,11 @@ export default function MediaUpload({ onUpload, existingImages, existingVideos, 
       <div className="bg-gray-50 rounded-lg p-4">
         <h4 className="font-medium text-gray-900 mb-2">Photo Guidelines</h4>
         <ul className="text-sm text-gray-600 space-y-1">
-          <li>• First image will be used as the main listing photo</li>
+          <li>• Maximum {MAX_IMAGES} images allowed</li>
+          <li>• Drag images to reorder them</li>
+          <li>• Click "Set as Main" to choose your primary listing photo</li>
           <li>• Include exterior shots from multiple angles</li>
           <li>• Show interior spaces, engine compartment, and electronics</li>
-          <li>• Highlight unique features and recent upgrades</li>
           <li>• Use good lighting and avoid blurry images</li>
         </ul>
       </div>

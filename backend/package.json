@@ -12,6 +12,9 @@
     "clean": "rm -rf dist",
     "create-admin": "ts-node scripts/create-admin-user.ts",
     "dev:local": "nodemon --exec ts-node src/local-server.ts",
+    "dev:billing": "nodemon --exec ts-node src/billing-service/local-server.ts",
+    "dev:finance": "nodemon --exec ts-node src/finance-service/local-server.ts",
+    "dev:user": "nodemon --exec ts-node src/user-service/local-server.ts",
     "dev:setup-db": "./scripts/setup-local-db.sh"
   },
   "dependencies": {

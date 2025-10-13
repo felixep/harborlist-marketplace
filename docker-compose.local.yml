@@ -91,6 +91,7 @@ services:
     build:
       context: .
       dockerfile: ./backend/Dockerfile.dev
+      target: backend
     ports:
       - "3001:3001"
     volumes:
@@ -199,6 +200,32 @@ services:
       - "traefik.http.routers.s3-https.service=localstack"
       - "traefik.http.services.localstack.loadbalancer.server.port=4566"
       - "traefik.http.services.localstack.loadbalancer.server.scheme=http"
+
+  # LocalStack initialization service
+  localstack-init:
+    profiles: ["basic", "enhanced"]
+    image: amazon/aws-cli:latest
+    depends_on:
+      - localstack
+    volumes:
+      - ./tools:/tools
+    environment:
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_DEFAULT_REGION=us-east-1
+    networks:
+      - harborlist-local
+    command: >
+      sh -c "
+        echo 'Waiting for LocalStack to be ready...' &&
+        until curl -s http://localstack:4566/_localstack/health | grep -q '\"s3\": \"available\"'; do
+          echo 'Waiting for LocalStack S3 service...'
+          sleep 2
+        done &&
+        echo 'LocalStack is ready. Running S3 setup script...' &&
+        chmod +x /tools/development/setup-s3-buckets.sh &&
+        LOCALSTACK_ENDPOINT=http://localstack:4566 /tools/development/setup-s3-buckets.sh
+      "
 
   # DynamoDB Admin UI
   dynamodb-admin:

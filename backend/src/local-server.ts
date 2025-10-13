@@ -17,7 +17,11 @@ const PORT = process.env.PORT || 3001;
 
 // Middleware
 app.use(cors({
-  origin: process.env.CORS_ORIGINS?.split(',') || ['http://local.harborlist.com:3000', 'http://localhost:3000'],
+  origin: process.env.CORS_ORIGINS?.split(',') || [
+    'https://local.harborlist.com',
+    'http://local.harborlist.com:3000', 
+    'http://localhost:3000'
+  ],
   credentials: true,
 }));
 app.use(express.json({ limit: '10mb' }));
@@ -148,6 +152,7 @@ const lambdaToExpress = (handlerModule: string, handlerName: string = 'handler')
               email: decoded.email,
               name: decoded.name,
               role: decoded.role,
+              permissions: JSON.stringify(decoded.permissions || []),
               sessionId: decoded.sessionId,
               deviceId: decoded.deviceId,
             }
@@ -232,9 +237,6 @@ app.get('/health', (req: Request, res: Response) => {
   });
 });
 
-// Import admin service directly since it has complex TypeScript structure
-import { handler as adminHandler } from './admin-service/index';
-
 // API Routes - dynamically load handlers
 app.use('/api/auth', lambdaToExpress('./auth-service'));
 app.use('/api/listings/:id', lambdaToExpress('./listing'));
@@ -242,7 +244,7 @@ app.use('/api/listings', lambdaToExpress('./listing'));
 app.use('/api/search', lambdaToExpress('./search'));
 app.use('/api/media', lambdaToExpress('./media'));
 app.use('/api/email', lambdaToExpress('./email'));
-app.use('/api/admin', lambdaToExpressSync(adminHandler));
+app.use('/api/admin', lambdaToExpress('./admin-service'));
 app.use('/api/stats', lambdaToExpress('./stats-service'));
 
 // Catch-all for undefined routes

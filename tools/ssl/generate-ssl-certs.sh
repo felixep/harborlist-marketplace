@@ -49,7 +49,10 @@ DNS.1 = local.harborlist.com
 DNS.2 = local-api.harborlist.com
 DNS.3 = traefik.local.harborlist.com
 DNS.4 = s3.local.harborlist.com
-DNS.5 = localhost
+DNS.5 = billing.local.harborlist.com
+DNS.6 = finance.local.harborlist.com
+DNS.7 = mail.local.harborlist.com
+DNS.8 = localhost
 IP.1 = 127.0.0.1
 EOF
 
@@ -84,4 +87,7 @@ echo "   - local.harborlist.com"
 echo "   - local-api.harborlist.com" 
 echo "   - traefik.local.harborlist.com"
 echo "   - s3.local.harborlist.com"
+echo "   - billing.local.harborlist.com"
+echo "   - finance.local.harborlist.com"
+echo "   - mail.local.harborlist.com"
 echo "   - localhost"

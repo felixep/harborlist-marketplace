@@ -181,6 +181,30 @@ const RATE_LIMIT_TIERS = {
     ADMIN: { maxRequests: 80, windowMs: 60000 },
     MODERATOR: { maxRequests: 50, windowMs: 60000 },
     SUPPORT: { maxRequests: 30, windowMs: 60000 }
+  },
+  [AdminPermission.TIER_MANAGEMENT]: {
+    SUPER_ADMIN: { maxRequests: 50, windowMs: 60000 },
+    ADMIN: { maxRequests: 30, windowMs: 60000 },
+    MODERATOR: { maxRequests: 10, windowMs: 60000 },
+    SUPPORT: { maxRequests: 5, windowMs: 60000 }
+  },
+  [AdminPermission.CAPABILITY_ASSIGNMENT]: {
+    SUPER_ADMIN: { maxRequests: 50, windowMs: 60000 },
+    ADMIN: { maxRequests: 30, windowMs: 60000 },
+    MODERATOR: { maxRequests: 10, windowMs: 60000 },
+    SUPPORT: { maxRequests: 5, windowMs: 60000 }
+  },
+  [AdminPermission.BILLING_MANAGEMENT]: {
+    SUPER_ADMIN: { maxRequests: 100, windowMs: 60000 },
+    ADMIN: { maxRequests: 80, windowMs: 60000 },
+    MODERATOR: { maxRequests: 20, windowMs: 60000 },
+    SUPPORT: { maxRequests: 10, windowMs: 60000 }
+  },
+  [AdminPermission.SALES_MANAGEMENT]: {
+    SUPER_ADMIN: { maxRequests: 150, windowMs: 60000 },
+    ADMIN: { maxRequests: 120, windowMs: 60000 },
+    MODERATOR: { maxRequests: 50, windowMs: 60000 },
+    SUPPORT: { maxRequests: 30, windowMs: 60000 }
   }
 };
 
@@ -237,7 +261,7 @@ export function withAdaptiveRateLimit(permission?: AdminPermission, customLimits
   const requests = new Map<string, { count: number; resetTime: number }>();
 
   return function(handler: AuthenticatedHandler) {
-    return withAuth(async (event: AuthenticatedEvent, context: any): Promise<APIGatewayProxyResult> => {
+    return async (event: AuthenticatedEvent, context: any): Promise<APIGatewayProxyResult> => {
       const requestId = event.requestContext.requestId;
       const clientInfo = getClientInfo(event);
       const identifier = event.user.sub;
@@ -303,7 +327,7 @@ export function withAdaptiveRateLimit(permission?: AdminPermission, customLimits
         ...response,
         headers: responseHeaders
       };
-    });
+    };
   };
 }
 

@@ -237,7 +237,7 @@ export class PaymentMethodManager {
       const userPaymentMethods = await this.getUserPaymentMethods(userId);
       for (const method of userPaymentMethods) {
         if (method.isDefault) {
-          await db.updatePaymentMethod(method.id, {
+          await db.updatePaymentMethodRecord(method.id, {
             isDefault: false,
             updatedAt: Date.now(),
           });
@@ -245,7 +245,7 @@ export class PaymentMethodManager {
       }
 
       // Set new default payment method
-      await db.updatePaymentMethod(paymentMethodId, {
+      await db.updatePaymentMethodRecord(paymentMethodId, {
         isDefault: true,
         updatedAt: Date.now(),
       });
@@ -338,7 +338,7 @@ export class PaymentMethodManager {
       } : undefined;
 
       // Update in database
-      await db.updatePaymentMethod(paymentMethodId, {
+      await db.updatePaymentMethodRecord(paymentMethodId, {
         billingDetails: sanitizedBillingDetails,
         updatedAt: Date.now(),
       });
