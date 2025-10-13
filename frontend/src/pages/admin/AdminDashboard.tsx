@@ -1,13 +1,11 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useDashboardMetrics } from '../../hooks/useDashboardMetrics';
 import MetricCard from '../../components/admin/MetricCard';
 import ChartContainer from '../../components/admin/ChartContainer';
-import AWSHealthDashboard from '../../components/admin/AWSHealthDashboard';
 import { MetricCardData, SystemAlert } from '@harborlist/shared-types';
 
 const AdminDashboard: React.FC = () => {
-  const { metrics, chartData, alerts, loading, error, refetch, awsHealth } = useDashboardMetrics();
-  const [activeTab, setActiveTab] = useState<'overview' | 'health'>('overview');
+  const { metrics, chartData, alerts, loading, error, refetch } = useDashboardMetrics();
 
   const getMetricCards = (): MetricCardData[] => {
     if (!metrics) return [];
@@ -145,63 +143,27 @@ const AdminDashboard: React.FC = () => {
         </button>
       </div>
 
-      {/* Tab Navigation */}
-      <div className="border-b border-gray-200">
-        <nav className="-mb-px flex space-x-8">
-          <button
-            onClick={() => setActiveTab('overview')}
-            className={`py-2 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'overview'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            Overview
-          </button>
-          <button
-            onClick={() => setActiveTab('health')}
-            className={`py-2 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'health'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            System Health
-            {awsHealth?.environment.type === 'aws' && (
-              <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-800">
-                AWS
-              </span>
-            )}
-          </button>
-        </nav>
-      </div>
-
-      {/* Tab Content */}
-      {activeTab === 'overview' && (
-        <>
-          {/* Alerts */}
-          {alerts.length > 0 && (
-            <div>
-              <h2 className="text-lg font-semibold text-gray-900 mb-3">System Alerts</h2>
-              {alerts.map((alert) => (
-                <AlertBanner key={alert.id} alert={alert} />
-              ))}
-            </div>
-          )}
-
-          {/* Metrics Cards */}
-          <div>
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Key Metrics</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6">
-              {getMetricCards().map((cardData, index) => (
-                <MetricCard key={index} data={cardData} loading={loading} />
-              ))}
-            </div>
-          </div>
-        </>
+      {/* Alerts */}
+      {alerts.length > 0 && (
+        <div>
+          <h2 className="text-lg font-semibold text-gray-900 mb-3">System Alerts</h2>
+          {alerts.map((alert) => (
+            <AlertBanner key={alert.id} alert={alert} />
+          ))}
+        </div>
       )}
 
-      {activeTab === 'overview' && chartData && (
+      {/* Metrics Cards */}
+      <div>
+        <h2 className="text-lg font-semibold text-gray-900 mb-4">Key Metrics</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6">
+          {getMetricCards().map((cardData, index) => (
+            <MetricCard key={index} data={cardData} loading={loading} />
+          ))}
+        </div>
+      </div>
+
+      {chartData && (
         <>
           {/* Charts */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -255,11 +217,6 @@ const AdminDashboard: React.FC = () => {
           </div>
         </div>
         </>
-      )}
-
-      {activeTab === 'health' && awsHealth && (
-        <AWSHealthDashboard healthData={awsHealth} />
-      )}
     </div>
   );
 };
