@@ -1,190 +1,772 @@
 /**
- * @fileoverview Authentication service Lambda function for HarborList boat marketplace.
+ * @fileoverview AWS Cognito dual-pool authentication service for HarborList boat marketplace.
  * 
- * Provides comprehensive authentication and authorization services including:
- * - User registration and login with secure password hashing
+ * Provides comprehensive authentication and authorization services with dual Cognito User Pools:
+ * - Customer authentication (Individual/Dealer/Premium tiers) via Customer User Pool
+ * - Staff authentication (Super Admin/Admin/Manager/Team Member roles) via Staff User Pool
  * - JWT-based session management with refresh tokens
  * - Multi-factor authentication (MFA) support
- * - Admin authentication with enhanced security requirements
- * - Password reset functionality with secure token generation
- * - Account lockout protection against brute force attacks
+ * - Role-based access control via Cognito Groups
+ * - Environment-aware configuration (LocalStack vs AWS)
  * - Comprehensive audit logging for security events
- * - Session management with device tracking
  * 
  * Security Features:
- * - bcrypt password hashing with salt rounds
- * - JWT tokens with configurable expiration
- * - Rate limiting through account lockout mechanisms
- * - Secure token generation for password resets
- * - IP address and user agent tracking
+ * - Dual User Pool architecture for separation of concerns
+ * - Cognito-managed password policies and security
+ * - JWT tokens with configurable expiration per user type
+ * - Cross-pool access prevention
+ * - Enhanced security for staff authentication
  * - Comprehensive audit trail for compliance
  * 
  * @author HarborList Development Team
- * @version 1.0.0
+ * @version 2.0.0
  */
 
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
-import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, GetCommand, PutCommand, QueryCommand, UpdateCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
-import crypto from 'crypto';
+import { 
+  CognitoIdentityProviderClient,
+  AdminInitiateAuthCommand,
+  AdminCreateUserCommand,
+  AdminSetUserPasswordCommand,
+  AdminAddUserToGroupCommand,
+  AdminGetUserCommand,
+  AdminUpdateUserAttributesCommand,
+  RespondToAuthChallengeCommand,
+  ForgotPasswordCommand,
+  ConfirmForgotPasswordCommand,
+  SignUpCommand,
+  ConfirmSignUpCommand,
+  ResendConfirmationCodeCommand,
+  GlobalSignOutCommand,
+  AdminUserGlobalSignOutCommand,
+  GetUserCommand,
+  ChangePasswordCommand,
+  AdminDisableUserCommand,
+  AdminEnableUserCommand,
+  ListUsersInGroupCommand,
+  AdminListGroupsForUserCommand,
+  AdminRemoveUserFromGroupCommand,
+  AuthFlowType,
+  ChallengeNameType,
+  MessageActionType,
+  DeliveryMediumType,
+  AttributeType,
+  UserType,
+  GroupType
+} from '@aws-sdk/client-cognito-identity-provider';
 import { createResponse, createErrorResponse } from '../shared/utils';
-import { emailService } from '../shared/email';
+import { getEnvironmentConfig, validateEnvironmentConfig } from './config';
 import {
-  hashPassword,
-  verifyPassword,
-  validatePassword,
-  validateEmail,
-  createAccessToken,
-  createRefreshToken,
-  createMFAToken,
-  verifyToken,
-  verifyMFAToken,
-  generateMFASecret,
-  generateDeviceId,
-  generateSecureToken,
-  createAuthSession,
-  createAuditLog,
-  getClientInfo,
-  isAccountLocked,
-  shouldLockAccount,
-  calculateLockoutExpiry,
-  AUTH_CONFIG,
-  AuthTokens,
-  LoginResult,
-} from '../shared/auth';
-import { User, UserRole, UserStatus, AdminPermission, AuthSession, LoginAttempt, AuditLog } from '../types/common';
+  AuthService,
+  CustomerAuthResult,
+  StaffAuthResult,
+  CustomerRegistration,
+  StaffRegistration,
+  CustomerClaims,
+  StaffClaims,
+  TokenSet,
+  CustomerTier,
+  StaffRole,
+  AuthError,
+  AuthEvent,
+  CUSTOMER_PERMISSIONS,
+  STAFF_PERMISSIONS,
+  isCustomerClaims,
+  isStaffClaims
+} from './interfaces';
+import { AdminPermission } from '../types/common';
+import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
+import { validateJWTToken } from './jwt-utils';
 
 /**
- * DynamoDB client configuration for authentication service
+ * AWS Cognito dual-pool authentication service implementation
+ * Provides separate authentication domains for customers and staff
  */
-const client = new DynamoDBClient({ 
-  region: process.env.AWS_REGION || 'us-east-1',
-  ...(process.env.DYNAMODB_ENDPOINT && {
-    endpoint: process.env.DYNAMODB_ENDPOINT,
-    credentials: {
-      accessKeyId: 'test',
-      secretAccessKey: 'test',
-    },
-  }),
-});
-const docClient = DynamoDBDocumentClient.from(client);
+class CognitoAuthService implements AuthService {
+  private customerCognitoClient: CognitoIdentityProviderClient;
+  private staffCognitoClient: CognitoIdentityProviderClient;
+  private config: ReturnType<typeof getEnvironmentConfig>;
+
+  constructor() {
+    // Validate environment configuration
+    validateEnvironmentConfig();
+    this.config = getEnvironmentConfig();
+
+    // Initialize Cognito clients for both user pools
+    const cognitoConfig = {
+      region: this.config.deployment.region,
+      ...(this.config.deployment.useLocalStack && {
+        endpoint: this.config.cognito.customer.endpoint,
+        credentials: {
+          accessKeyId: 'test',
+          secretAccessKey: 'test',
+        },
+      }),
+    };
+
+    this.customerCognitoClient = new CognitoIdentityProviderClient(cognitoConfig);
+    this.staffCognitoClient = new CognitoIdentityProviderClient(cognitoConfig);
+  }
+
+  /**
+   * Customer authentication methods
+   */
+
+  async customerLogin(email: string, password: string, deviceId?: string): Promise<CustomerAuthResult> {
+    try {
+      const command = new AdminInitiateAuthCommand({
+        UserPoolId: this.config.cognito.customer.poolId,
+        ClientId: this.config.cognito.customer.clientId,
+        AuthFlow: AuthFlowType.ADMIN_NO_SRP_AUTH,
+        AuthParameters: {
+          USERNAME: email,
+          PASSWORD: password,
+        },
+        ...(deviceId && {
+          ContextData: {
+            HttpHeaders: [
+              {
+                headerName: 'X-Device-ID',
+                headerValue: deviceId,
+              },
+            ],
+          },
+        }),
+      });
+
+      const response = await this.customerCognitoClient.send(command);
+
+      // Handle MFA challenge
+      if (response.ChallengeName) {
+        return {
+          success: false,
+          requiresMFA: true,
+          mfaToken: response.Session,
+          error: 'MFA verification required',
+        };
+      }
+
+      // Extract tokens
+      if (!response.AuthenticationResult) {
+        return {
+          success: false,
+          error: 'Authentication failed',
+          errorCode: 'AUTH_FAILED',
+        };
+      }
+
+      const tokens: TokenSet = {
+        accessToken: response.AuthenticationResult.AccessToken!,
+        refreshToken: response.AuthenticationResult.RefreshToken!,
+        idToken: response.AuthenticationResult.IdToken,
+        tokenType: 'Bearer',
+        expiresIn: response.AuthenticationResult.ExpiresIn || 3600,
+      };
+
+      // Get user details and groups
+      const userDetails = await this.getCustomerUserDetails(response.AuthenticationResult.AccessToken!);
+      
+      return {
+        success: true,
+        tokens,
+        customer: userDetails,
+      };
+    } catch (error: any) {
+      console.error('Customer login error:', error);
+      return this.handleCognitoError(error, 'customer');
+    }
+  }
+
+  async customerRegister(userData: CustomerRegistration): Promise<{ success: boolean; message: string; requiresVerification?: boolean }> {
+    try {
+      const command = new SignUpCommand({
+        ClientId: this.config.cognito.customer.clientId,
+        Username: userData.email,
+        Password: userData.password,
+        UserAttributes: [
+          {
+            Name: 'email',
+            Value: userData.email,
+          },
+          {
+            Name: 'name',
+            Value: userData.name,
+          },
+          {
+            Name: 'custom:customer_type',
+            Value: userData.customerType,
+          },
+          ...(userData.phone && [{
+            Name: 'phone_number',
+            Value: userData.phone,
+          }]),
+        ],
+      });
+
+      const response = await this.customerCognitoClient.send(command);
+
+      // Add user to appropriate group based on customer type
+      if (response.UserSub) {
+        await this.addCustomerToGroup(userData.email, userData.customerType);
+      }
+
+      return {
+        success: true,
+        message: 'Registration successful. Please check your email to verify your account.',
+        requiresVerification: !response.UserConfirmed,
+      };
+    } catch (error: any) {
+      console.error('Customer registration error:', error);
+      return {
+        success: false,
+        message: this.getCognitoErrorMessage(error),
+      };
+    }
+  }
+
+  async customerRefreshToken(refreshToken: string): Promise<TokenSet> {
+    try {
+      const command = new AdminInitiateAuthCommand({
+        UserPoolId: this.config.cognito.customer.poolId,
+        ClientId: this.config.cognito.customer.clientId,
+        AuthFlow: AuthFlowType.REFRESH_TOKEN_AUTH,
+        AuthParameters: {
+          REFRESH_TOKEN: refreshToken,
+        },
+      });
+
+      const response = await this.customerCognitoClient.send(command);
+
+      if (!response.AuthenticationResult) {
+        throw new Error('Token refresh failed');
+      }
+
+      return {
+        accessToken: response.AuthenticationResult.AccessToken!,
+        refreshToken: refreshToken, // Refresh token doesn't change
+        idToken: response.AuthenticationResult.IdToken,
+        tokenType: 'Bearer',
+        expiresIn: response.AuthenticationResult.ExpiresIn || 3600,
+      };
+    } catch (error: any) {
+      console.error('Customer token refresh error:', error);
+      throw new Error('Token refresh failed');
+    }
+  }
+
+  async customerForgotPassword(email: string): Promise<{ success: boolean; message: string }> {
+    try {
+      const command = new ForgotPasswordCommand({
+        ClientId: this.config.cognito.customer.clientId,
+        Username: email,
+      });
+
+      await this.customerCognitoClient.send(command);
+
+      return {
+        success: true,
+        message: 'Password reset code sent to your email',
+      };
+    } catch (error: any) {
+      console.error('Customer forgot password error:', error);
+      return {
+        success: false,
+        message: this.getCognitoErrorMessage(error),
+      };
+    }
+  }
+
+  async customerConfirmForgotPassword(email: string, confirmationCode: string, newPassword: string): Promise<{ success: boolean; message: string }> {
+    try {
+      const command = new ConfirmForgotPasswordCommand({
+        ClientId: this.config.cognito.customer.clientId,
+        Username: email,
+        ConfirmationCode: confirmationCode,
+        Password: newPassword,
+      });
+
+      await this.customerCognitoClient.send(command);
+
+      return {
+        success: true,
+        message: 'Password reset successfully',
+      };
+    } catch (error: any) {
+      console.error('Customer confirm forgot password error:', error);
+      return {
+        success: false,
+        message: this.getCognitoErrorMessage(error),
+      };
+    }
+  }
+
+  async customerResendConfirmation(email: string): Promise<{ success: boolean; message: string }> {
+    try {
+      const command = new ResendConfirmationCodeCommand({
+        ClientId: this.config.cognito.customer.clientId,
+        Username: email,
+      });
+
+      await this.customerCognitoClient.send(command);
+
+      return {
+        success: true,
+        message: 'Confirmation code resent to your email',
+      };
+    } catch (error: any) {
+      console.error('Customer resend confirmation error:', error);
+      return {
+        success: false,
+        message: this.getCognitoErrorMessage(error),
+      };
+    }
+  }
+
+  async customerConfirmSignUp(email: string, confirmationCode: string): Promise<{ success: boolean; message: string }> {
+    try {
+      const command = new ConfirmSignUpCommand({
+        ClientId: this.config.cognito.customer.clientId,
+        Username: email,
+        ConfirmationCode: confirmationCode,
+      });
+
+      await this.customerCognitoClient.send(command);
+
+      return {
+        success: true,
+        message: 'Email verified successfully. You can now log in.',
+      };
+    } catch (error: any) {
+      console.error('Customer confirm sign up error:', error);
+      return {
+        success: false,
+        message: this.getCognitoErrorMessage(error),
+      };
+    }
+  }
+
+  /**
+   * Staff authentication methods (placeholder implementations)
+   */
+
+  async staffLogin(email: string, password: string, deviceId?: string): Promise<StaffAuthResult> {
+    // TODO: Implement staff authentication in next task
+    throw new Error('Staff authentication not yet implemented');
+  }
+
+  async staffRefreshToken(refreshToken: string): Promise<TokenSet> {
+    // TODO: Implement staff token refresh in next task
+    throw new Error('Staff token refresh not yet implemented');
+  }
+
+  async staffForgotPassword(email: string): Promise<{ success: boolean; message: string }> {
+    // TODO: Implement staff password reset in next task
+    throw new Error('Staff password reset not yet implemented');
+  }
+
+  async staffConfirmForgotPassword(email: string, confirmationCode: string, newPassword: string): Promise<{ success: boolean; message: string }> {
+    // TODO: Implement staff password reset confirmation in next task
+    throw new Error('Staff password reset confirmation not yet implemented');
+  }
+
+  /**
+   * Token validation methods
+   */
+
+  async validateCustomerToken(token: string): Promise<CustomerClaims> {
+    try {
+      // Validate JWT token using Cognito JWKS
+      const verified = await validateJWTToken(
+        token,
+        this.config.cognito.customer.poolId,
+        this.config.cognito.customer.clientId,
+        this.config.deployment.region,
+        this.config.cognito.customer.endpoint
+      );
+
+      // Extract customer claims
+      const customerClaims: CustomerClaims = {
+        sub: verified.sub,
+        email: verified.email,
+        email_verified: verified.email_verified,
+        name: verified.name,
+        'custom:customer_type': verified['custom:customer_type'] as CustomerTier,
+        'cognito:groups': verified['cognito:groups'] || [],
+        permissions: this.getCustomerPermissions(verified['custom:customer_type'] as CustomerTier),
+        iss: verified.iss,
+        aud: verified.aud,
+        token_use: verified.token_use,
+        iat: verified.iat,
+        exp: verified.exp,
+      };
+
+      return customerClaims;
+    } catch (error: any) {
+      console.error('Customer token validation error:', error);
+      throw new Error('Invalid customer token');
+    }
+  }
+
+  async validateStaffToken(token: string): Promise<StaffClaims> {
+    // TODO: Implement staff token validation in next task
+    throw new Error('Staff token validation not yet implemented');
+  }
+
+  /**
+   * MFA methods (placeholder implementations)
+   */
+
+  async customerSetupMFA(accessToken: string): Promise<{ secretCode: string; qrCodeUrl: string }> {
+    // TODO: Implement customer MFA setup
+    throw new Error('Customer MFA setup not yet implemented');
+  }
+
+  async customerVerifyMFA(accessToken: string, mfaCode: string): Promise<{ success: boolean; message: string }> {
+    // TODO: Implement customer MFA verification
+    throw new Error('Customer MFA verification not yet implemented');
+  }
+
+  async staffSetupMFA(accessToken: string): Promise<{ secretCode: string; qrCodeUrl: string }> {
+    // TODO: Implement staff MFA setup
+    throw new Error('Staff MFA setup not yet implemented');
+  }
+
+  async staffVerifyMFA(accessToken: string, mfaCode: string): Promise<{ success: boolean; message: string }> {
+    // TODO: Implement staff MFA verification
+    throw new Error('Staff MFA verification not yet implemented');
+  }
+
+  /**
+   * Session management methods
+   */
+
+  async logout(accessToken: string, userType: 'customer' | 'staff'): Promise<{ success: boolean; message: string }> {
+    try {
+      const client = userType === 'customer' ? this.customerCognitoClient : this.staffCognitoClient;
+      
+      const command = new GlobalSignOutCommand({
+        AccessToken: accessToken,
+      });
+
+      await client.send(command);
+
+      return {
+        success: true,
+        message: 'Logged out successfully',
+      };
+    } catch (error: any) {
+      console.error('Logout error:', error);
+      return {
+        success: false,
+        message: 'Logout failed',
+      };
+    }
+  }
+
+  async logoutAllDevices(accessToken: string, userType: 'customer' | 'staff'): Promise<{ success: boolean; message: string }> {
+    try {
+      const client = userType === 'customer' ? this.customerCognitoClient : this.staffCognitoClient;
+      const poolId = userType === 'customer' ? this.config.cognito.customer.poolId : this.config.cognito.staff.poolId;
+
+      // Get user details first
+      const getUserCommand = new GetUserCommand({
+        AccessToken: accessToken,
+      });
+      const userResponse = await client.send(getUserCommand);
+
+      // Sign out user from all devices
+      const signOutCommand = new AdminUserGlobalSignOutCommand({
+        UserPoolId: poolId,
+        Username: userResponse.Username!,
+      });
+
+      await client.send(signOutCommand);
+
+      return {
+        success: true,
+        message: 'Logged out from all devices successfully',
+      };
+    } catch (error: any) {
+      console.error('Logout all devices error:', error);
+      return {
+        success: false,
+        message: 'Logout from all devices failed',
+      };
+    }
+  }
+
+  /**
+   * Helper methods
+   */
+
+  private async getCustomerUserDetails(accessToken: string) {
+    try {
+      const command = new GetUserCommand({
+        AccessToken: accessToken,
+      });
+
+      const response = await this.customerCognitoClient.send(command);
+      
+      const getAttributeValue = (name: string) => {
+        const attr = response.UserAttributes?.find(attr => attr.Name === name);
+        return attr?.Value || '';
+      };
+
+      const customerType = getAttributeValue('custom:customer_type') as CustomerTier || CustomerTier.INDIVIDUAL;
+
+      return {
+        id: response.Username!,
+        email: getAttributeValue('email'),
+        name: getAttributeValue('name'),
+        customerType,
+        emailVerified: getAttributeValue('email_verified') === 'true',
+        phoneVerified: getAttributeValue('phone_number_verified') === 'true',
+      };
+    } catch (error: any) {
+      console.error('Error getting customer user details:', error);
+      throw new Error('Failed to get user details');
+    }
+  }
+
+  private async addCustomerToGroup(username: string, customerType: CustomerTier) {
+    try {
+      const groupName = `${customerType}-customers`;
+      
+      const command = new AdminAddUserToGroupCommand({
+        UserPoolId: this.config.cognito.customer.poolId,
+        Username: username,
+        GroupName: groupName,
+      });
+
+      await this.customerCognitoClient.send(command);
+    } catch (error: any) {
+      console.error('Error adding customer to group:', error);
+      // Don't throw error as this is not critical for registration
+    }
+  }
+
+  private getCustomerPermissions(customerType: CustomerTier): string[] {
+    return CUSTOMER_PERMISSIONS[customerType] || CUSTOMER_PERMISSIONS[CustomerTier.INDIVIDUAL];
+  }
+
+  private handleCognitoError(error: any, userType: 'customer' | 'staff'): CustomerAuthResult | StaffAuthResult {
+    const errorCode = error.name || 'UNKNOWN_ERROR';
+    const errorMessage = this.getCognitoErrorMessage(error);
+
+    if (userType === 'customer') {
+      return {
+        success: false,
+        error: errorMessage,
+        errorCode,
+      } as CustomerAuthResult;
+    } else {
+      return {
+        success: false,
+        error: errorMessage,
+        errorCode,
+      } as StaffAuthResult;
+    }
+  }
+
+  private getCognitoErrorMessage(error: any): string {
+    switch (error.name) {
+      case 'NotAuthorizedException':
+        return 'Invalid email or password';
+      case 'UserNotConfirmedException':
+        return 'Please verify your email address before logging in';
+      case 'UserNotFoundException':
+        return 'User not found';
+      case 'InvalidPasswordException':
+        return 'Password does not meet requirements';
+      case 'UsernameExistsException':
+        return 'User with this email already exists';
+      case 'InvalidParameterException':
+        return 'Invalid parameters provided';
+      case 'TooManyRequestsException':
+        return 'Too many requests. Please try again later';
+      case 'LimitExceededException':
+        return 'Request limit exceeded. Please try again later';
+      case 'CodeMismatchException':
+        return 'Invalid verification code';
+      case 'ExpiredCodeException':
+        return 'Verification code has expired';
+      default:
+        return error.message || 'Authentication failed';
+    }
+  }
+
+
+}
 
 /**
- * Environment-based table name configuration with fallback defaults
+ * Global authentication service instance
  */
-const USERS_TABLE = process.env.USERS_TABLE || 'harborlist-users';
-const SESSIONS_TABLE = process.env.SESSIONS_TABLE || 'harborlist-sessions';
-const LOGIN_ATTEMPTS_TABLE = process.env.LOGIN_ATTEMPTS_TABLE || 'harborlist-login-attempts';
-const AUDIT_LOGS_TABLE = process.env.AUDIT_LOGS_TABLE || 'harborlist-audit-logs';
+const authService = new CognitoAuthService();
+
+// Export the class for testing
+export { CognitoAuthService };
 
 /**
- * Main Lambda handler for authentication service endpoints
+ * Main Lambda handler for AWS Cognito dual-pool authentication service
  * 
- * Handles all authentication-related operations including user registration,
- * login, logout, MFA setup/verification, and password reset functionality.
- * Supports both regular user and admin authentication flows.
+ * Handles authentication operations for both customer and staff user pools:
+ * - Customer endpoints: /auth/customer/* (Individual/Dealer/Premium tiers)
+ * - Staff endpoints: /auth/staff/* (Super Admin/Admin/Manager/Team Member roles)
+ * - Token validation and refresh for both user types
+ * - MFA setup and verification
+ * - Password reset functionality
+ * - Session management and logout
  * 
  * Supported endpoints:
- * - POST /login - User authentication
- * - POST /admin/login - Admin authentication with MFA requirement
- * - POST /register - New user registration
- * - POST /refresh - JWT token refresh
- * - POST /logout - Session termination
- * - POST /mfa/setup - MFA configuration
- * - POST /mfa/verify - MFA code verification
- * - POST /password/reset - Password reset request
- * - POST /password/reset/confirm - Password reset confirmation
+ * - POST /auth/customer/login - Customer authentication
+ * - POST /auth/customer/register - Customer registration
+ * - POST /auth/customer/refresh - Customer token refresh
+ * - POST /auth/customer/logout - Customer logout
+ * - POST /auth/customer/forgot-password - Customer password reset
+ * - POST /auth/customer/confirm-forgot-password - Customer password reset confirmation
+ * - POST /auth/customer/confirm-signup - Customer email verification
+ * - POST /auth/customer/resend-confirmation - Resend customer verification code
+ * - POST /auth/staff/login - Staff authentication (existing admin interface)
+ * - POST /auth/staff/refresh - Staff token refresh
+ * - POST /auth/staff/logout - Staff logout
+ * - GET /health - Health check endpoint
  * 
  * @param event - API Gateway proxy event containing request details
  * @returns Promise<APIGatewayProxyResult> - Standardized API response
  * 
- * @throws {Error} When database operations fail or invalid requests are made
+ * @throws {Error} When Cognito operations fail or invalid requests are made
  */
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   const requestId = event.requestContext.requestId;
   const clientInfo = getClientInfo(event);
 
   try {
-    // CORS preflight requests are handled by API Gateway
-
     const path = event.path;
     const method = event.httpMethod;
     const body = JSON.parse(event.body || '{}');
 
-    // Route handling
+    // Health check endpoint
     if (path.endsWith('/health') && method === 'GET') {
       return createResponse(200, { 
         status: 'healthy', 
         timestamp: new Date().toISOString(),
-        service: 'auth-service'
+        service: 'cognito-auth-service',
+        version: '2.0.0',
+        environment: getEnvironmentConfig().deployment.environment,
+        userPools: {
+          customer: !!getEnvironmentConfig().cognito.customer.poolId,
+          staff: !!getEnvironmentConfig().cognito.staff.poolId,
+        }
       });
-    } else if (path.endsWith('/login') && method === 'POST') {
-      return await handleLogin(body, requestId, clientInfo);
-    } else if (path.endsWith('/admin/login') && method === 'POST') {
-      return await handleAdminLogin(body, requestId, clientInfo);
-    } else if (path.includes('/auth/admin/login') && method === 'POST') {
-      return await handleAdminLogin(body, requestId, clientInfo);
+    }
+
+    // Customer authentication endpoints
+    if (path.includes('/auth/customer/login') && method === 'POST') {
+      return await handleCustomerLogin(body, requestId, clientInfo);
+    } else if (path.includes('/auth/customer/register') && method === 'POST') {
+      return await handleCustomerRegister(body, requestId, clientInfo);
+    } else if (path.includes('/auth/customer/refresh') && method === 'POST') {
+      return await handleCustomerRefresh(body, requestId, clientInfo);
+    } else if (path.includes('/auth/customer/logout') && method === 'POST') {
+      return await handleCustomerLogout(event, requestId, clientInfo);
+    } else if (path.includes('/auth/customer/forgot-password') && method === 'POST') {
+      return await handleCustomerForgotPassword(body, requestId, clientInfo);
+    } else if (path.includes('/auth/customer/confirm-forgot-password') && method === 'POST') {
+      return await handleCustomerConfirmForgotPassword(body, requestId, clientInfo);
+    } else if (path.includes('/auth/customer/confirm-signup') && method === 'POST') {
+      return await handleCustomerConfirmSignUp(body, requestId, clientInfo);
+    } else if (path.includes('/auth/customer/resend-confirmation') && method === 'POST') {
+      return await handleCustomerResendConfirmation(body, requestId, clientInfo);
+    }
+
+    // Staff authentication endpoints (placeholder for next task)
+    if (path.includes('/auth/staff/login') && method === 'POST') {
+      return await handleStaffLogin(body, requestId, clientInfo);
+    } else if (path.includes('/auth/staff/refresh') && method === 'POST') {
+      return await handleStaffRefresh(body, requestId, clientInfo);
+    } else if (path.includes('/auth/staff/logout') && method === 'POST') {
+      return await handleStaffLogout(event, requestId, clientInfo);
+    }
+
+    // Backward compatibility for existing endpoints
+    if (path.endsWith('/login') && method === 'POST') {
+      return await handleCustomerLogin(body, requestId, clientInfo);
     } else if (path.endsWith('/register') && method === 'POST') {
-      return await handleRegister(body, requestId, clientInfo);
-    } else if (path.endsWith('/refresh') && method === 'POST') {
-      return await handleRefreshToken(body, requestId, clientInfo);
-    } else if (path.endsWith('/logout') && method === 'POST') {
-      return await handleLogout(event, requestId, clientInfo);
-    } else if (path.endsWith('/mfa/setup') && method === 'POST') {
-      return await handleMFASetup(event, requestId, clientInfo);
-    } else if (path.endsWith('/mfa/verify') && method === 'POST') {
-      return await handleMFAVerify(body, requestId, clientInfo);
-    } else if (path.endsWith('/password/reset') && method === 'POST') {
-      return await handlePasswordResetRequest(body, requestId, clientInfo);
-    } else if (path.endsWith('/password/reset/confirm') && method === 'POST') {
-      return await handlePasswordResetConfirm(body, requestId, clientInfo);
-    } else if (path.endsWith('/verify-email') && method === 'POST') {
-      return await handleEmailVerification(body, requestId, clientInfo);
-    } else if (path.endsWith('/resend-verification') && method === 'POST') {
-      return await handleResendVerification(body, requestId, clientInfo);
+      return await handleCustomerRegister(body, requestId, clientInfo);
+    } else if (path.endsWith('/admin/login') && method === 'POST') {
+      return await handleStaffLogin(body, requestId, clientInfo);
     }
 
     return createErrorResponse(404, 'NOT_FOUND', 'Endpoint not found', requestId);
   } catch (error) {
-    console.error('Auth error:', error);
+    console.error('Auth service error:', error);
     await logAuditEvent('AUTH_ERROR', 'system', { error: error instanceof Error ? error.message : String(error) }, clientInfo, requestId);
     return createErrorResponse(500, 'INTERNAL_ERROR', 'Internal server error', requestId);
   }
 };
 
 /**
- * Handles user login authentication with comprehensive security checks
+ * Utility function to extract client information from API Gateway event
+ */
+function getClientInfo(event: APIGatewayProxyEvent): { ipAddress: string; userAgent: string } {
+  return {
+    ipAddress: event.requestContext.identity.sourceIp || 'unknown',
+    userAgent: event.headers['User-Agent'] || 'unknown',
+  };
+}
+
+/**
+ * Utility function to log audit events
+ */
+async function logAuditEvent(
+  eventType: string,
+  category: string,
+  data: any,
+  clientInfo: { ipAddress: string; userAgent: string },
+  requestId: string,
+  userId?: string
+): Promise<void> {
+  try {
+    const auditEvent: AuthEvent = {
+      eventType: eventType as any,
+      userType: category.includes('customer') ? 'customer' : 'staff',
+      userId,
+      ipAddress: clientInfo.ipAddress,
+      userAgent: clientInfo.userAgent,
+      timestamp: new Date().toISOString(),
+      success: !eventType.includes('ERROR') && !eventType.includes('FAILED'),
+      additionalData: { ...data, requestId },
+    };
+
+    // TODO: Implement CloudWatch logging for audit events
+    console.log('Audit Event:', JSON.stringify(auditEvent));
+  } catch (error) {
+    console.error('Failed to log audit event:', error);
+  }
+}
+
+/**
+ * Customer authentication handler functions
+ */
+
+/**
+ * Handles customer login authentication via Customer User Pool
  * 
- * Performs multi-layered authentication including:
- * - Email format validation
- * - Password verification with bcrypt
- * - Account status and lockout checks
- * - MFA requirement detection
- * - Session creation and token generation
- * - Audit logging for security compliance
- * 
- * Security Features:
- * - Account lockout after failed attempts
- * - Login attempt tracking and logging
- * - Device fingerprinting for session management
- * - IP address and user agent tracking
+ * Authenticates customers (Individual/Dealer/Premium) using AWS Cognito
+ * with support for MFA challenges and tier-based permissions.
  * 
  * @param body - Login request containing email, password, and optional deviceId
  * @param requestId - Unique request identifier for tracking
  * @param clientInfo - Client metadata (IP address, user agent)
  * @returns Promise<APIGatewayProxyResult> - Authentication result with tokens or MFA requirement
- * 
- * @throws {Error} When database operations fail or authentication errors occur
  */
-const handleLogin = async (
+const handleCustomerLogin = async (
   body: { email: string; password: string; deviceId?: string },
   requestId: string,
   clientInfo: { ipAddress: string; userAgent: string }
 ): Promise<APIGatewayProxyResult> => {
-  const { email, password, deviceId = generateDeviceId() } = body;
-
-  // Log login attempt
-  await logLoginAttempt(email, clientInfo, false);
+  const { email, password, deviceId } = body;
 
   if (!email || !password) {
     return createErrorResponse(400, 'MISSING_FIELDS', 'Email and password are required', requestId);
@@ -195,223 +777,110 @@ const handleLogin = async (
   }
 
   try {
-    // Get user by email
-    const user = await getUserByEmail(email);
-    if (!user) {
-      return createErrorResponse(401, 'INVALID_CREDENTIALS', 'Invalid email or password', requestId);
-    }
+    // Log login attempt
+    await logAuditEvent('CUSTOMER_LOGIN_ATTEMPT', 'customer', { email }, clientInfo, requestId);
 
-    // Check if account is locked
-    if (isAccountLocked(user)) {
-      return createErrorResponse(423, 'ACCOUNT_LOCKED', 'Account is temporarily locked due to too many failed login attempts', requestId);
-    }
+    const result = await authService.customerLogin(email, password, deviceId);
 
-    // Check if account is active
-    if (user.status !== UserStatus.ACTIVE) {
-      if (user.status === UserStatus.PENDING_VERIFICATION) {
-        return createErrorResponse(403, 'EMAIL_NOT_VERIFIED', 'Please verify your email address before logging in. Check your email for verification instructions.', requestId);
-      }
-      return createErrorResponse(403, 'ACCOUNT_INACTIVE', 'Account is not active', requestId);
-    }
+    if (result.success) {
+      // Log successful login
+      await logAuditEvent('CUSTOMER_LOGIN_SUCCESS', 'customer', { 
+        userId: result.customer?.id,
+        customerType: result.customer?.customerType 
+      }, clientInfo, requestId, result.customer?.id);
 
-    // Check if email is verified (skip for admin users)
-    if (!user.emailVerified && user.role === UserRole.USER) {
-      return createErrorResponse(403, 'EMAIL_NOT_VERIFIED', 'Please verify your email address before logging in. Check your email for verification instructions.', requestId);
-    }
-
-    // Verify password
-    const passwordValid = await verifyPassword(password, user.password || '');
-    if (!passwordValid) {
-      await handleFailedLogin(user, clientInfo);
-      return createErrorResponse(401, 'INVALID_CREDENTIALS', 'Invalid email or password', requestId);
-    }
-
-    // Reset login attempts on successful password verification
-    await resetLoginAttempts(user.id);
-
-    // Check if MFA is enabled
-    if (user.mfaEnabled) {
-      const mfaToken = createMFAToken(user.id);
       return createResponse(200, {
-        requiresMFA: true,
-        mfaToken,
-        message: 'MFA verification required'
+        success: true,
+        tokens: result.tokens,
+        customer: result.customer,
+        message: 'Login successful'
       });
+    } else {
+      // Log failed login
+      await logAuditEvent('CUSTOMER_LOGIN_FAILED', 'customer', { 
+        email,
+        error: result.error,
+        errorCode: result.errorCode 
+      }, clientInfo, requestId);
+
+      if (result.requiresMFA) {
+        return createResponse(200, {
+          requiresMFA: true,
+          mfaToken: result.mfaToken,
+          message: result.error || 'MFA verification required'
+        });
+      }
+
+      return createErrorResponse(401, result.errorCode || 'AUTH_FAILED', result.error || 'Authentication failed', requestId);
     }
-
-    // Create session and tokens
-    const loginResult = await createUserSession(user, deviceId, clientInfo);
-    
-    // Log successful login
-    await logLoginAttempt(email, clientInfo, true);
-    await logAuditEvent('USER_LOGIN', 'user', { userId: user.id }, clientInfo, requestId, user.id);
-
-    return createResponse(200, loginResult);
   } catch (error) {
-    console.error('Login error:', error);
+    console.error('Customer login error:', error);
+    await logAuditEvent('CUSTOMER_LOGIN_ERROR', 'customer', { email, error: error instanceof Error ? error.message : String(error) }, clientInfo, requestId);
     return createErrorResponse(500, 'INTERNAL_ERROR', 'Login failed', requestId);
   }
 };
 
-const handleRegister = async (
-  body: { name: string; email: string; password: string; deviceId?: string },
+/**
+ * Handles customer registration via Customer User Pool
+ * 
+ * Registers new customers with tier assignment and email verification.
+ * 
+ * @param body - Registration request containing customer details
+ * @param requestId - Unique request identifier for tracking
+ * @param clientInfo - Client metadata (IP address, user agent)
+ * @returns Promise<APIGatewayProxyResult> - Registration result
+ */
+const handleCustomerRegister = async (
+  body: CustomerRegistration,
   requestId: string,
   clientInfo: { ipAddress: string; userAgent: string }
 ): Promise<APIGatewayProxyResult> => {
-  const { name, email, password, deviceId = generateDeviceId() } = body;
+  const { email, password, name, phone, customerType, agreeToTerms } = body;
 
-  if (!name || !email || !password) {
-    return createErrorResponse(400, 'MISSING_FIELDS', 'Name, email, and password are required', requestId);
+  if (!email || !password || !name || !customerType || !agreeToTerms) {
+    return createErrorResponse(400, 'MISSING_FIELDS', 'Email, password, name, customer type, and terms agreement are required', requestId);
   }
 
-  // Validate email format
   if (!validateEmail(email)) {
     return createErrorResponse(400, 'INVALID_EMAIL', 'Invalid email format', requestId);
   }
 
-  // Validate password strength
-  const passwordValidation = validatePassword(password);
-  if (!passwordValidation.valid) {
-    return createErrorResponse(400, 'WEAK_PASSWORD', passwordValidation.errors.join(', '), requestId);
+  if (!Object.values(CustomerTier).includes(customerType)) {
+    return createErrorResponse(400, 'INVALID_CUSTOMER_TYPE', 'Invalid customer type', requestId);
   }
 
   try {
-    // Check if user already exists
-    const existingUser = await getUserByEmail(email);
-    if (existingUser) {
-      return createErrorResponse(400, 'USER_EXISTS', 'User with this email already exists', requestId);
+    // Log registration attempt
+    await logAuditEvent('CUSTOMER_REGISTER_ATTEMPT', 'customer', { email, customerType }, clientInfo, requestId);
+
+    const result = await authService.customerRegister(body);
+
+    if (result.success) {
+      // Log successful registration
+      await logAuditEvent('CUSTOMER_REGISTER_SUCCESS', 'customer', { email, customerType }, clientInfo, requestId);
+
+      return createResponse(201, {
+        success: true,
+        message: result.message,
+        requiresVerification: result.requiresVerification
+      });
+    } else {
+      // Log failed registration
+      await logAuditEvent('CUSTOMER_REGISTER_FAILED', 'customer', { email, error: result.message }, clientInfo, requestId);
+
+      return createErrorResponse(400, 'REGISTRATION_FAILED', result.message, requestId);
     }
-
-    // Hash password
-    const hashedPassword = await hashPassword(password);
-    const userId = crypto.randomUUID();
-    const now = new Date().toISOString();
-
-    // Generate email verification token
-    const emailVerificationToken = generateSecureToken();
-    const emailVerificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(); // 24 hours
-
-    // Create user
-    const user: User = {
-      id: userId,
-      email,
-      name,
-      password: hashedPassword,
-      role: UserRole.USER,
-      status: UserStatus.PENDING_VERIFICATION,
-      emailVerified: false,
-      phoneVerified: false,
-      mfaEnabled: false,
-      loginAttempts: 0,
-      emailVerificationToken,
-      emailVerificationExpires,
-      createdAt: now,
-      updatedAt: now
-    };
-
-    // Save user to database
-    await docClient.send(new PutCommand({
-      TableName: USERS_TABLE,
-      Item: user
-    }));
-
-    // Log registration
-    await logAuditEvent('USER_REGISTERED', 'user', { userId, email }, clientInfo, requestId, userId);
-
-    // Send verification email
-    await emailService.sendVerificationEmail(email, name, emailVerificationToken);
-
-    return createResponse(201, {
-      message: 'Registration successful. Please check your email to verify your account before logging in.',
-      user: {
-        id: userId,
-        name,
-        email,
-        status: user.status,
-        emailVerified: user.emailVerified
-      },
-      requiresVerification: true
-    });
   } catch (error) {
-    console.error('Registration error:', error);
+    console.error('Customer registration error:', error);
+    await logAuditEvent('CUSTOMER_REGISTER_ERROR', 'customer', { email, error: error instanceof Error ? error.message : String(error) }, clientInfo, requestId);
     return createErrorResponse(500, 'INTERNAL_ERROR', 'Registration failed', requestId);
   }
 };
-const handleAdminLogin = async (
-  body: { email: string; password: string; mfaCode?: string; deviceId?: string },
-  requestId: string,
-  clientInfo: { ipAddress: string; userAgent: string }
-): Promise<APIGatewayProxyResult> => {
-  const { email, password, mfaCode, deviceId = generateDeviceId() } = body;
 
-  // Log admin login attempt
-  await logLoginAttempt(email, clientInfo, false, 'admin');
-
-  if (!email || !password) {
-    return createErrorResponse(400, 'MISSING_FIELDS', 'Email and password are required', requestId);
-  }
-
-  try {
-    // Get user by email
-    const user = await getUserByEmail(email);
-    if (!user || user.role === UserRole.USER) {
-      return createErrorResponse(401, 'INVALID_CREDENTIALS', 'Invalid admin credentials', requestId);
-    }
-
-    // Check if account is locked
-    if (isAccountLocked(user)) {
-      return createErrorResponse(423, 'ACCOUNT_LOCKED', 'Account is temporarily locked', requestId);
-    }
-
-    // Check if account is active
-    if (user.status !== UserStatus.ACTIVE) {
-      return createErrorResponse(403, 'ACCOUNT_INACTIVE', 'Admin account is not active', requestId);
-    }
-
-    // Verify password
-    const passwordValid = await verifyPassword(password, user.password || '');
-    if (!passwordValid) {
-      await handleFailedLogin(user, clientInfo);
-      return createErrorResponse(401, 'INVALID_CREDENTIALS', 'Invalid admin credentials', requestId);
-    }
-
-    // Handle MFA for admin accounts (optional)
-    if (user.mfaEnabled && mfaCode) {
-      // MFA is enabled and code provided - verify it
-      const mfaValid = verifyMFAToken(mfaCode, user.mfaSecret || '');
-      if (!mfaValid) {
-        await handleFailedLogin(user, clientInfo);
-        return createErrorResponse(401, 'INVALID_MFA', 'Invalid MFA code', requestId);
-      }
-    } else if (user.mfaEnabled && !mfaCode) {
-      // MFA is enabled but no code provided - request MFA
-      const mfaToken = createMFAToken(user.id);
-      return createResponse(200, {
-        requiresMFA: true,
-        mfaToken,
-        message: 'MFA verification required'
-      });
-    }
-    // If MFA is not enabled or not provided, proceed without MFA check
-
-    // Reset login attempts on successful authentication
-    await resetLoginAttempts(user.id);
-
-    // Create admin session with shorter timeout
-    const loginResult = await createUserSession(user, deviceId, clientInfo, true);
-    
-    // Log successful admin login
-    await logLoginAttempt(email, clientInfo, true, 'admin');
-    await logAuditEvent('ADMIN_LOGIN', 'admin', { userId: user.id, role: user.role }, clientInfo, requestId, user.id);
-
-    return createResponse(200, loginResult);
-  } catch (error) {
-    console.error('Admin login error:', error);
-    return createErrorResponse(500, 'INTERNAL_ERROR', 'Admin login failed', requestId);
-  }
-};
-
-const handleRefreshToken = async (
+/**
+ * Handles customer token refresh
+ */
+const handleCustomerRefresh = async (
   body: { refreshToken: string },
   requestId: string,
   clientInfo: { ipAddress: string; userAgent: string }
@@ -423,41 +892,27 @@ const handleRefreshToken = async (
   }
 
   try {
-    // Verify refresh token
-    const decoded = verifyToken(refreshToken, AUTH_CONFIG.JWT_REFRESH_SECRET);
-    
-    // Get user and session
-    const user = await getUserById(decoded.sub);
-    if (!user || user.status !== UserStatus.ACTIVE) {
-      return createErrorResponse(401, 'INVALID_TOKEN', 'Invalid refresh token', requestId);
-    }
-
-    const session = await getSession(decoded.sessionId);
-    if (!session || !session.isActive) {
-      return createErrorResponse(401, 'INVALID_SESSION', 'Session expired or invalid', requestId);
-    }
-
-    // Update session activity
-    await updateSessionActivity(session.sessionId);
-
-    // Create new access token
-    const accessToken = createAccessToken(user, session.sessionId, session.deviceId);
+    const tokens = await authService.customerRefreshToken(refreshToken);
 
     // Log token refresh
-    await logAuditEvent('TOKEN_REFRESH', 'auth', { userId: user.id }, clientInfo, requestId, user.id);
+    await logAuditEvent('CUSTOMER_TOKEN_REFRESH', 'customer', {}, clientInfo, requestId);
 
     return createResponse(200, {
-      accessToken,
-      tokenType: 'Bearer',
-      expiresIn: AUTH_CONFIG.ACCESS_TOKEN_EXPIRY_SECONDS,
+      success: true,
+      tokens,
+      message: 'Token refreshed successfully'
     });
   } catch (error) {
-    console.error('Token refresh error:', error);
-    return createErrorResponse(401, 'INVALID_TOKEN', 'Invalid refresh token', requestId);
+    console.error('Customer token refresh error:', error);
+    await logAuditEvent('CUSTOMER_TOKEN_REFRESH_FAILED', 'customer', { error: error instanceof Error ? error.message : String(error) }, clientInfo, requestId);
+    return createErrorResponse(401, 'TOKEN_REFRESH_FAILED', 'Token refresh failed', requestId);
   }
 };
 
-const handleLogout = async (
+/**
+ * Handles customer logout
+ */
+const handleCustomerLogout = async (
   event: APIGatewayProxyEvent,
   requestId: string,
   clientInfo: { ipAddress: string; userAgent: string }
@@ -468,115 +923,24 @@ const handleLogout = async (
       return createErrorResponse(400, 'MISSING_TOKEN', 'Authorization token required', requestId);
     }
 
-    const decoded = verifyToken(token);
-    
-    // Invalidate session
-    await invalidateSession(decoded.sessionId);
+    const result = await authService.logout(token, 'customer');
 
-    // Log logout
-    await logAuditEvent('USER_LOGOUT', 'auth', { userId: decoded.sub }, clientInfo, requestId, decoded.sub);
-
-    return createResponse(200, { message: 'Logged out successfully' });
+    if (result.success) {
+      await logAuditEvent('CUSTOMER_LOGOUT', 'customer', {}, clientInfo, requestId);
+      return createResponse(200, { success: true, message: result.message });
+    } else {
+      return createErrorResponse(500, 'LOGOUT_FAILED', result.message, requestId);
+    }
   } catch (error) {
-    console.error('Logout error:', error);
+    console.error('Customer logout error:', error);
     return createErrorResponse(500, 'INTERNAL_ERROR', 'Logout failed', requestId);
   }
 };
 
-const handleMFASetup = async (
-  event: APIGatewayProxyEvent,
-  requestId: string,
-  clientInfo: { ipAddress: string; userAgent: string }
-): Promise<APIGatewayProxyResult> => {
-  try {
-    const token = event.headers.Authorization?.replace('Bearer ', '');
-    if (!token) {
-      return createErrorResponse(401, 'UNAUTHORIZED', 'Authorization required', requestId);
-    }
-
-    const decoded = verifyToken(token);
-    const user = await getUserById(decoded.sub);
-    
-    if (!user) {
-      return createErrorResponse(404, 'USER_NOT_FOUND', 'User not found', requestId);
-    }
-
-    // Generate MFA secret
-    const { secret, qrCode } = generateMFASecret();
-
-    // Store secret temporarily (user needs to verify before enabling)
-    await updateUser(user.id, { mfaSecret: secret });
-
-    // Log MFA setup attempt
-    await logAuditEvent('MFA_SETUP_INITIATED', 'security', { userId: user.id }, clientInfo, requestId, user.id);
-
-    return createResponse(200, {
-      secret,
-      qrCode,
-      message: 'Scan QR code with your authenticator app and verify to enable MFA'
-    });
-  } catch (error) {
-    console.error('MFA setup error:', error);
-    return createErrorResponse(500, 'INTERNAL_ERROR', 'MFA setup failed', requestId);
-  }
-};
-
-const handleMFAVerify = async (
-  body: { mfaToken?: string; code: string },
-  requestId: string,
-  clientInfo: { ipAddress: string; userAgent: string }
-): Promise<APIGatewayProxyResult> => {
-  const { mfaToken, code } = body;
-
-  if (!code) {
-    return createErrorResponse(400, 'MISSING_FIELDS', 'MFA code is required', requestId);
-  }
-
-  try {
-    let userId: string;
-
-    if (mfaToken) {
-      // Verify MFA token for login flow
-      const decoded = verifyToken(mfaToken);
-      userId = decoded.sub;
-    } else {
-      return createErrorResponse(400, 'MISSING_TOKEN', 'MFA token is required', requestId);
-    }
-
-    const user = await getUserById(userId);
-    if (!user || !user.mfaSecret) {
-      return createErrorResponse(404, 'USER_NOT_FOUND', 'User not found or MFA not set up', requestId);
-    }
-
-    // Verify MFA code
-    const isValid = verifyMFAToken(code, user.mfaSecret);
-    if (!isValid) {
-      return createErrorResponse(401, 'INVALID_MFA', 'Invalid MFA code', requestId);
-    }
-
-    // If this is MFA setup verification, enable MFA
-    if (!user.mfaEnabled) {
-      await updateUser(userId, { mfaEnabled: true });
-      await logAuditEvent('MFA_ENABLED', 'security', { userId }, clientInfo, requestId, userId);
-      
-      return createResponse(200, { message: 'MFA enabled successfully' });
-    }
-
-    // For login flow, create session
-    const deviceId = generateDeviceId();
-    const loginResult = await createUserSession(user, deviceId, clientInfo);
-
-    // Log successful MFA verification
-    await logAuditEvent('MFA_VERIFIED', 'security', { userId }, clientInfo, requestId, userId);
-
-    return createResponse(200, loginResult);
-  } catch (error) {
-    console.error('MFA verification error:', error);
-    return createErrorResponse(500, 'INTERNAL_ERROR', 'MFA verification failed', requestId);
-  }
-};
-
-const handlePasswordResetRequest = async (
+/**
+ * Handles customer forgot password
+ */
+const handleCustomerForgotPassword = async (
   body: { email: string },
   requestId: string,
   clientInfo: { ipAddress: string; userAgent: string }
@@ -588,154 +952,99 @@ const handlePasswordResetRequest = async (
   }
 
   try {
-    const user = await getUserByEmail(email);
-    if (!user) {
-      // Don't reveal if user exists or not
-      return createResponse(200, { message: 'If the email exists, a reset link has been sent' });
-    }
+    const result = await authService.customerForgotPassword(email);
 
-    // Generate reset token
-    const resetToken = generateSecureToken();
-    const resetExpires = new Date(Date.now() + 60 * 60 * 1000).toISOString(); // 1 hour
+    // Log password reset request (don't log whether user exists)
+    await logAuditEvent('CUSTOMER_PASSWORD_RESET_REQUEST', 'customer', { email }, clientInfo, requestId);
 
-    // Store reset token
-    await updateUser(user.id, {
-      passwordResetToken: resetToken,
-      passwordResetExpires: resetExpires
+    return createResponse(200, {
+      success: result.success,
+      message: result.message
     });
-
-    // Log password reset request
-    await logAuditEvent('PASSWORD_RESET_REQUESTED', 'security', { userId: user.id }, clientInfo, requestId, user.id);
-
-    // TODO: Send email with reset link
-    // await sendPasswordResetEmail(user.email, resetToken);
-
-    return createResponse(200, { message: 'If the email exists, a reset link has been sent' });
   } catch (error) {
-    console.error('Password reset request error:', error);
+    console.error('Customer forgot password error:', error);
     return createErrorResponse(500, 'INTERNAL_ERROR', 'Password reset request failed', requestId);
   }
 };
 
-const handlePasswordResetConfirm = async (
-  body: { token: string; newPassword: string },
+/**
+ * Handles customer forgot password confirmation
+ */
+const handleCustomerConfirmForgotPassword = async (
+  body: { email: string; confirmationCode: string; newPassword: string },
   requestId: string,
   clientInfo: { ipAddress: string; userAgent: string }
 ): Promise<APIGatewayProxyResult> => {
-  const { token, newPassword } = body;
+  const { email, confirmationCode, newPassword } = body;
 
-  if (!token || !newPassword) {
-    return createErrorResponse(400, 'MISSING_FIELDS', 'Token and new password are required', requestId);
+  if (!email || !confirmationCode || !newPassword) {
+    return createErrorResponse(400, 'MISSING_FIELDS', 'Email, confirmation code, and new password are required', requestId);
   }
 
-  // Validate password strength
-  const passwordValidation = validatePassword(newPassword);
-  if (!passwordValidation.valid) {
-    return createErrorResponse(400, 'WEAK_PASSWORD', passwordValidation.errors.join(', '), requestId);
+  if (!validateEmail(email)) {
+    return createErrorResponse(400, 'INVALID_EMAIL', 'Valid email is required', requestId);
   }
 
   try {
-    // Find user by reset token
-    const user = await getUserByResetToken(token);
-    if (!user || !user.passwordResetExpires) {
-      return createErrorResponse(400, 'INVALID_TOKEN', 'Invalid or expired reset token', requestId);
+    const result = await authService.customerConfirmForgotPassword(email, confirmationCode, newPassword);
+
+    if (result.success) {
+      await logAuditEvent('CUSTOMER_PASSWORD_RESET_SUCCESS', 'customer', { email }, clientInfo, requestId);
+    } else {
+      await logAuditEvent('CUSTOMER_PASSWORD_RESET_FAILED', 'customer', { email, error: result.message }, clientInfo, requestId);
     }
 
-    // Check if token is expired
-    if (new Date(user.passwordResetExpires) < new Date()) {
-      return createErrorResponse(400, 'EXPIRED_TOKEN', 'Reset token has expired', requestId);
-    }
-
-    // Hash new password
-    const hashedPassword = await hashPassword(newPassword);
-
-    // Update user password and clear reset token
-    await updateUser(user.id, {
-      password: hashedPassword,
-      passwordResetToken: undefined,
-      passwordResetExpires: undefined,
-      loginAttempts: 0,
-      lockedUntil: undefined
+    return createResponse(200, {
+      success: result.success,
+      message: result.message
     });
-
-    // Invalidate all existing sessions
-    await invalidateAllUserSessions(user.id);
-
-    // Log password reset
-    await logAuditEvent('PASSWORD_RESET_COMPLETED', 'security', { userId: user.id }, clientInfo, requestId, user.id);
-
-    return createResponse(200, { message: 'Password reset successfully' });
   } catch (error) {
-    console.error('Password reset confirm error:', error);
-    return createErrorResponse(500, 'INTERNAL_ERROR', 'Password reset failed', requestId);
+    console.error('Customer confirm forgot password error:', error);
+    return createErrorResponse(500, 'INTERNAL_ERROR', 'Password reset confirmation failed', requestId);
   }
 };
 
-const handleEmailVerification = async (
-  body: { token: string },
+/**
+ * Handles customer email verification
+ */
+const handleCustomerConfirmSignUp = async (
+  body: { email: string; confirmationCode: string },
   requestId: string,
   clientInfo: { ipAddress: string; userAgent: string }
 ): Promise<APIGatewayProxyResult> => {
-  const { token } = body;
+  const { email, confirmationCode } = body;
 
-  if (!token) {
-    return createErrorResponse(400, 'MISSING_TOKEN', 'Verification token is required', requestId);
+  if (!email || !confirmationCode) {
+    return createErrorResponse(400, 'MISSING_FIELDS', 'Email and confirmation code are required', requestId);
+  }
+
+  if (!validateEmail(email)) {
+    return createErrorResponse(400, 'INVALID_EMAIL', 'Valid email is required', requestId);
   }
 
   try {
-    // Find user with this verification token
-    const result = await docClient.send(new ScanCommand({
-      TableName: USERS_TABLE,
-      FilterExpression: 'emailVerificationToken = :token AND emailVerificationExpires > :now',
-      ExpressionAttributeValues: {
-        ':token': token,
-        ':now': new Date().toISOString()
-      }
-    }));
+    const result = await authService.customerConfirmSignUp(email, confirmationCode);
 
-    if (!result.Items || result.Items.length === 0) {
-      return createErrorResponse(400, 'INVALID_TOKEN', 'Invalid or expired verification token', requestId);
+    if (result.success) {
+      await logAuditEvent('CUSTOMER_EMAIL_VERIFIED', 'customer', { email }, clientInfo, requestId);
+    } else {
+      await logAuditEvent('CUSTOMER_EMAIL_VERIFICATION_FAILED', 'customer', { email, error: result.message }, clientInfo, requestId);
     }
 
-    const user = result.Items[0] as User;
-
-    // Update user to verified status
-    await docClient.send(new UpdateCommand({
-      TableName: USERS_TABLE,
-      Key: { id: user.id },
-      UpdateExpression: 'SET emailVerified = :verified, #status = :status, emailVerificationToken = :nullToken, emailVerificationExpires = :nullExpires, updatedAt = :updatedAt',
-      ExpressionAttributeNames: {
-        '#status': 'status'
-      },
-      ExpressionAttributeValues: {
-        ':verified': true,
-        ':status': UserStatus.ACTIVE,
-        ':nullToken': null,
-        ':nullExpires': null,
-        ':updatedAt': new Date().toISOString()
-      }
-    }));
-
-    // Log verification
-    await logAuditEvent('EMAIL_VERIFIED', 'user', { userId: user.id, email: user.email }, clientInfo, requestId, user.id);
-
     return createResponse(200, {
-      message: 'Email verified successfully. You can now log in to your account.',
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        status: UserStatus.ACTIVE,
-        emailVerified: true
-      }
+      success: result.success,
+      message: result.message
     });
   } catch (error) {
-    console.error('Email verification error:', error);
+    console.error('Customer confirm sign up error:', error);
     return createErrorResponse(500, 'INTERNAL_ERROR', 'Email verification failed', requestId);
   }
 };
 
-const handleResendVerification = async (
+/**
+ * Handles customer resend confirmation code
+ */
+const handleCustomerResendConfirmation = async (
   body: { email: string },
   requestId: string,
   clientInfo: { ipAddress: string; userAgent: string }
@@ -747,93 +1056,73 @@ const handleResendVerification = async (
   }
 
   try {
-    const user = await getUserByEmail(email);
-    if (!user) {
-      // Don't reveal if user exists or not
-      return createResponse(200, { message: 'If the email exists and is unverified, a new verification email has been sent' });
-    }
+    const result = await authService.customerResendConfirmation(email);
 
-    if (user.emailVerified) {
-      return createErrorResponse(400, 'ALREADY_VERIFIED', 'Email is already verified', requestId);
-    }
-
-    // Generate new verification token
-    const emailVerificationToken = generateSecureToken();
-    const emailVerificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(); // 24 hours
-
-    // Update user with new token
-    await docClient.send(new UpdateCommand({
-      TableName: USERS_TABLE,
-      Key: { id: user.id },
-      UpdateExpression: 'SET emailVerificationToken = :token, emailVerificationExpires = :expires, updatedAt = :updatedAt',
-      ExpressionAttributeValues: {
-        ':token': emailVerificationToken,
-        ':expires': emailVerificationExpires,
-        ':updatedAt': new Date().toISOString()
-      }
-    }));
-
-        // Send verification email
-    await emailService.sendVerificationEmail(user.email, user.name, emailVerificationToken);
-
-    // Log resend verification
-    await logAuditEvent('VERIFICATION_RESENT', 'user', { userId: user.id, email: user.email }, clientInfo, requestId, user.id);
+    // Log resend confirmation attempt
+    await logAuditEvent('CUSTOMER_RESEND_CONFIRMATION', 'customer', { email }, clientInfo, requestId);
 
     return createResponse(200, {
-      message: 'Verification email sent. Please check your email and follow the instructions.'
+      success: result.success,
+      message: result.message
     });
   } catch (error) {
-    console.error('Resend verification error:', error);
-    return createErrorResponse(500, 'INTERNAL_ERROR', 'Failed to resend verification email', requestId);
+    console.error('Customer resend confirmation error:', error);
+    return createErrorResponse(500, 'INTERNAL_ERROR', 'Resend confirmation failed', requestId);
   }
 };
 
-// Utility Functions
+/**
+ * Staff authentication handler functions (placeholder implementations)
+ */
 
-async function getUserByEmail(email: string): Promise<User | null> {
-  try {
-    // Use Scan for local development since GSI may not exist
-    const result = await docClient.send(new QueryCommand({
-      TableName: USERS_TABLE,
-      IndexName: 'email-index',
-      KeyConditionExpression: 'email = :email',
-      ExpressionAttributeValues: {
-        ':email': email
-      }
-    }));
+/**
+ * Handles staff login authentication via Staff User Pool
+ * TODO: Implement in next task
+ */
+const handleStaffLogin = async (
+  body: { email: string; password: string; mfaCode?: string; deviceId?: string },
+  requestId: string,
+  clientInfo: { ipAddress: string; userAgent: string }
+): Promise<APIGatewayProxyResult> => {
+  return createErrorResponse(501, 'NOT_IMPLEMENTED', 'Staff authentication not yet implemented', requestId);
+};
 
-    return result.Items && result.Items.length > 0 ? result.Items[0] as User : null;
-  } catch (error) {
-    console.error('Error getting user by email with GSI, falling back to scan:', error);
-    
-    // Fallback to scan for local development
-    try {
-      const scanResult = await docClient.send(new ScanCommand({
-        TableName: USERS_TABLE,
-        FilterExpression: 'email = :email',
-        ExpressionAttributeValues: {
-          ':email': email
-        }
-      }));
+/**
+ * Handles staff token refresh
+ * TODO: Implement in next task
+ */
+const handleStaffRefresh = async (
+  body: { refreshToken: string },
+  requestId: string,
+  clientInfo: { ipAddress: string; userAgent: string }
+): Promise<APIGatewayProxyResult> => {
+  return createErrorResponse(501, 'NOT_IMPLEMENTED', 'Staff token refresh not yet implemented', requestId);
+};
 
-      return scanResult.Items && scanResult.Items.length > 0 ? scanResult.Items[0] as User : null;
-    } catch (scanError) {
-      console.error('Error scanning for user by email:', scanError);
-      return null;
-    }
-  }
+/**
+ * Handles staff logout
+ * TODO: Implement in next task
+ */
+const handleStaffLogout = async (
+  event: APIGatewayProxyEvent,
+  requestId: string,
+  clientInfo: { ipAddress: string; userAgent: string }
+): Promise<APIGatewayProxyResult> => {
+  return createErrorResponse(501, 'NOT_IMPLEMENTED', 'Staff logout not yet implemented', requestId);
+};
+/**
+ * Utility functions
+ */
+
+/**
+ * Validates email format using regex
+ */
+function validateEmail(email: string): boolean {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email);
 }
 
-async function getUserById(userId: string): Promise<User | null> {
-  try {
-    const result = await docClient.send(new GetCommand({
-      TableName: USERS_TABLE,
-      Key: { id: userId }
-    }));
-
-    return result.Item as User || null;
-  } catch (error) {
-    console.error('Error getting user by ID:', error);
+ getting user by ID:', error);
     return null;
   }
 }

@@ -18,6 +18,7 @@
     "dev:setup-db": "./scripts/setup-local-db.sh"
   },
   "dependencies": {
+    "@aws-sdk/client-cognito-identity-provider": "^3.400.0",
     "@aws-sdk/client-dynamodb": "^3.400.0",
     "@aws-sdk/client-opensearchserverless": "^3.400.0",
     "@aws-sdk/client-s3": "^3.400.0",
