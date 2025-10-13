@@ -24,12 +24,12 @@ export const useSystemMetrics = (refreshInterval: number = 30000) => {
   const fetchMetrics = useCallback(async () => {
     try {
       setError(null);
-      const params = new URLSearchParams({
+      const params = {
         timeRange: '1h',
         granularity: 'minute'
-      });
-      const response = await adminApi.get<SystemMetrics>(`/system/metrics?${params}`);
-      setMetrics(response.data);
+      };
+      const response = await adminApi.getSystemMetricsDetailed(params);
+      setMetrics(response);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch system metrics');
       console.error('Failed to fetch system metrics:', err);

@@ -28,6 +28,12 @@ interface RealTimeMetricsProps {
     throughput: MetricValue;
     activeConnections: MetricValue;
   };
+  environment?: {
+    type: 'local' | 'aws';
+    isAWS: boolean;
+    isDocker: boolean;
+    deploymentTarget: string;
+  };
   refreshInterval?: number;
 }
 
@@ -116,6 +122,7 @@ const MetricCard: React.FC<{
 
 const RealTimeMetrics: React.FC<RealTimeMetricsProps> = ({ 
   metrics, 
+  environment,
   refreshInterval = 5000 
 }) => {
   const [lastUpdate, setLastUpdate] = useState(new Date());
@@ -170,8 +177,8 @@ const RealTimeMetrics: React.FC<RealTimeMetricsProps> = ({
               </h2>
               <p className="text-sm opacity-75">
                 {health.status === 'healthy' 
-                  ? 'All metrics within normal ranges'
-                  : `${health.count} metric${health.count > 1 ? 's' : ''} require attention`
+                  ? `All metrics within normal ranges • ${environment?.isAWS ? 'AWS Cloud' : 'Docker Local'}`
+                  : `${health.count} metric${health.count > 1 ? 's' : ''} require attention • ${environment?.isAWS ? 'AWS Cloud' : 'Docker Local'}`
                 }
               </p>
             </div>

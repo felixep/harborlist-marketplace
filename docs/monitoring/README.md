@@ -4,9 +4,582 @@
 
 The HarborList monitoring and observability framework provides comprehensive visibility into system health, performance, and user experience across all platform components. Our monitoring strategy combines infrastructure metrics, application performance monitoring, business intelligence, and proactive alerting to ensure optimal platform reliability.
 
+### 🎯 **Key Features**
+
+- **Environment-Aware Monitoring**: Differentiated monitoring for Local (Docker Compose) and AWS Cloud environments
+- **Unified System Monitoring**: Single source of truth for all monitoring data
+- **Real-Time Health Checks**: Live system status with environment-specific thresholds
+- **Performance Analytics**: Time-series metrics with historical data analysis
+- **Proactive Alerting**: Multi-channel alerting with intelligent noise reduction
+- **Business Intelligence**: Revenue, user engagement, and conversion tracking
+
+### 🏗️ **Architecture Overview**
+
+```mermaid
+graph TB
+    subgraph "Frontend Monitoring"
+        A[System Monitoring Dashboard] --> B[Environment Detection]
+        B --> C[Local Docker Display]
+        B --> D[AWS Cloud Display]
+        C --> E[Docker-specific Metrics]
+        D --> F[AWS-specific Metrics]
+    end
+    
+    subgraph "Backend Monitoring"
+        G[Unified Monitoring Hook] --> H[Health Checks API]
+        G --> I[System Metrics API]
+        G --> J[Alerts API]
+        H --> K[Environment Context]
+        I --> L[Time Series Data]
+        J --> M[Alert Management]
+    end
+    
+    subgraph "Data Sources"
+        N[Local DynamoDB] --> H
+        O[AWS DynamoDB] --> H
+        P[Docker Stats] --> I
+        Q[CloudWatch] --> I
+        R[Application Logs] --> J
+    end
+```
+
 ---
 
-## 🏗️ **Architecture Overview**
+## �  **Environment-Aware Monitoring System**
+
+### **Environment Detection & Differentiation**
+
+The HarborList monitoring system automatically detects and adapts to different deployment environments, providing tailored monitoring experiences for each context.
+
+#### **Supported Environments**
+
+| Environment | Type | Description | Use Case |
+|-------------|------|-------------|----------|
+| **Local Docker** | `local` | Docker Compose development environment | Development, testing, debugging |
+| **AWS Cloud** | `aws` | Production AWS infrastructure | Production, staging, scalable operations |
+
+#### **Environment-Specific Configuration**
+
+```typescript
+// Environment Detection in Backend
+export interface EnvironmentContext {
+  type: 'local' | 'aws';
+  region: string;
+  deploymentTarget: 'docker' | 'lambda' | 'ec2' | 'ecs';
+  isAWS: boolean;
+  isDocker: boolean;
+  runtime: string;
+}
+
+// Example Response for Local Environment
+{
+  "environment": "local",
+  "region": "local", 
+  "deploymentTarget": "docker",
+  "isAWS": false,
+  "isDocker": true,
+  "healthChecks": [
+    {
+      "service": "database",
+      "status": "healthy",
+      "message": "Local DynamoDB healthy",
+      "details": {
+        "provider": "Local DynamoDB"
+      }
+    },
+    {
+      "service": "api", 
+      "status": "healthy",
+      "message": "Local API server operational",
+      "details": {
+        "provider": "Local Express"
+      }
+    }
+  ]
+}
+```
+
+### **🐳 Local Docker Environment**
+
+#### **Characteristics**
+- **Runtime**: Node.js with Express server
+- **Database**: Local DynamoDB (docker container)
+- **Storage**: Local filesystem and LocalStack S3
+- **Networking**: Docker Compose internal networking
+- **Monitoring**: Process-based metrics and container stats
+
+#### **Environment-Specific Features**
+```typescript
+// Local Environment Thresholds (More Relaxed)
+const LOCAL_THRESHOLDS = {
+  cpu: { warning: 70, critical: 90 },      // More CPU available
+  memory: { warning: 80, critical: 95 },   // More memory flexibility  
+  responseTime: { warning: 500, critical: 1000 }, // Development latency
+  errorRate: { warning: 1, critical: 5 }   // Same across environments
+};
+
+// Local Service Providers
+const LOCAL_SERVICES = {
+  database: "Local DynamoDB",
+  api: "Local Express", 
+  storage: "LocalStack S3",
+  runtime: "Node.js (Docker)"
+};
+```
+
+#### **Local Monitoring Dashboard**
+- **Environment Badge**: 🐳 Docker Compose (Blue)
+- **Service Health**: Shows local service providers
+- **Performance Metrics**: Development-appropriate thresholds
+- **Environment Info**: Docker container details and local networking
+
+### **☁️ AWS Cloud Environment**
+
+#### **Characteristics**
+- **Runtime**: AWS Lambda functions
+- **Database**: AWS DynamoDB with managed scaling
+- **Storage**: AWS S3 with CloudFront CDN
+- **Networking**: API Gateway with VPC integration
+- **Monitoring**: CloudWatch metrics and X-Ray tracing
+
+#### **Environment-Specific Features**
+```typescript
+// AWS Environment Thresholds (Stricter)
+const AWS_THRESHOLDS = {
+  cpu: { warning: 60, critical: 80 },      // Lambda CPU constraints
+  memory: { warning: 70, critical: 85 },   // Lambda memory limits
+  responseTime: { warning: 300, critical: 500 }, // API Gateway timeouts
+  errorRate: { warning: 1, critical: 5 }   // Same across environments
+};
+
+// AWS Service Providers  
+const AWS_SERVICES = {
+  database: "AWS DynamoDB",
+  api: "AWS API Gateway",
+  compute: "AWS Lambda", 
+  storage: "AWS S3",
+  runtime: "Node.js (Lambda)"
+};
+```
+
+#### **AWS Monitoring Dashboard**
+- **Environment Badge**: ☁️ AWS Cloud (Orange)
+- **Service Health**: Shows AWS managed services
+- **Performance Metrics**: Production-grade thresholds
+- **Environment Info**: AWS region, Lambda details, and managed services
+
+### **Unified System Monitoring Hook**
+
+The frontend uses a single, unified hook that consolidates all monitoring data:
+
+```typescript
+// frontend/src/hooks/useSystemMonitoring.ts
+export const useSystemMonitoring = (refreshInterval: number = 30000) => {
+  const [data, setData] = useState<SystemMonitoringData | null>(null);
+  
+  const fetchSystemData = useCallback(async () => {
+    // Fetch all data in parallel for better performance
+    const [healthResponse, metricsResponse, alertsResponse] = await Promise.all([
+      adminApi.getSystemHealth(),      // Environment-aware health checks
+      adminApi.getSystemMetricsDetailed(), // Time-series performance data
+      adminApi.getSystemAlerts()       // Active system alerts
+    ]);
+
+    // Construct unified data structure with environment context
+    const unifiedData: SystemMonitoringData = {
+      healthChecks: healthResponse.healthChecks || [],
+      overallStatus: healthResponse.overallStatus || 'unknown',
+      metrics: {
+        responseTime: metricsResponse.responseTime || [],
+        memoryUsage: metricsResponse.memoryUsage || [],
+        cpuUsage: metricsResponse.cpuUsage || [],
+        errorRate: metricsResponse.errorRate || [],
+        uptime: metricsResponse.uptime || 0,
+        activeConnections: metricsResponse.activeConnections || 0,
+        requestsPerMinute: metricsResponse.requestsPerMinute || 0
+      },
+      alerts: alertsResponse.alerts || [],
+      environment: {
+        type: healthResponse.environment === 'local' ? 'local' : 'aws',
+        region: healthResponse.region || 'localhost',
+        version: healthResponse.version,
+        deploymentTarget: healthResponse.deploymentTarget || 'docker',
+        isAWS: healthResponse.isAWS || false,
+        isDocker: healthResponse.isDocker || false,
+        runtime: healthResponse.isDocker ? 'Node.js (Docker)' : 
+                healthResponse.isAWS ? 'Node.js (Lambda)' : 'Node.js (Local)'
+      },
+      lastUpdated: new Date().toISOString()
+    };
+
+    setData(unifiedData);
+  }, []);
+
+  return { data, loading, error, refetch, acknowledgeAlert, resolveAlert };
+};
+```
+
+### **Environment-Specific API Endpoints**
+
+#### **System Health Endpoint**
+```bash
+GET /api/admin/system/health
+
+# Local Environment Response
+{
+  "healthChecks": [
+    {
+      "service": "database",
+      "status": "healthy", 
+      "responseTime": 2,
+      "message": "Local DynamoDB healthy",
+      "details": {
+        "connections": 6,
+        "provider": "Local DynamoDB"
+      }
+    }
+  ],
+  "overallStatus": "healthy",
+  "environment": "local",
+  "region": "local",
+  "deploymentTarget": "docker", 
+  "isAWS": false,
+  "isDocker": true
+}
+
+# AWS Environment Response  
+{
+  "healthChecks": [
+    {
+      "service": "database",
+      "status": "healthy",
+      "responseTime": 15,
+      "message": "AWS DynamoDB healthy", 
+      "details": {
+        "connections": 100,
+        "provider": "AWS DynamoDB"
+      }
+    }
+  ],
+  "overallStatus": "healthy",
+  "environment": "aws",
+  "region": "us-east-1",
+  "deploymentTarget": "lambda",
+  "isAWS": true, 
+  "isDocker": false
+}
+```
+
+#### **System Metrics Endpoint**
+```bash
+GET /api/admin/system/metrics?timeRange=1h&granularity=minute
+
+# Returns time-series data with environment context
+{
+  "responseTime": [
+    {"timestamp": "2025-01-13T12:00:00Z", "value": 150},
+    {"timestamp": "2025-01-13T12:05:00Z", "value": 145}
+  ],
+  "memoryUsage": [
+    {"timestamp": "2025-01-13T12:00:00Z", "value": 45.2},
+    {"timestamp": "2025-01-13T12:05:00Z", "value": 47.1}
+  ],
+  "uptime": 2182,
+  "activeConnections": 6,
+  "requestsPerMinute": 0,
+  "_metadata": {
+    "environment": {
+      "type": "local",
+      "region": "local", 
+      "deployment": "docker"
+    }
+  }
+}
+```
+
+---
+
+## 📊 **System Monitoring Dashboard**
+
+### **Dashboard Overview**
+
+The System Monitoring Dashboard provides a comprehensive, environment-aware interface for monitoring system health, performance, and alerts across different deployment environments.
+
+#### **Dashboard Tabs**
+
+| Tab | Description | Environment-Specific Features |
+|-----|-------------|-------------------------------|
+| **Overview** | System status and performance summary | Environment badge, provider info, tailored metrics |
+| **Real-time** | Live metrics with thresholds | Environment-specific warning/critical levels |
+| **System Health** | Detailed service health checks | Provider-specific service information |
+| **Performance** | Time-series performance analytics | Historical data with environment context |
+| **Alerts** | Active system alerts and notifications | Environment-aware alert routing |
+| **Error Tracking** | Error analysis and debugging tools | Environment-specific error categorization |
+
+### **Environment-Specific Dashboard Features**
+
+#### **🐳 Local Docker Environment Dashboard**
+
+```typescript
+// Local Environment Display
+{
+  environmentBadge: "🐳 Docker Compose",
+  badgeColor: "blue",
+  services: [
+    {
+      name: "Database",
+      provider: "Local DynamoDB",
+      status: "healthy",
+      responseTime: "2ms"
+    },
+    {
+      name: "API", 
+      provider: "Local Express",
+      status: "healthy",
+      responseTime: "150ms"
+    }
+  ],
+  thresholds: {
+    cpu: { warning: 70, critical: 90 },
+    memory: { warning: 80, critical: 95 },
+    responseTime: { warning: 500, critical: 1000 }
+  },
+  environmentInfo: {
+    type: "Local Development",
+    deployment: "Docker Compose",
+    description: "Running in Docker Compose with local DynamoDB, Express server, and development tools. Perfect for development, testing, and local debugging."
+  }
+}
+```
+
+**Local Environment Features:**
+- **Relaxed Thresholds**: Higher limits suitable for development
+- **Development Context**: Clear indication this is for local development
+- **Docker-Specific Info**: Container status and local networking details
+- **Development Tools**: Access to local debugging and development utilities
+
+#### **☁️ AWS Cloud Environment Dashboard**
+
+```typescript
+// AWS Environment Display
+{
+  environmentBadge: "☁️ AWS Cloud", 
+  badgeColor: "orange",
+  services: [
+    {
+      name: "Database",
+      provider: "AWS DynamoDB", 
+      status: "healthy",
+      responseTime: "15ms"
+    },
+    {
+      name: "API",
+      provider: "AWS API Gateway",
+      status: "healthy", 
+      responseTime: "200ms"
+    },
+    {
+      name: "Compute",
+      provider: "AWS Lambda",
+      status: "healthy",
+      responseTime: "100ms"
+    }
+  ],
+  thresholds: {
+    cpu: { warning: 60, critical: 80 },
+    memory: { warning: 70, critical: 85 },
+    responseTime: { warning: 300, critical: 500 }
+  },
+  environmentInfo: {
+    type: "AWS Cloud",
+    deployment: "Lambda",
+    description: "Running on AWS infrastructure with managed services including Lambda functions, DynamoDB, and API Gateway for scalable, serverless operations."
+  }
+}
+```
+
+**AWS Environment Features:**
+- **Production Thresholds**: Stricter limits for production reliability
+- **AWS Services**: Integration with CloudWatch, X-Ray, and AWS monitoring
+- **Scalability Info**: Auto-scaling and managed service status
+- **Cost Optimization**: Resource utilization and cost monitoring
+
+### **Real-Time Metrics Display**
+
+#### **Environment-Aware Metric Cards**
+
+```typescript
+// Metric Card with Environment Context
+interface MetricCard {
+  title: string;
+  current: number;
+  previous: number;
+  unit: string;
+  threshold: {
+    warning: number;
+    critical: number;
+  };
+  environmentContext: string;
+}
+
+// Example: CPU Usage Metric
+{
+  title: "CPU Usage",
+  current: 45.2,
+  previous: 42.1, 
+  unit: "%",
+  threshold: {
+    warning: environment.isAWS ? 60 : 70,  // AWS: 60%, Local: 70%
+    critical: environment.isAWS ? 80 : 90  // AWS: 80%, Local: 90%
+  },
+  environmentContext: environment.isAWS 
+    ? "AWS Lambda CPU allocation" 
+    : "Docker container CPU usage"
+}
+```
+
+#### **Performance Metrics Grid**
+
+| Metric | Local Docker | AWS Cloud | Description |
+|--------|--------------|-----------|-------------|
+| **CPU Usage** | 70%/90% warn/crit | 60%/80% warn/crit | Environment-specific CPU thresholds |
+| **Memory Usage** | 80%/95% warn/crit | 70%/85% warn/crit | Memory allocation limits |
+| **Response Time** | 500ms/1s warn/crit | 300ms/500ms warn/crit | API response time thresholds |
+| **Error Rate** | 1%/5% warn/crit | 1%/5% warn/crit | Same across environments |
+| **Throughput** | req/min | req/min | Request processing rate |
+| **Active Connections** | Docker connections | Lambda concurrency | Environment-specific connection metrics |
+
+### **Health Check Details**
+
+#### **Service Health Cards**
+
+```typescript
+// Environment-Specific Service Health
+interface ServiceHealthCard {
+  service: string;
+  status: 'healthy' | 'degraded' | 'unhealthy';
+  provider: string;  // Environment-specific provider
+  responseTime: number;
+  lastCheck: string;
+  details: {
+    connections?: number;
+    provider: string;
+    throughput?: string;
+    errorRate?: string;
+    successRate?: string;
+  };
+}
+
+// Local Environment Example
+{
+  service: "database",
+  status: "healthy",
+  provider: "Local DynamoDB",
+  responseTime: 2,
+  lastCheck: "2025-01-13T12:00:00Z",
+  details: {
+    connections: 6,
+    provider: "Local DynamoDB",
+    queryPerformance: "Excellent"
+  }
+}
+
+// AWS Environment Example  
+{
+  service: "database",
+  status: "healthy", 
+  provider: "AWS DynamoDB",
+  responseTime: 15,
+  lastCheck: "2025-01-13T12:00:00Z",
+  details: {
+    connections: 100,
+    provider: "AWS DynamoDB",
+    consumedCapacity: "25%",
+    throttledRequests: 0
+  }
+}
+```
+
+### **Alert Management**
+
+#### **Environment-Aware Alerting**
+
+```typescript
+// Alert Configuration by Environment
+const ALERT_CONFIG = {
+  local: {
+    channels: ['console', 'dashboard'],
+    severity: {
+      low: 'log',
+      medium: 'dashboard', 
+      high: 'dashboard + console',
+      critical: 'dashboard + console + email'
+    }
+  },
+  aws: {
+    channels: ['cloudwatch', 'sns', 'slack', 'pagerduty'],
+    severity: {
+      low: 'cloudwatch',
+      medium: 'cloudwatch + slack',
+      high: 'cloudwatch + slack + sns', 
+      critical: 'all channels + pagerduty'
+    }
+  }
+};
+```
+
+### **Testing & Validation**
+
+#### **System Health Test Suite**
+
+```bash
+# Run comprehensive system health tests
+cd backend && node test-system-health.js
+
+# Expected Output:
+🚀 Starting System Health Test Suite
+=====================================
+
+🔐 Testing Admin Login...
+✅ Admin login successful
+
+🏥 Testing System Health Endpoint...
+✅ System Health endpoint accessible
+📊 Health Data:
+   Overall Status: healthy
+   Environment: local
+   Services: 2
+   ✅ database: healthy (2ms)
+   ✅ api: healthy (150ms)
+
+📈 Testing System Metrics Endpoint...
+✅ System Metrics endpoint accessible
+📊 Metrics Data:
+   Uptime: 2182s (0h 36m)
+   Active Connections: 6
+   Time Series Points: 12
+
+🎯 Overall: 7/7 tests passed
+🎉 All system health tests PASSED!
+```
+
+#### **Frontend Integration Test**
+
+```bash
+# Test frontend API integration
+cd backend && node test-frontend-api.js
+
+# Validates:
+# - Environment detection
+# - Data structure consistency  
+# - API endpoint functionality
+# - Time-series data format
+# - Environment-specific thresholds
+```
+
+---
+
+## 🏗️ **Legacy Architecture Overview**
 
 ### **Monitoring Stack**
 
@@ -1021,6 +1594,177 @@ export class BIDashboardService {
   }
 }
 ```
+
+---
+
+## � ***Quick Reference Guide**
+
+### **Environment Detection**
+
+```bash
+# Check current environment
+curl -s http://local-api.harborlist.com:3001/api/admin/system/health | jq '{environment, deploymentTarget, isAWS, isDocker}'
+
+# Local Environment Response
+{
+  "environment": "local",
+  "deploymentTarget": "docker", 
+  "isAWS": false,
+  "isDocker": true
+}
+
+# AWS Environment Response
+{
+  "environment": "aws",
+  "deploymentTarget": "lambda",
+  "isAWS": true, 
+  "isDocker": false
+}
+```
+
+### **API Endpoints Summary**
+
+| Endpoint | Method | Description | Environment-Aware |
+|----------|--------|-------------|-------------------|
+| `/api/admin/system/health` | GET | System health checks with environment context | ✅ |
+| `/api/admin/system/metrics` | GET | Time-series performance metrics | ✅ |
+| `/api/admin/system/alerts` | GET | Active system alerts | ✅ |
+| `/api/admin/dashboard/metrics` | GET | Business and system dashboard data | ✅ |
+
+### **Environment Comparison**
+
+| Feature | Local Docker | AWS Cloud |
+|---------|--------------|-----------|
+| **Environment Badge** | 🐳 Docker Compose (Blue) | ☁️ AWS Cloud (Orange) |
+| **Database Provider** | Local DynamoDB | AWS DynamoDB |
+| **API Provider** | Local Express | AWS API Gateway |
+| **Compute Provider** | Docker Container | AWS Lambda |
+| **CPU Threshold** | 70%/90% (warn/crit) | 60%/80% (warn/crit) |
+| **Memory Threshold** | 80%/95% (warn/crit) | 70%/85% (warn/crit) |
+| **Response Time Threshold** | 500ms/1s (warn/crit) | 300ms/500ms (warn/crit) |
+| **Monitoring Tools** | Docker stats, Process metrics | CloudWatch, X-Ray |
+| **Alerting Channels** | Console, Dashboard | CloudWatch, SNS, Slack, PagerDuty |
+
+### **Dashboard Navigation**
+
+```typescript
+// Access System Monitoring Dashboard
+// URL: /admin/system-monitoring
+
+// Available Tabs:
+const DASHBOARD_TABS = [
+  'overview',      // System status and environment info
+  'realtime',      // Live metrics with environment-specific thresholds  
+  'health',        // Detailed service health checks
+  'performance',   // Time-series performance analytics
+  'alerts',        // Active system alerts management
+  'errors'         // Error tracking and analysis
+];
+```
+
+### **Monitoring Hook Usage**
+
+```typescript
+// Frontend: Use unified monitoring hook
+import { useSystemMonitoring } from '../hooks/useSystemMonitoring';
+
+function SystemMonitoringPage() {
+  const { 
+    data: systemData,     // Unified monitoring data
+    loading,              // Loading state
+    error,                // Error state  
+    refetch,              // Manual refresh
+    acknowledgeAlert,     // Alert management
+    resolveAlert          // Alert resolution
+  } = useSystemMonitoring(30000); // 30-second refresh
+
+  // Environment-aware display
+  const environmentBadge = systemData?.environment.isAWS 
+    ? "☁️ AWS Cloud" 
+    : "🐳 Docker Compose";
+
+  return (
+    <div>
+      <h1>System Monitoring - {environmentBadge}</h1>
+      {/* Environment-specific dashboard content */}
+    </div>
+  );
+}
+```
+
+### **Testing Commands**
+
+```bash
+# Backend Health Tests
+cd backend
+node test-system-health.js      # Comprehensive health test suite
+node test-frontend-api.js       # Frontend API integration tests
+
+# Manual API Testing
+# Health Check
+curl -s http://local-api.harborlist.com:3001/api/admin/system/health \
+  -H "Authorization: Bearer YOUR_TOKEN" | jq
+
+# System Metrics  
+curl -s "http://local-api.harborlist.com:3001/api/admin/system/metrics?timeRange=1h" \
+  -H "Authorization: Bearer YOUR_TOKEN" | jq
+
+# System Alerts
+curl -s "http://local-api.harborlist.com:3001/api/admin/system/alerts?status=active" \
+  -H "Authorization: Bearer YOUR_TOKEN" | jq
+```
+
+### **Troubleshooting**
+
+#### **Common Issues**
+
+| Issue | Environment | Solution |
+|-------|-------------|----------|
+| **Health checks failing** | Local | Check Docker containers: `docker-compose ps` |
+| **Metrics not loading** | Local | Verify DynamoDB local: `curl http://localhost:8000` |
+| **Environment detection wrong** | Both | Check environment variables and deployment context |
+| **Thresholds too strict** | Local | Verify environment-specific threshold configuration |
+| **API endpoints 404** | Both | Confirm admin authentication and API routing |
+
+#### **Debug Steps**
+
+1. **Verify Environment Detection**:
+   ```bash
+   curl -s http://local-api.harborlist.com:3001/api/admin/system/health | jq .environment
+   ```
+
+2. **Check Service Health**:
+   ```bash
+   curl -s http://local-api.harborlist.com:3001/api/admin/system/health | jq .healthChecks
+   ```
+
+3. **Validate Metrics Data**:
+   ```bash
+   curl -s http://local-api.harborlist.com:3001/api/admin/system/metrics | jq 'keys'
+   ```
+
+4. **Test Authentication**:
+   ```bash
+   curl -s http://local-api.harborlist.com:3001/api/auth/admin/login \
+     -H "Content-Type: application/json" \
+     -d '{"email":"admin@harborlist.com","password":"YOUR_PASSWORD"}'
+   ```
+
+### **Performance Benchmarks**
+
+#### **Expected Response Times**
+
+| Environment | Health Check | Metrics API | Dashboard Load |
+|-------------|--------------|-------------|----------------|
+| **Local Docker** | < 50ms | < 200ms | < 500ms |
+| **AWS Cloud** | < 100ms | < 300ms | < 800ms |
+
+#### **Resource Usage**
+
+| Environment | CPU Usage | Memory Usage | Network I/O |
+|-------------|-----------|--------------|-------------|
+| **Local Docker** | 5-15% | 200-500MB | Low |
+| **AWS Cloud** | Variable | Lambda-managed | Optimized |
 
 ---
 

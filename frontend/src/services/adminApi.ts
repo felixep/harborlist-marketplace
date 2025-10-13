@@ -205,40 +205,44 @@ class AdminApiService {
 
   // System monitoring endpoints
   async getSystemHealth(): Promise<any> {
-    return this.request(`${config.apiUrl}/admin/system/health`);
+    return this.request('/admin/system/health', {}, 
+      { component: 'SystemMonitoring', action: 'GetSystemHealth' });
   }
 
   async getSystemMetricsDetailed(params?: any): Promise<any> {
     const query = params ? `?${new URLSearchParams(params).toString()}` : '';
-    return this.request(`${config.apiUrl}/admin/system/metrics${query}`);
+    return this.request(`/admin/system/metrics${query}`, {}, 
+      { component: 'SystemMonitoring', action: 'GetSystemMetrics' });
   }
 
   async getSystemAlerts(params?: any): Promise<any> {
     const query = params ? `?${new URLSearchParams(params).toString()}` : '';
-    return this.request(`${config.apiUrl}/admin/system/alerts${query}`);
+    return this.request(`/admin/system/alerts${query}`, {}, 
+      { component: 'SystemMonitoring', action: 'GetSystemAlerts' });
   }
 
   async acknowledgeAlert(alertId: string): Promise<any> {
-    return this.request(`${config.apiUrl}/admin/system/alerts/${alertId}/acknowledge`, {
+    return this.request(`/admin/system/alerts/${alertId}/acknowledge`, {
       method: 'POST'
-    });
+    }, { component: 'SystemMonitoring', action: 'AcknowledgeAlert' });
   }
 
   async resolveAlert(alertId: string): Promise<any> {
-    return this.request(`${config.apiUrl}/admin/system/alerts/${alertId}/resolve`, {
+    return this.request(`/admin/system/alerts/${alertId}/resolve`, {
       method: 'POST'
-    });
+    }, { component: 'SystemMonitoring', action: 'ResolveAlert' });
   }
 
   async getSystemErrors(params?: any): Promise<any> {
     const query = params ? `?${new URLSearchParams(params).toString()}` : '';
-    return this.request(`${config.apiUrl}/admin/system/errors${query}`);
+    return this.request(`/admin/system/errors${query}`, {}, 
+      { component: 'SystemMonitoring', action: 'GetSystemErrors' });
   }
 
   async resolveError(errorId: string): Promise<any> {
-    return this.request(`${config.apiUrl}/admin/system/errors/${errorId}/resolve`, {
+    return this.request(`/admin/system/errors/${errorId}/resolve`, {
       method: 'POST'
-    });
+    }, { component: 'SystemMonitoring', action: 'ResolveError' });
   }
 
   // Platform Settings endpoints

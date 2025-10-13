@@ -14,9 +14,13 @@ import { HealthCheck } from '../../hooks/useSystemHealth';
 interface SystemOverviewProps {
   healthChecks: HealthCheck[];
   environment: {
-    type: string;
+    type: 'local' | 'aws';
     region: string;
     version?: string;
+    deploymentTarget: 'docker' | 'lambda' | 'ec2' | 'ecs';
+    isAWS: boolean;
+    isDocker: boolean;
+    runtime?: string;
   };
   performance: {
     uptime: number;
@@ -195,12 +199,40 @@ const SystemOverview: React.FC<SystemOverviewProps> = ({
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-semibold text-gray-900">System Overview</h2>
           <div className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
-            environment.type === 'aws' 
+            environment.isAWS 
               ? 'bg-orange-100 text-orange-800' 
               : 'bg-blue-100 text-blue-800'
           }`}>
             <CloudIcon className="h-4 w-4 mr-1" />
-            {environment.type.toUpperCase()} - {environment.region}
+            {environment.isAWS ? 'AWS' : 'LOCAL'} - {environment.region}
+          </div>
+        </div>
+        
+        {/* Environment Details */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+          <div className="text-center p-3 bg-gray-50 rounded-lg">
+            <div className="text-xs text-gray-500 uppercase tracking-wide">Environment</div>
+            <div className="font-semibold text-gray-900">
+              {environment.isAWS ? 'AWS Cloud' : 'Docker Compose'}
+            </div>
+          </div>
+          <div className="text-center p-3 bg-gray-50 rounded-lg">
+            <div className="text-xs text-gray-500 uppercase tracking-wide">Deployment</div>
+            <div className="font-semibold text-gray-900 capitalize">
+              {environment.deploymentTarget}
+            </div>
+          </div>
+          <div className="text-center p-3 bg-gray-50 rounded-lg">
+            <div className="text-xs text-gray-500 uppercase tracking-wide">Runtime</div>
+            <div className="font-semibold text-gray-900">
+              {environment.runtime || 'Node.js'}
+            </div>
+          </div>
+          <div className="text-center p-3 bg-gray-50 rounded-lg">
+            <div className="text-xs text-gray-500 uppercase tracking-wide">Version</div>
+            <div className="font-semibold text-gray-900">
+              {environment.version || 'N/A'}
+            </div>
           </div>
         </div>
         
@@ -222,8 +254,7 @@ const SystemOverview: React.FC<SystemOverviewProps> = ({
                 System Status: {overallStatus.charAt(0).toUpperCase() + overallStatus.slice(1)}
               </h3>
               <p className="text-sm opacity-75">
-                {healthChecks.length} services monitored
-                {environment.version && ` • Version ${environment.version}`}
+                {healthChecks.length} services monitored in {environment.isAWS ? 'AWS' : 'local Docker'} environment
               </p>
             </div>
           </div>

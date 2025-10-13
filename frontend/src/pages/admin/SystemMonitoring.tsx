@@ -1,13 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { useSystemHealth } from '../../hooks/useSystemHealth';
-import { useSystemMetrics } from '../../hooks/useSystemMetrics';
-import { useSystemAlerts } from '../../hooks/useSystemAlerts';
-import { useDashboardMetrics } from '../../hooks/useDashboardMetrics';
+import React, { useState } from 'react';
+import { useSystemMonitoring } from '../../hooks/useSystemMonitoring';
 import HealthCheckCard from '../../components/admin/HealthCheckCard';
-import MetricsChart from '../../components/admin/MetricsChart';
 import AlertPanel from '../../components/admin/AlertPanel';
 import ErrorTrackingPanel from '../../components/admin/ErrorTrackingPanel';
-import AWSHealthDashboard from '../../components/admin/AWSHealthDashboard';
 import SystemOverview from '../../components/admin/SystemOverview';
 import RealTimeMetrics from '../../components/admin/RealTimeMetrics';
 import PerformanceDashboard from '../../components/admin/PerformanceDashboard';
@@ -16,7 +11,6 @@ import {
   ChartBarIcon, 
   ExclamationTriangleIcon,
   CpuChipIcon,
-  CloudIcon,
   ClockIcon,
   EyeIcon
 } from '@heroicons/react/24/outline';
@@ -25,30 +19,27 @@ const SystemMonitoring: React.FC = () => {
   const [refreshInterval, setRefreshInterval] = useState(30000); // 30 seconds
   const [activeTab, setActiveTab] = useState<'overview' | 'realtime' | 'health' | 'performance' | 'alerts' | 'errors'>('overview');
   
-  const { healthChecks, overallStatus, loading: healthLoading, error: healthError, refetch: refetchHealth } = useSystemHealth();
-  const { metrics, loading: metricsLoading, error: metricsError } = useSystemMetrics(refreshInterval);
-  const { alerts, acknowledgeAlert, loading: alertsLoading } = useSystemAlerts();
-  const { awsHealth } = useDashboardMetrics();
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      refetchHealth();
-    }, refreshInterval);
-
-    return () => clearInterval(interval);
-  }, [refreshInterval, refetchHealth]);
+  // Use unified system monitoring hook
+  const { 
+    data: systemData, 
+    loading, 
+    error, 
+    refetch, 
+    acknowledgeAlert, 
+    resolveAlert 
+  } = useSystemMonitoring(refreshInterval);
 
   const handleRefreshIntervalChange = (interval: number) => {
     setRefreshInterval(interval);
   };
 
   const getOverallSystemStatus = () => {
-    if (healthLoading) return 'loading';
-    if (healthError) return 'error';
-    if (!healthChecks || healthChecks.length === 0) return 'unknown';
+    if (loading) return 'loading';
+    if (error) return 'error';
+    if (!systemData?.healthChecks || systemData.healthChecks.length === 0) return 'unknown';
     
-    // Use the overallStatus from the backend API response
-    return overallStatus || 'healthy';
+    // Use the overallStatus from the unified data
+    return systemData.overallStatus || 'healthy';
   };
 
   const getStatusColor = (status: string) => {
@@ -73,7 +64,8 @@ const SystemMonitoring: React.FC = () => {
 
   const systemStatus = getOverallSystemStatus();
 
-  if (healthLoading && metricsLoading && alertsLoading) {
+  // Show loading state while fetching unified data
+  if (loading) {
     return (
       <div className="p-6">
         <div className="animate-pulse">
@@ -111,14 +103,33 @@ const SystemMonitoring: React.FC = () => {
             <option value={300000}>5 minutes</option>
           </select>
           <button
-            onClick={refetchHealth}
+            onClick={refetch}
             className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm flex items-center"
           >
-            <span className={`mr-2 ${healthLoading ? 'animate-spin' : ''}`}>🔄</span>
+            <span className={`mr-2 ${loading ? 'animate-spin' : ''}`}>🔄</span>
             Refresh Now
           </button>
         </div>
       </div>
+
+      {/* Error Messages */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-md p-4 mb-4">
+          <div className="flex">
+            <div className="flex-shrink-0">
+              <ExclamationTriangleIcon className="h-5 w-5 text-red-400" />
+            </div>
+            <div className="ml-3">
+              <h3 className="text-sm font-medium text-red-800">
+                System Monitoring Error
+              </h3>
+              <div className="mt-2 text-sm text-red-700">
+                {error}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Tab Navigation */}
       <div className="border-b border-gray-200">
@@ -128,7 +139,7 @@ const SystemMonitoring: React.FC = () => {
             { id: 'realtime', label: 'Real-time', icon: EyeIcon },
             { id: 'health', label: 'System Health', icon: ServerIcon },
             { id: 'performance', label: 'Performance', icon: CpuChipIcon },
-            { id: 'alerts', label: 'Alerts', icon: ExclamationTriangleIcon, count: alerts?.length },
+            { id: 'alerts', label: 'Alerts', icon: ExclamationTriangleIcon, count: systemData?.alerts?.length },
             { id: 'errors', label: 'Error Tracking', icon: ClockIcon }
           ].map((tab) => (
             <button
@@ -153,90 +164,143 @@ const SystemMonitoring: React.FC = () => {
       </div>
 
       {/* Tab Content */}
-      {activeTab === 'overview' && (
+      {activeTab === 'overview' && systemData && (
         <SystemOverview
-          healthChecks={healthChecks || []}
-          environment={{
-            type: awsHealth?.environment.type || 'local',
-            region: awsHealth?.environment.region || 'localhost',
-            version: awsHealth?.environment.version
-          }}
+          healthChecks={systemData.healthChecks}
+          environment={systemData.environment}
           performance={{
-            uptime: metrics?.uptime || 0,
-            responseTime: healthChecks?.length ? 
-              Math.round(healthChecks.reduce((sum, h) => sum + h.responseTime, 0) / healthChecks.length) : 0,
-            throughput: metrics?.requestsPerMinute || 0,
-            errorRate: metrics?.errorRate?.[metrics.errorRate.length - 1]?.value || 0
+            uptime: systemData.metrics.uptime,
+            responseTime: systemData.healthChecks.length ? 
+              Math.round(systemData.healthChecks.reduce((sum, h) => sum + h.responseTime, 0) / systemData.healthChecks.length) : 0,
+            throughput: systemData.metrics.requestsPerMinute,
+            errorRate: systemData.metrics.errorRate?.[systemData.metrics.errorRate.length - 1]?.value || 0
           }}
-          loading={healthLoading}
+          loading={loading}
         />
       )}
 
-      {activeTab === 'realtime' && (
+      {activeTab === 'realtime' && systemData && (
         <RealTimeMetrics
           metrics={{
             cpu: {
-              current: metrics?.cpuUsage?.[metrics.cpuUsage.length - 1]?.value || 0,
-              previous: metrics?.cpuUsage?.[metrics.cpuUsage.length - 2]?.value || 0,
+              current: systemData.metrics.cpuUsage?.[systemData.metrics.cpuUsage.length - 1]?.value || 0,
+              previous: systemData.metrics.cpuUsage?.[systemData.metrics.cpuUsage.length - 2]?.value || 0,
               unit: '%',
-              threshold: { warning: 70, critical: 90 }
+              threshold: systemData.environment.isAWS 
+                ? { warning: 60, critical: 80 }  // AWS Lambda has different thresholds
+                : { warning: 70, critical: 90 }  // Docker has more resources
             },
             memory: {
-              current: metrics?.memoryUsage?.[metrics.memoryUsage.length - 1]?.value || 0,
-              previous: metrics?.memoryUsage?.[metrics.memoryUsage.length - 2]?.value || 0,
+              current: systemData.metrics.memoryUsage?.[systemData.metrics.memoryUsage.length - 1]?.value || 0,
+              previous: systemData.metrics.memoryUsage?.[systemData.metrics.memoryUsage.length - 2]?.value || 0,
               unit: '%',
-              threshold: { warning: 80, critical: 95 }
+              threshold: systemData.environment.isAWS 
+                ? { warning: 70, critical: 85 }  // AWS Lambda memory limits
+                : { warning: 80, critical: 95 }  // Docker has more flexibility
             },
             responseTime: {
-              current: metrics?.responseTime?.[metrics.responseTime.length - 1]?.value || 0,
-              previous: metrics?.responseTime?.[metrics.responseTime.length - 2]?.value || 0,
+              current: systemData.metrics.responseTime?.[systemData.metrics.responseTime.length - 1]?.value || 0,
+              previous: systemData.metrics.responseTime?.[systemData.metrics.responseTime.length - 2]?.value || 0,
               unit: 'ms',
-              threshold: { warning: 500, critical: 1000 }
+              threshold: systemData.environment.isAWS 
+                ? { warning: 300, critical: 500 }  // AWS API Gateway timeouts
+                : { warning: 500, critical: 1000 } // Local development is more relaxed
             },
             errorRate: {
-              current: metrics?.errorRate?.[metrics.errorRate.length - 1]?.value || 0,
-              previous: metrics?.errorRate?.[metrics.errorRate.length - 2]?.value || 0,
+              current: systemData.metrics.errorRate?.[systemData.metrics.errorRate.length - 1]?.value || 0,
+              previous: systemData.metrics.errorRate?.[systemData.metrics.errorRate.length - 2]?.value || 0,
               unit: '%',
-              threshold: { warning: 1, critical: 5 }
+              threshold: { warning: 1, critical: 5 } // Same for both environments
             },
             throughput: {
-              current: metrics?.requestsPerMinute || 0,
-              previous: (metrics?.requestsPerMinute || 0) * 0.95, // Mock previous value
+              current: systemData.metrics.requestsPerMinute || 0,
+              previous: (systemData.metrics.requestsPerMinute || 0) * 0.95,
               unit: 'req/min'
             },
             activeConnections: {
-              current: metrics?.activeConnections || 0,
-              previous: (metrics?.activeConnections || 0) * 0.98, // Mock previous value
+              current: systemData.metrics.activeConnections || 0,
+              previous: (systemData.metrics.activeConnections || 0) * 0.98,
               unit: ''
             }
           }}
+          environment={systemData.environment}
           refreshInterval={refreshInterval}
         />
       )}
 
       {activeTab === 'health' && (
         <div className="space-y-6">
-          {/* AWS Health Dashboard Integration */}
-          {awsHealth && (
-            <AWSHealthDashboard healthData={awsHealth} />
-          )}
+          {/* System Environment Info */}
+          <div className="bg-white rounded-lg border p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-gray-900">System Environment</h2>
+              <div className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
+                systemData?.environment.isAWS 
+                  ? 'bg-orange-100 text-orange-800' 
+                  : 'bg-blue-100 text-blue-800'
+              }`}>
+                {systemData?.environment.isAWS ? '☁️ AWS Cloud' : '🐳 Docker Compose'}
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="p-4 bg-gray-50 rounded-lg">
+                <span className="text-sm text-gray-500 block">Environment Type</span>
+                <p className="font-medium text-lg">
+                  {systemData?.environment.isAWS ? 'AWS Cloud' : 'Local Development'}
+                </p>
+              </div>
+              <div className="p-4 bg-gray-50 rounded-lg">
+                <span className="text-sm text-gray-500 block">Deployment Target</span>
+                <p className="font-medium text-lg capitalize">
+                  {systemData?.environment.deploymentTarget}
+                </p>
+              </div>
+              <div className="p-4 bg-gray-50 rounded-lg">
+                <span className="text-sm text-gray-500 block">Region/Location</span>
+                <p className="font-medium text-lg">
+                  {systemData?.environment.region}
+                </p>
+              </div>
+              <div className="p-4 bg-gray-50 rounded-lg">
+                <span className="text-sm text-gray-500 block">Runtime</span>
+                <p className="font-medium text-lg">
+                  {systemData?.environment.runtime || 'Node.js'}
+                </p>
+              </div>
+            </div>
+            
+            {/* Environment-specific information */}
+            {systemData?.environment.isAWS ? (
+              <div className="mt-4 p-4 bg-orange-50 border border-orange-200 rounded-lg">
+                <h3 className="font-medium text-orange-800 mb-2">AWS Cloud Environment</h3>
+                <p className="text-sm text-orange-700">
+                  Running on AWS infrastructure with managed services including Lambda functions, 
+                  DynamoDB, and API Gateway for scalable, serverless operations.
+                </p>
+              </div>
+            ) : (
+              <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <h3 className="font-medium text-blue-800 mb-2">Local Docker Environment</h3>
+                <p className="text-sm text-blue-700">
+                  Running in Docker Compose with local DynamoDB, Express server, and development tools. 
+                  Perfect for development, testing, and local debugging.
+                </p>
+              </div>
+            )}
+          </div>
 
           {/* Detailed Health Checks */}
           <div>
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Detailed Health Checks</h2>
-            {healthError && (
-              <div className="bg-red-50 border border-red-200 rounded-md p-4 mb-4">
-                <p className="text-red-800">Failed to load health checks: {healthError}</p>
-              </div>
-            )}
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">Service Health Checks</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {Array.isArray(healthChecks) && healthChecks.length > 0 ? (
-                healthChecks.map((check) => (
+              {systemData?.healthChecks && systemData.healthChecks.length > 0 ? (
+                systemData.healthChecks.map((check) => (
                   <HealthCheckCard key={check.service} healthCheck={check} />
                 ))
               ) : (
                 <div className="col-span-full text-center py-8 text-gray-500">
-                  {healthLoading ? 'Loading health checks...' : 'No health checks available'}
+                  {loading ? 'Loading health checks...' : 'No health checks available'}
                 </div>
               )}
             </div>
@@ -244,23 +308,23 @@ const SystemMonitoring: React.FC = () => {
         </div>
       )}
 
-      {activeTab === 'performance' && (
+      {activeTab === 'performance' && systemData && (
         <PerformanceDashboard
           metrics={{
-            responseTime: metrics?.responseTime || [],
-            memoryUsage: metrics?.memoryUsage || [],
-            cpuUsage: metrics?.cpuUsage || [],
-            errorRate: metrics?.errorRate || []
+            responseTime: systemData.metrics.responseTime,
+            memoryUsage: systemData.metrics.memoryUsage,
+            cpuUsage: systemData.metrics.cpuUsage,
+            errorRate: systemData.metrics.errorRate
           }}
           systemStats={{
-            uptime: metrics?.uptime || 0,
-            activeConnections: metrics?.activeConnections || 0,
-            requestsPerMinute: metrics?.requestsPerMinute || 0,
-            averageResponseTime: metrics?.responseTime?.length ? 
-              metrics.responseTime.reduce((sum, m) => sum + m.value, 0) / metrics.responseTime.length : 0
+            uptime: systemData.metrics.uptime,
+            activeConnections: systemData.metrics.activeConnections,
+            requestsPerMinute: systemData.metrics.requestsPerMinute,
+            averageResponseTime: systemData.metrics.responseTime.length ? 
+              systemData.metrics.responseTime.reduce((sum, m) => sum + m.value, 0) / systemData.metrics.responseTime.length : 0
           }}
-          loading={metricsLoading}
-          onRefresh={refetchHealth}
+          loading={loading}
+          onRefresh={refetch}
         />
       )}
 
@@ -268,8 +332,8 @@ const SystemMonitoring: React.FC = () => {
         <div className="space-y-6">
           <div>
             <h2 className="text-lg font-semibold text-gray-900 mb-4">System Alerts</h2>
-            {alerts && alerts.length > 0 ? (
-              <AlertPanel alerts={alerts} onAcknowledge={acknowledgeAlert} />
+            {systemData?.alerts && systemData.alerts.length > 0 ? (
+              <AlertPanel alerts={systemData.alerts} onAcknowledge={acknowledgeAlert} />
             ) : (
               <div className="text-center py-8 text-gray-500">
                 <ExclamationTriangleIcon className="h-12 w-12 mx-auto text-gray-400 mb-4" />

@@ -27,9 +27,9 @@ export const useSystemAlerts = () => {
   const fetchAlerts = useCallback(async () => {
     try {
       setError(null);
-      const params = new URLSearchParams({ status: 'active' });
-      const response = await adminApi.get<{ alerts: SystemAlert[] }>(`/system/alerts?${params}`);
-      setAlerts(response.data.alerts);
+      const params = { status: 'active' };
+      const response = await adminApi.getSystemAlerts(params);
+      setAlerts(response.alerts);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch system alerts');
       console.error('Failed to fetch system alerts:', err);
@@ -40,7 +40,7 @@ export const useSystemAlerts = () => {
 
   const acknowledgeAlert = useCallback(async (alertId: string) => {
     try {
-      await adminApi.post(`/system/alerts/${alertId}/acknowledge`);
+      await adminApi.acknowledgeAlert(alertId);
       setAlerts(prev => prev.map(alert => 
         alert.id === alertId 
           ? { ...alert, acknowledgedAt: new Date().toISOString() }
@@ -54,7 +54,7 @@ export const useSystemAlerts = () => {
 
   const resolveAlert = useCallback(async (alertId: string) => {
     try {
-      await adminApi.post(`/system/alerts/${alertId}/resolve`);
+      await adminApi.resolveAlert(alertId);
       setAlerts(prev => prev.filter(alert => alert.id !== alertId));
     } catch (err) {
       console.error('Failed to resolve alert:', err);

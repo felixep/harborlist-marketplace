@@ -132,9 +132,9 @@ export const useSystemHealth = () => {
   const fetchHealthChecks = useCallback(async () => {
     try {
       setError(null);
-      const response = await adminApi.get<SystemHealthData>('/system/health');
-      setHealthChecks(response.data.healthChecks);
-      setOverallStatus(response.data.overallStatus);
+      const response = await adminApi.getSystemHealth();
+      setHealthChecks(response.healthChecks);
+      setOverallStatus(response.overallStatus);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch health checks');
       console.error('Failed to fetch health checks:', err);
