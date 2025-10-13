@@ -243,7 +243,7 @@ async function handleGetSystemHealth(event: AuthenticatedEvent): Promise<APIGate
       },
       {
         service: 'api',
-        status: 'healthy' as const,
+        status: getApiHealthStatus(apiMetrics),
         responseTime: apiMetrics.averageResponseTime,
         lastCheck: now.toISOString(),
         message: isLocal ? 'Local API server operational' : 'AWS API Gateway operational',
@@ -429,15 +429,64 @@ async function handleGetSystemErrors(event: AuthenticatedEvent): Promise<APIGate
  */
 async function checkDatabaseHealth(): Promise<'healthy' | 'degraded' | 'unhealthy'> {
   try {
+    const startTime = Date.now();
     await docClient.send(new ScanCommand({
       TableName: USERS_TABLE,
       Limit: 1
     }));
-    return 'healthy';
+    const responseTime = Date.now() - startTime;
+    
+    // Determine health based on response time
+    if (responseTime > 2000) {
+      return 'unhealthy';
+    } else if (responseTime > 1000) {
+      return 'degraded';
+    } else {
+      return 'healthy';
+    }
   } catch (error) {
     console.error('Database health check failed:', error);
     return 'unhealthy';
   }
+}
+
+/**
+ * Determine API health status based on metrics
+ */
+function getApiHealthStatus(apiMetrics: any): 'healthy' | 'degraded' | 'unhealthy' {
+  // Check if we have any metrics at all
+  if (!apiMetrics || apiMetrics.averageResponseTime === undefined) {
+    return 'unhealthy';
+  }
+
+  // Check error rate
+  if (apiMetrics.errorRate > 10) {
+    return 'unhealthy';
+  }
+  
+  if (apiMetrics.errorRate > 5) {
+    return 'degraded';
+  }
+
+  // Check response time
+  if (apiMetrics.averageResponseTime > 2000) {
+    return 'unhealthy';
+  }
+  
+  if (apiMetrics.averageResponseTime > 1000) {
+    return 'degraded';
+  }
+
+  // Check success rate
+  if (apiMetrics.successRate < 90) {
+    return 'unhealthy';
+  }
+  
+  if (apiMetrics.successRate < 95) {
+    return 'degraded';
+  }
+
+  return 'healthy';
 }
 
 /**

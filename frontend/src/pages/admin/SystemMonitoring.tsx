@@ -25,7 +25,7 @@ const SystemMonitoring: React.FC = () => {
   const [refreshInterval, setRefreshInterval] = useState(30000); // 30 seconds
   const [activeTab, setActiveTab] = useState<'overview' | 'realtime' | 'health' | 'performance' | 'alerts' | 'errors'>('overview');
   
-  const { healthChecks, loading: healthLoading, error: healthError, refetch: refetchHealth } = useSystemHealth();
+  const { healthChecks, overallStatus, loading: healthLoading, error: healthError, refetch: refetchHealth } = useSystemHealth();
   const { metrics, loading: metricsLoading, error: metricsError } = useSystemMetrics(refreshInterval);
   const { alerts, acknowledgeAlert, loading: alertsLoading } = useSystemAlerts();
   const { awsHealth } = useDashboardMetrics();
@@ -47,12 +47,8 @@ const SystemMonitoring: React.FC = () => {
     if (healthError) return 'error';
     if (!healthChecks || healthChecks.length === 0) return 'unknown';
     
-    const hasUnhealthy = healthChecks.some(check => check.status === 'unhealthy');
-    const hasDegraded = healthChecks.some(check => check.status === 'degraded');
-    
-    if (hasUnhealthy) return 'unhealthy';
-    if (hasDegraded) return 'degraded';
-    return 'healthy';
+    // Use the overallStatus from the backend API response
+    return overallStatus || 'healthy';
   };
 
   const getStatusColor = (status: string) => {
