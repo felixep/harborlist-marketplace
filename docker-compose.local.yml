@@ -126,6 +126,13 @@ services:
       - SESSIONS_TABLE=harborlist-sessions
       - LOGIN_ATTEMPTS_TABLE=harborlist-login-attempts
       - AUDIT_LOGS_TABLE=harborlist-audit-logs
+      # Cognito Configuration for LocalStack
+      - COGNITO_ENDPOINT=http://localstack:4566
+      - IS_LOCALSTACK=true
+      - CUSTOMER_USER_POOL_ID=us-east-1_000000001
+      - CUSTOMER_USER_POOL_CLIENT_ID=customer-client-local
+      - STAFF_USER_POOL_ID=us-east-1_000000002
+      - STAFF_USER_POOL_CLIENT_ID=staff-client-local
       # Enhanced feature tables
       - ENGINES_TABLE=harborlist-engines
       - BILLING_ACCOUNTS_TABLE=harborlist-billing-accounts
@@ -168,7 +175,7 @@ services:
     networks:
       - harborlist-local
 
-  # LocalStack for S3, SES, CloudWatch etc.
+  # LocalStack for S3, SES, CloudWatch, Cognito etc.
   localstack:
     profiles: ["basic", "enhanced"]
     image: localstack/localstack:3.0
@@ -176,16 +183,24 @@ services:
       - "4566:4566"
       - "4510-4559:4510-4559"
     environment:
-      - SERVICES=s3,ses,cloudwatch,logs
+      - SERVICES=s3,ses,cloudwatch,logs,cognito-idp,cognito-identity,lambda,iam
       - DEBUG=1
       - DATA_DIR=/var/lib/localstack
       - LAMBDA_EXECUTOR=local
       - DOCKER_HOST=unix:///var/run/docker.sock
       - PERSISTENCE=1
       - SKIP_INFRA_DOWNLOADS=1
+      # Cognito-specific configuration
+      - COGNITO_PROVIDER_DEVELOPER_USER_IDENTITY_POOL_ID=us-east-1:00000000-0000-0000-0000-000000000000
+      - COGNITO_PROVIDER_DEVELOPER_USER_IDENTITY_POOL_NAME=harborlist_local_identity_pool
+      - COGNITO_PROVIDER_DEVELOPER_USER_IDENTITY_POOL_REGION=us-east-1
+      # Lambda configuration for Cognito triggers
+      - LAMBDA_REMOTE_DOCKER=0
+      - LAMBDA_DOCKER_NETWORK=harborlist-local
     volumes:
       - localstack_data:/var/lib/localstack
       - /var/run/docker.sock:/var/run/docker.sock
+      - ./infrastructure/scripts:/opt/code/localstack/scripts:ro
     networks:
       - harborlist-local
     labels:
@@ -200,6 +215,14 @@ services:
       - "traefik.http.routers.s3-https.service=localstack"
       - "traefik.http.services.localstack.loadbalancer.server.port=4566"
       - "traefik.http.services.localstack.loadbalancer.server.scheme=http"
+      # Cognito HTTPS proxy
+      - "traefik.http.routers.cognito-http.rule=Host(`cognito.local.harborlist.com`)"
+      - "traefik.http.routers.cognito-http.entrypoints=web"
+      - "traefik.http.routers.cognito-http.middlewares=https-redirect@file"
+      - "traefik.http.routers.cognito-https.rule=Host(`cognito.local.harborlist.com`)"
+      - "traefik.http.routers.cognito-https.entrypoints=websecure"
+      - "traefik.http.routers.cognito-https.tls=true"
+      - "traefik.http.routers.cognito-https.service=localstack"
 
   # LocalStack initialization service
   localstack-init:
@@ -209,6 +232,7 @@ services:
       - localstack
     volumes:
       - ./tools:/tools
+      - ./infrastructure/scripts:/scripts
     environment:
       - AWS_ACCESS_KEY_ID=test
       - AWS_SECRET_ACCESS_KEY=test
@@ -222,9 +246,17 @@ services:
           echo 'Waiting for LocalStack S3 service...'
           sleep 2
         done &&
-        echo 'LocalStack is ready. Running S3 setup script...' &&
+        echo 'Waiting for Cognito service...' &&
+        until curl -s http://localstack:4566/_localstack/health | grep -q '\"cognito-idp\": \"available\"'; do
+          echo 'Waiting for LocalStack Cognito service...'
+          sleep 2
+        done &&
+        echo 'LocalStack is ready. Running setup scripts...' &&
         chmod +x /tools/development/setup-s3-buckets.sh &&
-        LOCALSTACK_ENDPOINT=http://localstack:4566 /tools/development/setup-s3-buckets.sh
+        chmod +x /scripts/setup-local-cognito.sh &&
+        LOCALSTACK_ENDPOINT=http://localstack:4566 /tools/development/setup-s3-buckets.sh &&
+        echo 'Setting up Cognito User Pools...' &&
+        /scripts/setup-local-cognito.sh
       "
 
   # DynamoDB Admin UI

@@ -42,6 +42,8 @@
 import 'source-map-support/register';
 import * as cdk from 'aws-cdk-lib';
 import { HarborListStack } from '../lib/harborlist-stack';
+import { CustomerAuthStack } from '../lib/customer-auth-stack';
+import { StaffAuthStack } from '../lib/staff-auth-stack';
 
 /**
  * Environment-specific domain configuration interface
@@ -90,6 +92,17 @@ const environment: Environment = (app.node.tryGetContext('environment') || 'dev'
  */
 const useCustomDomains: boolean = app.node.tryGetContext('useCustomDomains') === 'true';
 
+
+
+/**
+ * Get environment-specific context configuration
+ * 
+ * Retrieves environment-specific settings from CDK context.
+ * 
+ * @type {any}
+ */
+const envContext = app.node.tryGetContext(environment) || {};
+
 /**
  * Environment-specific domain configurations
  * 
@@ -131,37 +144,103 @@ const envConfigs: Record<Environment, EnvironmentConfig> = {
  */
 const config: EnvironmentConfig = envConfigs[environment];
 
+// Only create authentication stacks for AWS environments (not local)
+let customerAuthStack: CustomerAuthStack | undefined;
+let staffAuthStack: StaffAuthStack | undefined;
+
+if (environment !== 'local') {
+  /**
+   * Instantiate the Customer Authentication Stack
+   * 
+   * Creates AWS Cognito User Pool infrastructure for customer authentication
+   * with support for Individual, Dealer, and Premium customer tiers.
+   * 
+   * Stack Features:
+   * - Customer User Pool with email-based authentication
+   * - Customer Groups for tier management
+   * - Optional MFA support
+   */
+  customerAuthStack = new CustomerAuthStack(app, `CustomerAuthStack-${environment}`, {
+    environment: environment as 'dev' | 'staging' | 'prod',
+    env: {
+      account: envContext.account || process.env.CDK_DEFAULT_ACCOUNT,
+      region: envContext.region || process.env.CDK_DEFAULT_REGION,
+    },
+  });
+
+  /**
+   * Instantiate the Staff Authentication Stack
+   * 
+   * Creates AWS Cognito User Pool infrastructure for staff authentication
+   * with enhanced security settings and role-based access control.
+   * 
+   * Stack Features:
+   * - Staff User Pool with enhanced security
+   * - Staff Groups for role-based access control
+   * - Enforced MFA for all staff accounts
+   * - Enhanced security monitoring and logging
+   */
+  staffAuthStack = new StaffAuthStack(app, `StaffAuthStack-${environment}`, {
+    environment: environment as 'dev' | 'staging' | 'prod',
+    env: {
+      account: envContext.account || process.env.CDK_DEFAULT_ACCOUNT,
+      region: envContext.region || process.env.CDK_DEFAULT_REGION,
+    },
+  });
+}
+
 /**
- * Instantiate the main HarborList infrastructure stack
+ * Conditionally instantiate the main HarborList infrastructure stack
  * 
- * Creates the complete serverless infrastructure including:
- * - DynamoDB tables for data persistence
- * - Lambda functions for serverless compute
- * - API Gateway for RESTful endpoints
- * - S3 buckets for storage and static hosting
- * - CloudWatch monitoring and alerting
- * - Cloudflare tunnel integration
- * - Security and authentication components
- * 
- * Stack Naming Convention:
- * - Format: BoatListingStack-{environment}
- * - Examples: BoatListingStack-dev, BoatListingStack-prod
- * 
- * Configuration Strategy:
- * - Environment-specific resource naming
- * - Conditional domain configuration based on useCustomDomains flag
- * - AWS account and region from environment variables
- * - Cost optimization through environment-appropriate resource sizing
+ * Only create the main stack if not in auth-only mode.
+ * This allows testing authentication stacks independently.
  */
-new HarborListStack(app, `HarborListStack-${environment}`, {
-  environment,
-  // Conditionally include domain configuration
-  ...(useCustomDomains && config && {
-    domainName: config.domainName,
-    apiDomainName: config.apiDomainName,
-  }),
-  env: {
-    account: process.env.CDK_DEFAULT_ACCOUNT,
-    region: process.env.CDK_DEFAULT_REGION,
-  },
-});
+const authOnly = app.node.tryGetContext('authOnly') === 'true';
+
+if (!authOnly) {
+  /**
+   * Instantiate the main HarborList infrastructure stack
+   * 
+   * Creates the complete serverless infrastructure including:
+   * - DynamoDB tables for data persistence
+   * - Lambda functions for serverless compute
+   * - API Gateway for RESTful endpoints
+   * - S3 buckets for storage and static hosting
+   * - CloudWatch monitoring and alerting
+   * - Security and authentication components
+   * 
+   * Stack Naming Convention:
+   * - Format: HarborListStack-{environment}
+   * - Examples: HarborListStack-dev, HarborListStack-prod
+   * 
+   * Configuration Strategy:
+   * - Environment-specific resource naming
+   * - Conditional domain configuration based on useCustomDomains flag
+   * - AWS account and region from environment variables or context
+   * - Cost optimization through environment-appropriate resource sizing
+   */
+  const mainStack = new HarborListStack(app, `HarborListStack-${environment}`, {
+    environment,
+    // Conditionally include domain configuration
+    ...(useCustomDomains && config && {
+      domainName: config.domainName,
+      apiDomainName: config.apiDomainName,
+    }),
+    // Include alert email from context if available
+    ...(envContext.alertEmail && {
+      alertEmail: envContext.alertEmail,
+    }),
+    env: {
+      account: envContext.account || process.env.CDK_DEFAULT_ACCOUNT,
+      region: envContext.region || process.env.CDK_DEFAULT_REGION,
+    },
+  });
+
+  // Add dependencies to ensure authentication stacks are deployed first
+  if (customerAuthStack) {
+    mainStack.addDependency(customerAuthStack);
+  }
+  if (staffAuthStack) {
+    mainStack.addDependency(staffAuthStack);
+  }
+}

@@ -1,0 +1,47 @@
+{
+  "version": "1.0",
+  "description": "LocalStack configuration for HarborList dual Cognito authentication",
+  "services": {
+    "cognito-idp": {
+      "enabled": true,
+      "port": 4566,
+      "description": "AWS Cognito Identity Provider for local development"
+    },
+    "cognito-identity": {
+      "enabled": true,
+      "port": 4566,
+      "description": "AWS Cognito Identity for federated identities"
+    },
+    "lambda": {
+      "enabled": true,
+      "port": 4566,
+      "description": "AWS Lambda for Cognito triggers"
+    },
+    "iam": {
+      "enabled": true,
+      "port": 4566,
+      "description": "AWS IAM for permissions management"
+    },
+    "logs": {
+      "enabled": true,
+      "port": 4566,
+      "description": "AWS CloudWatch Logs for Lambda triggers"
+    }
+  },
+  "environment": {
+    "COGNITO_PROVIDER_DEVELOPER_USER_IDENTITY_POOL_ID": "us-east-1:00000000-0000-0000-0000-000000000000",
+    "COGNITO_PROVIDER_DEVELOPER_USER_IDENTITY_POOL_NAME": "harborlist_local_identity_pool",
+    "DEBUG": "1",
+    "PERSISTENCE": "1",
+    "LAMBDA_EXECUTOR": "local",
+    "LAMBDA_REMOTE_DOCKER": "0",
+    "COGNITO_PROVIDER_DEVELOPER_USER_IDENTITY_POOL_REGION": "us-east-1"
+  },
+  "init_scripts": [
+    {
+      "name": "setup-cognito-pools",
+      "description": "Initialize Cognito User Pools for local development",
+      "script": "scripts/setup-local-cognito.sh"
+    }
+  ]
+}
