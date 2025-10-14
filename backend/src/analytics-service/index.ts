@@ -28,7 +28,12 @@ const dynamoDbClient = new DynamoDBClient({
   }),
 });
 
-const docClient = DynamoDBDocumentClient.from(dynamoDbClient);
+const docClient = DynamoDBDocumentClient.from(dynamoDbClient, {
+  marshallOptions: {
+    removeUndefinedValues: true, // Remove undefined values
+    convertEmptyValues: false,
+  },
+});
 
 // Table names
 const ANALYTICS_TABLE = process.env.ANALYTICS_EVENTS_TABLE || 'harborlist-analytics-events';
