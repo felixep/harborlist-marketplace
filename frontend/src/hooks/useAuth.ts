@@ -148,10 +148,26 @@ export const useAuthState = () => {
    * ```
    */
   const login = async (email: string, password: string) => {
-    const response = await api.login(email, password) as { success: boolean; tokens: { accessToken: string; refreshToken: string }; user: User };
+    const response = await api.login(email, password) as { 
+      success: boolean; 
+      tokens: { accessToken: string; refreshToken: string; idToken: string }; 
+      customer: User;  // Backend returns "customer" for customer logins
+    };
+    
+    if (!response.success) {
+      throw new Error('Login failed');
+    }
+    
     localStorage.setItem('authToken', response.tokens.accessToken);
     localStorage.setItem('refreshToken', response.tokens.refreshToken);
-    setUser(response.user);
+    
+    // Set user from customer data
+    setUser({
+      id: response.customer.id,
+      userId: response.customer.id,
+      name: response.customer.name,
+      email: response.customer.email
+    });
   };
 
   /**
