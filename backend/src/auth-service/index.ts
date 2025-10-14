@@ -1132,11 +1132,19 @@ class CognitoAuthService implements AuthService {
       // Check if MFA is enabled
       const mfaEnabled = getAttributeValue('custom:mfa_enabled') === 'true';
 
+      // Map StaffRole (with hyphens) to frontend UserRole format (with underscores)
+      const roleMapping: Record<StaffRole, string> = {
+        [StaffRole.SUPER_ADMIN]: 'super_admin',
+        [StaffRole.ADMIN]: 'admin',
+        [StaffRole.MANAGER]: 'moderator', // Map manager to moderator for frontend compatibility
+        [StaffRole.TEAM_MEMBER]: 'support', // Map team member to support for frontend compatibility
+      };
+
       return {
         id: response.Username!,
         email: getAttributeValue('email'),
         name: getAttributeValue('name'),
-        role: staffRole,
+        role: roleMapping[staffRole],
         permissions,
         team: getAttributeValue('custom:team'),
         mfaEnabled,

@@ -62,7 +62,7 @@ export interface StaffAuthResult {
     id: string;
     email: string;
     name: string;
-    role: StaffRole;
+    role: string; // Changed from StaffRole to string to match frontend UserRole enum format
     permissions: AdminPermission[];
     team?: string;
     mfaEnabled: boolean;
