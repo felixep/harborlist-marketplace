@@ -272,7 +272,7 @@ export function withAdaptiveRateLimit(permission?: AdminPermission, customLimits
       let limits = customLimits;
       if (!limits && permission && RATE_LIMIT_TIERS[permission]) {
         const tierLimits = RATE_LIMIT_TIERS[permission] as any;
-        if (tierLimits[userRole]) {
+        if (userRole && tierLimits[userRole]) {
           limits = tierLimits[userRole];
         }
       }
