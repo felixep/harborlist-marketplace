@@ -341,6 +341,16 @@ class CognitoAuthService implements AuthService {
       // Add user to appropriate group based on customer type
       if (response.UserSub) {
         await this.addCustomerToGroup(userData.email, userData.customerType);
+        
+        // Create user record in DynamoDB
+        await this.createUserInDynamoDB({
+          cognitoSub: response.UserSub,
+          email: userData.email,
+          name: userData.name,
+          phone: userData.phone,
+          customerType: userData.customerType,
+          emailVerified: response.UserConfirmed || false,
+        });
       }
 
       return {
@@ -484,6 +494,9 @@ class CognitoAuthService implements AuthService {
       });
 
       await this.customerCognitoClient.send(command);
+
+      // Update emailVerified status in DynamoDB
+      await this.updateUserEmailVerified(email);
 
       return {
         success: true,
@@ -1169,6 +1182,118 @@ class CognitoAuthService implements AuthService {
     } catch (error: any) {
       console.error('Error adding customer to group:', error);
       // Don't throw error as this is not critical for registration
+    }
+  }
+
+  /**
+   * Create user record in DynamoDB after Cognito registration
+   */
+  private async createUserInDynamoDB(userData: {
+    cognitoSub: string;
+    email: string;
+    name: string;
+    phone?: string;
+    customerType: string;
+    emailVerified: boolean;
+  }) {
+    try {
+      const { DynamoDBClient } = await import('@aws-sdk/client-dynamodb');
+      const { DynamoDBDocumentClient, PutCommand } = await import('@aws-sdk/lib-dynamodb');
+      
+      const client = new DynamoDBClient({
+        region: process.env.AWS_REGION || 'us-east-1',
+        ...(process.env.IS_OFFLINE === 'true' && {
+          endpoint: 'http://dynamodb-local:8000',
+          credentials: {
+            accessKeyId: 'test',
+            secretAccessKey: 'test'
+          }
+        })
+      });
+      
+      const docClient = DynamoDBDocumentClient.from(client);
+      
+      const userRecord = {
+        id: userData.cognitoSub,
+        email: userData.email,
+        name: userData.name,
+        phone: userData.phone || null,
+        role: 'user', // Customer role
+        status: 'active',
+        emailVerified: userData.emailVerified,
+        customerType: userData.customerType,
+        tier: userData.customerType,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        lastLoginAt: null,
+        loginCount: 0,
+      };
+
+      await docClient.send(new PutCommand({
+        TableName: process.env.USERS_TABLE || 'harborlist-users',
+        Item: userRecord
+      }));
+
+      console.log(`Created user record in DynamoDB for: ${userData.email}`);
+    } catch (error: any) {
+      console.error('Error creating user in DynamoDB:', error);
+      // Don't throw error as this is not critical for registration
+      // User exists in Cognito which is the source of truth
+    }
+  }
+
+  /**
+   * Update user's email verified status in DynamoDB after email confirmation
+   */
+  private async updateUserEmailVerified(email: string) {
+    try {
+      const { DynamoDBClient } = await import('@aws-sdk/client-dynamodb');
+      const { DynamoDBDocumentClient, UpdateCommand, QueryCommand } = await import('@aws-sdk/lib-dynamodb');
+      
+      const client = new DynamoDBClient({
+        region: process.env.AWS_REGION || 'us-east-1',
+        ...(process.env.IS_OFFLINE === 'true' && {
+          endpoint: 'http://dynamodb-local:8000',
+          credentials: {
+            accessKeyId: 'test',
+            secretAccessKey: 'test'
+          }
+        })
+      });
+      
+      const docClient = DynamoDBDocumentClient.from(client);
+      
+      // Find user by email
+      const queryParams = {
+        TableName: process.env.USERS_TABLE || 'harborlist-users',
+        IndexName: 'email-index',
+        KeyConditionExpression: 'email = :email',
+        ExpressionAttributeValues: {
+          ':email': email
+        }
+      };
+
+      const queryResult = await docClient.send(new QueryCommand(queryParams));
+      
+      if (queryResult.Items && queryResult.Items.length > 0) {
+        const user = queryResult.Items[0];
+        
+        // Update email verified status
+        await docClient.send(new UpdateCommand({
+          TableName: process.env.USERS_TABLE || 'harborlist-users',
+          Key: { id: user.id },
+          UpdateExpression: 'SET emailVerified = :verified, updatedAt = :updatedAt',
+          ExpressionAttributeValues: {
+            ':verified': true,
+            ':updatedAt': new Date().toISOString()
+          }
+        }));
+
+        console.log(`Updated email verified status for: ${email}`);
+      }
+    } catch (error: any) {
+      console.error('Error updating email verified status in DynamoDB:', error);
+      // Don't throw error as this is not critical
     }
   }
 
