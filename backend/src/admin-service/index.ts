@@ -2613,8 +2613,9 @@ async function handleGetSupportStats(event: AuthenticatedEvent): Promise<APIGate
       todayStart.setHours(0, 0, 0, 0);
       const todayTimestamp = Math.floor(todayStart.getTime() / 1000);
 
-      // Calculate stats
+      // Calculate basic stats
       const openTickets = tickets.filter((t: any) => t.status === 'open').length;
+      const inProgressTickets = tickets.filter((t: any) => t.status === 'in_progress').length;
       const resolvedToday = tickets.filter((t: any) => 
         t.status === 'resolved' && 
         t.resolvedAt && 
@@ -2636,25 +2637,95 @@ async function handleGetSupportStats(event: AuthenticatedEvent): Promise<APIGate
         averageResponseTime = Math.round((totalResponseTime / resolvedWithResponseTime.length) / 60); // Convert to minutes
       }
 
+      // Calculate average resolution time
+      const resolvedWithResolutionTime = tickets.filter((t: any) => 
+        t.status === 'resolved' && 
+        t.resolvedAt && 
+        t.createdAt
+      );
+
+      let averageResolutionTime = 0;
+      if (resolvedWithResolutionTime.length > 0) {
+        const totalResolutionTime = resolvedWithResolutionTime.reduce((sum: number, t: any) => {
+          return sum + (t.resolvedAt - t.createdAt);
+        }, 0);
+        averageResolutionTime = Math.round((totalResolutionTime / resolvedWithResolutionTime.length) / 60); // Convert to minutes
+      }
+
       // Calculate satisfaction score (if available)
       const ticketsWithRating = tickets.filter((t: any) => t.satisfactionRating);
       const satisfactionScore = ticketsWithRating.length > 0
         ? ticketsWithRating.reduce((sum: number, t: any) => sum + t.satisfactionRating, 0) / ticketsWithRating.length
         : 0;
 
+      // Count tickets by status
+      const ticketsByStatus = {
+        open: tickets.filter((t: any) => t.status === 'open').length,
+        in_progress: tickets.filter((t: any) => t.status === 'in_progress').length,
+        waiting_response: tickets.filter((t: any) => t.status === 'waiting_response').length,
+        resolved: tickets.filter((t: any) => t.status === 'resolved').length,
+        closed: tickets.filter((t: any) => t.status === 'closed').length
+      };
+
+      // Count tickets by priority
+      const ticketsByPriority = {
+        low: tickets.filter((t: any) => t.priority === 'low').length,
+        medium: tickets.filter((t: any) => t.priority === 'medium').length,
+        high: tickets.filter((t: any) => t.priority === 'high').length,
+        urgent: tickets.filter((t: any) => t.priority === 'urgent').length
+      };
+
+      // Count tickets by category
+      const ticketsByCategory = {
+        technical: tickets.filter((t: any) => t.category === 'technical').length,
+        billing: tickets.filter((t: any) => t.category === 'billing').length,
+        account: tickets.filter((t: any) => t.category === 'account').length,
+        listing: tickets.filter((t: any) => t.category === 'listing').length,
+        general: tickets.filter((t: any) => t.category === 'general').length
+      };
+
       return createResponse(200, {
+        totalTickets: tickets.length,
         openTickets,
-        averageResponseTime,
+        inProgressTickets,
         resolvedToday,
-        satisfactionScore: satisfactionScore ? Number(satisfactionScore.toFixed(2)) : 0
+        averageResponseTime,
+        averageResolutionTime,
+        satisfactionScore: satisfactionScore ? Number(satisfactionScore.toFixed(2)) : 0,
+        ticketsByStatus,
+        ticketsByPriority,
+        ticketsByCategory
       });
     } catch (dbError) {
       console.log('Support tickets table may not exist yet, returning default stats');
       return createResponse(200, {
+        totalTickets: 0,
         openTickets: 0,
-        averageResponseTime: 0,
+        inProgressTickets: 0,
         resolvedToday: 0,
-        satisfactionScore: 0
+        averageResponseTime: 0,
+        averageResolutionTime: 0,
+        satisfactionScore: 0,
+        ticketsByStatus: {
+          open: 0,
+          in_progress: 0,
+          waiting_response: 0,
+          resolved: 0,
+          closed: 0
+        },
+        ticketsByPriority: {
+          low: 0,
+          medium: 0,
+          high: 0,
+          urgent: 0
+        },
+        ticketsByCategory: {
+          technical: 0,
+          billing: 0,
+          account: 0,
+          listing: 0,
+          general: 0
+        }
       });
     }
   } catch (error: unknown) {
