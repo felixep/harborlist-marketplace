@@ -105,16 +105,29 @@ export const useAuthState = () => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Restore authentication state from stored JWT token on component mount
+  // Restore authentication state from stored user data and JWT token on component mount
   useEffect(() => {
     const token = localStorage.getItem('authToken');
-    if (token) {
+    const storedUser = localStorage.getItem('user');
+    
+    if (token && storedUser) {
+      try {
+        // Restore user from localStorage
+        const userData = JSON.parse(storedUser);
+        setUser(userData);
+      } catch (error) {
+        // If parsing fails, clear invalid data
+        localStorage.removeItem('authToken');
+        localStorage.removeItem('user');
+      }
+    } else if (token && !storedUser) {
+      // Token exists but no user data - try to parse from JWT (fallback)
       try {
         const payload = JSON.parse(atob(token.split('.')[1]));
         setUser({
           id: payload.sub,
           userId: payload.sub,
-          name: payload.name,
+          name: payload.name || payload['cognito:username'],
           email: payload.email
         });
       } catch (error) {
@@ -160,13 +173,16 @@ export const useAuthState = () => {
     localStorage.setItem('authToken', response.tokens.accessToken);
     localStorage.setItem('refreshToken', response.tokens.refreshToken);
     
-    // Set user from customer data
-    setUser({
+    // Set user from customer data and persist to localStorage
+    const userData = {
       id: response.customer.id,
       userId: response.customer.id,
       name: response.customer.name,
       email: response.customer.email
-    });
+    };
+    
+    localStorage.setItem('user', JSON.stringify(userData));
+    setUser(userData);
   };
 
   /**
@@ -222,6 +238,7 @@ export const useAuthState = () => {
   const logout = () => {
     localStorage.removeItem('authToken');
     localStorage.removeItem('refreshToken');
+    localStorage.removeItem('user');
     setUser(null);
   };
 
