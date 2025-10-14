@@ -51,6 +51,7 @@ const SESSIONS_TABLE = process.env.SESSIONS_TABLE || 'harborlist-admin-sessions'
 const AUDIT_LOGS_TABLE = process.env.AUDIT_LOGS_TABLE || 'harborlist-audit-logs';
 const LOGIN_ATTEMPTS_TABLE = process.env.LOGIN_ATTEMPTS_TABLE || 'harborlist-login-attempts';
 const MODERATION_QUEUE_TABLE = process.env.MODERATION_QUEUE_TABLE || 'harborlist-moderation-queue';
+const USER_GROUPS_TABLE = process.env.USER_GROUPS_TABLE || 'harborlist-user-groups';
 
 /**
  * Main Lambda handler for admin service operations with comprehensive security
@@ -138,6 +139,31 @@ export const handler = async (event: APIGatewayProxyEvent, context: any): Promis
       )(handleGetSystemErrors)(event as AuthenticatedEvent, {});
     }
 
+    // User management endpoints
+    if (path.includes('/users') && method === 'GET') {
+      return await compose(
+        withRateLimit(100, 60000),
+        withAdminAuth([AdminPermission.USER_MANAGEMENT]),
+        withAuditLog('LIST_USERS', 'users')
+      )(handleListUsers)(event as AuthenticatedEvent, {});
+    }
+
+    if (path.includes('/user-groups') && method === 'GET') {
+      return await compose(
+        withRateLimit(100, 60000),
+        withAdminAuth([AdminPermission.USER_MANAGEMENT]),
+        withAuditLog('LIST_USER_GROUPS', 'user_groups')
+      )(handleListUserGroups)(event as AuthenticatedEvent, {});
+    }
+
+    if (path.includes('/user-tiers') && method === 'GET') {
+      return await compose(
+        withRateLimit(100, 60000),
+        withAdminAuth([AdminPermission.TIER_MANAGEMENT]),
+        withAuditLog('LIST_USER_TIERS', 'user_tiers')
+      )(handleListUserTiers)(event as AuthenticatedEvent, {});
+    }
+
     // Default response for unhandled routes
     return createErrorResponse(404, 'ENDPOINT_NOT_FOUND', 'Admin endpoint not found', requestId, [{
       path,
@@ -148,6 +174,9 @@ export const handler = async (event: APIGatewayProxyEvent, context: any): Promis
         '/api/admin/system/metrics',
         '/api/admin/system/alerts',
         '/api/admin/system/errors',
+        '/api/admin/users',
+        '/api/admin/user-groups',
+        '/api/admin/user-tiers',
         '/health',
         '/test'
       ]
@@ -436,6 +465,143 @@ async function handleGetSystemErrors(event: AuthenticatedEvent): Promise<APIGate
     console.error('Error fetching system errors:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return createErrorResponse(500, 'SYSTEM_ERRORS_ERROR', 'Failed to fetch system errors', event.requestContext.requestId, [{ error: errorMessage }]);
+  }
+}
+
+/**
+ * Handle list users request
+ */
+async function handleListUsers(event: AuthenticatedEvent): Promise<APIGatewayProxyResult> {
+  try {
+    const limit = parseInt(event.queryStringParameters?.limit || '50');
+    const lastKey = event.queryStringParameters?.lastKey;
+
+    // Scan users table
+    const params: any = {
+      TableName: USERS_TABLE,
+      Limit: limit
+    };
+
+    if (lastKey) {
+      params.ExclusiveStartKey = JSON.parse(decodeURIComponent(lastKey));
+    }
+
+    const result = await docClient.send(new ScanCommand(params));
+
+    const response = {
+      users: result.Items || [],
+      lastKey: result.LastEvaluatedKey ? encodeURIComponent(JSON.stringify(result.LastEvaluatedKey)) : null,
+      count: result.Items?.length || 0
+    };
+
+    return createResponse(200, response);
+
+  } catch (error: unknown) {
+    console.error('Error listing users:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    return createErrorResponse(500, 'LIST_USERS_ERROR', 'Failed to list users', event.requestContext.requestId, [{ error: errorMessage }]);
+  }
+}
+
+/**
+ * Handle list user groups request
+ */
+async function handleListUserGroups(event: AuthenticatedEvent): Promise<APIGatewayProxyResult> {
+  try {
+    const limit = parseInt(event.queryStringParameters?.limit || '50');
+    const lastKey = event.queryStringParameters?.lastKey;
+
+    // Scan user groups table
+    const params: any = {
+      TableName: USER_GROUPS_TABLE,
+      Limit: limit
+    };
+
+    if (lastKey) {
+      params.ExclusiveStartKey = JSON.parse(decodeURIComponent(lastKey));
+    }
+
+    const result = await docClient.send(new ScanCommand(params));
+
+    const response = {
+      groups: result.Items || [],
+      lastKey: result.LastEvaluatedKey ? encodeURIComponent(JSON.stringify(result.LastEvaluatedKey)) : null,
+      count: result.Items?.length || 0
+    };
+
+    return createResponse(200, response);
+
+  } catch (error: unknown) {
+    console.error('Error listing user groups:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    return createErrorResponse(500, 'LIST_USER_GROUPS_ERROR', 'Failed to list user groups', event.requestContext.requestId, [{ error: errorMessage }]);
+  }
+}
+
+/**
+ * Handle list user tiers request
+ */
+async function handleListUserTiers(event: AuthenticatedEvent): Promise<APIGatewayProxyResult> {
+  try {
+    // Return predefined user tiers
+    // In a real implementation, these might come from a database table or configuration
+    const tiers = [
+      {
+        id: 'free',
+        name: 'Free',
+        description: 'Basic access to the platform',
+        features: ['View listings', 'Contact sellers', 'Save favorites'],
+        limits: {
+          listingsPerMonth: 1,
+          imagesPerListing: 5,
+          featuredListings: 0
+        },
+        price: 0
+      },
+      {
+        id: 'basic',
+        name: 'Basic',
+        description: 'Enhanced listing capabilities',
+        features: ['Everything in Free', 'Create listings', 'Basic analytics'],
+        limits: {
+          listingsPerMonth: 5,
+          imagesPerListing: 10,
+          featuredListings: 0
+        },
+        price: 29.99
+      },
+      {
+        id: 'premium',
+        name: 'Premium',
+        description: 'Professional seller features',
+        features: ['Everything in Basic', 'Featured listings', 'Priority support', 'Advanced analytics'],
+        limits: {
+          listingsPerMonth: 20,
+          imagesPerListing: 20,
+          featuredListings: 2
+        },
+        price: 79.99
+      },
+      {
+        id: 'professional',
+        name: 'Professional',
+        description: 'Complete dealership solution',
+        features: ['Everything in Premium', 'Unlimited listings', 'Custom branding', 'API access'],
+        limits: {
+          listingsPerMonth: -1, // unlimited
+          imagesPerListing: 50,
+          featuredListings: 10
+        },
+        price: 199.99
+      }
+    ];
+
+    return createResponse(200, { tiers });
+
+  } catch (error: unknown) {
+    console.error('Error listing user tiers:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    return createErrorResponse(500, 'LIST_USER_TIERS_ERROR', 'Failed to list user tiers', event.requestContext.requestId, [{ error: errorMessage }]);
   }
 }
 
