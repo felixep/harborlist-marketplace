@@ -10,7 +10,7 @@ export default function Profile() {
   const [activeTab, setActiveTab] = useState<'listings' | 'profile' | 'messages'>('listings');
 
   const { data: userListings, isLoading } = useQuery({
-    queryKey: ['user-listings', user?.userId],
+    queryKey: ['customer-listings', user?.userId],
     queryFn: () => getListings({ limit: 50 }),
     enabled: !!user?.userId,
   });

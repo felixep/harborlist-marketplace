@@ -122,9 +122,9 @@ export const RegisterForm: React.FC = () => {
     setLoading(true);
     try {
       const response = await api.register(formData.name, formData.email, formData.password, 'individual') as { 
+        success: boolean;
         requiresVerification?: boolean; 
         message: string;
-        user: { email: string; name: string } 
       };
       
       if (response.requiresVerification) {
@@ -138,7 +138,7 @@ export const RegisterForm: React.FC = () => {
           replace: true 
         });
       } else {
-        // Fallback: if verification not required, proceed with normal flow
+        // Fallback: if verification not required, attempt login
         await register(formData.name, formData.email, formData.password, 'individual');
         navigate(from, { replace: true });
       }

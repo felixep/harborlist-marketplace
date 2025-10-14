@@ -116,7 +116,7 @@ class ApiService {
     });
   }
 
-  // Billing
+  // Billing (Admin endpoints - use customerId not userId)
   async createBillingAccount(billingData: any) {
     return this.request('/api/billing/accounts', {
       method: 'POST',
@@ -124,8 +124,8 @@ class ApiService {
     });
   }
 
-  async getBillingAccount(userId: string) {
-    return this.request(`/api/billing/accounts/${userId}`);
+  async getBillingAccount(customerId: string) {
+    return this.request(`/api/billing/accounts/${customerId}`);
   }
 
   async createSubscription(subscriptionData: any) {
@@ -142,16 +142,16 @@ class ApiService {
     });
   }
 
-  // User Management
-  async updateUserType(userId: string, userType: string, capabilities?: any[]) {
-    return this.request(`/api/users/${userId}/type`, {
+  // Customer Management (Legacy/Unused - consider removing)
+  async updateUserType(customerId: string, customerType: string, capabilities?: any[]) {
+    return this.request(`/api/customers/${customerId}/type`, {
       method: 'PUT',
-      body: JSON.stringify({ userType, capabilities })
+      body: JSON.stringify({ customerType, capabilities })
     });
   }
 
-  async getUserTiers() {
-    return this.request('/api/users/tiers');
+  async getCustomerTiers() {
+    return this.request('/api/customers/tiers');
   }
 }
 
