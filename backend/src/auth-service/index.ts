@@ -103,6 +103,15 @@ class CognitoAuthService implements AuthService {
     validateEnvironmentConfig();
     this.config = getEnvironmentConfig();
 
+    // Log configuration for debugging
+    console.log('🔧 Auth Service Configuration:');
+    console.log(`   Environment: ${this.config.deployment.environment}`);
+    console.log(`   UseLocalStack: ${this.config.deployment.useLocalStack}`);
+    console.log(`   Customer Pool: ${this.config.cognito.customer.poolId}`);
+    console.log(`   Staff Pool: ${this.config.cognito.staff.poolId}`);
+    console.log(`   Customer Endpoint: ${this.config.cognito.customer.endpoint || 'AWS'}`);
+    console.log(`   Staff Endpoint: ${this.config.cognito.staff.endpoint || 'AWS'}`);
+
     // Initialize Cognito clients for both user pools
     const cognitoConfig = {
       region: this.config.deployment.region,
@@ -114,6 +123,8 @@ class CognitoAuthService implements AuthService {
         },
       }),
     };
+
+    console.log(`🔗 Initializing Cognito clients with endpoint: ${cognitoConfig.endpoint || 'AWS'}`);
 
     this.customerCognitoClient = new CognitoIdentityProviderClient(cognitoConfig);
     this.staffCognitoClient = new CognitoIdentityProviderClient(cognitoConfig);
@@ -1818,6 +1829,8 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     const path = event.path;
     const method = event.httpMethod;
     const body = JSON.parse(event.body || '{}');
+    
+    console.log(`🔍 Auth handler - Path: ${path}, Method: ${method}`);
 
     // Health check endpoint
     if (path.endsWith('/health') && method === 'GET') {
@@ -1855,6 +1868,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
     // Staff authentication endpoints
     if (path.includes('/auth/staff/login') && method === 'POST') {
+      console.log('✅ Matched staff login endpoint');
       return await handleStaffLogin(body, requestId, clientInfo);
     } else if (path.includes('/auth/staff/refresh') && method === 'POST') {
       return await handleStaffRefresh(body, requestId, clientInfo);
@@ -1864,6 +1878,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
     // Backward compatibility for existing endpoints
     if (path.endsWith('/login') && method === 'POST') {
+      console.log('⚠️  Matched backward compatibility customer login endpoint');
       return await handleCustomerLogin(body, requestId, clientInfo);
     } else if (path.endsWith('/register') && method === 'POST') {
       return await handleCustomerRegister(body, requestId, clientInfo);

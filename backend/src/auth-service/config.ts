@@ -251,10 +251,12 @@ export class EnvironmentConfigManager {
    * Get LocalStack endpoint URL
    */
   private getLocalStackEndpoint(): string {
-    const endpoint = process.env.LOCALSTACK_ENDPOINT || 
-                    process.env.COGNITO_ENDPOINT ||
+    // Priority order: COGNITO_ENDPOINT, LOCALSTACK_ENDPOINT, then default
+    const endpoint = process.env.COGNITO_ENDPOINT || 
+                    process.env.LOCALSTACK_ENDPOINT ||
                     `http://localhost:${DEFAULT_CONFIG.localStackPort}`;
     
+    console.log(`Using LocalStack endpoint: ${endpoint}`);
     return endpoint;
   }
 
