@@ -28,10 +28,11 @@ const UserManagement: React.FC = () => {
   const { isLoading, updateUserStatus } = useAdminOperations();
   
   // Tab state
-  const [activeTab, setActiveTab] = useState<'users' | 'groups'>('users');
+  const [activeTab, setActiveTab] = useState<'customers' | 'staff' | 'groups'>('customers');
   
   // User management state
-  const [users, setUsers] = useState<EnhancedUser[]>([]);
+  const [customers, setCustomers] = useState<EnhancedUser[]>([]);
+  const [staff, setStaff] = useState<EnhancedUser[]>([]);
   const [filteredUsers, setFilteredUsers] = useState<EnhancedUser[]>([]);
   const [userTiers, setUserTiers] = useState<UserTier[]>([]);
   const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
@@ -40,6 +41,10 @@ const UserManagement: React.FC = () => {
   const [showBulkActions, setShowBulkActions] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(20);
+  
+  // Statistics
+  const [customerStats, setCustomerStats] = useState<any>({});
+  const [staffStats, setStaffStats] = useState<any>({});
   
   const [filters, setFilters] = useState<UserFilters>({
     search: '',
@@ -76,28 +81,42 @@ const UserManagement: React.FC = () => {
   ]);
 
   useEffect(() => {
-    loadUsers();
+    loadCustomers();
+    loadStaff();
     loadUserTiers();
     loadUserGroups();
   }, []);
 
-  // Reload user groups when users change to update member counts
+  // Reload user groups when customers or staff change to update member counts
   useEffect(() => {
-    if (users.length > 0) {
+    if (customers.length > 0 || staff.length > 0) {
       loadUserGroups();
     }
-  }, [users]);
+  }, [customers, staff]);
 
   useEffect(() => {
     applyFilters();
-  }, [users, filters]);
+  }, [customers, staff, filters, activeTab]);
 
-  const loadUsers = async () => {
+  const loadCustomers = async () => {
     try {
-      const response = await adminApi.getUsers();
-      setUsers(response.users || []);
+      const response = await adminApi.get('/users/customers');
+      const data = response.data as any;
+      setCustomers(data.customers || []);
+      setCustomerStats(data.stats || {});
     } catch (error) {
-      showError('Error', 'Failed to load users');
+      showError('Error', 'Failed to load customers');
+    }
+  };
+
+  const loadStaff = async () => {
+    try {
+      const response = await adminApi.get('/users/staff');
+      const data = response.data as any;
+      setStaff(data.staff || []);
+      setStaffStats(data.stats || {});
+    } catch (error) {
+      showError('Error', 'Failed to load staff');
     }
   };
 
@@ -131,15 +150,16 @@ const UserManagement: React.FC = () => {
 
   const calculateGroupMemberCount = (groupId: string): number => {
     // Conceptual mapping of user types to groups
+    const allUsers = [...customers, ...staff];
     switch (groupId) {
       case 'buyers':
-        return users.filter(user => !user.userType || user.userType === 'individual').length;
+        return allUsers.filter(user => !user.userType || user.userType === 'individual').length;
       case 'sellers':
-        return users.filter(user => user.userType === 'premium_individual').length;
+        return allUsers.filter(user => user.userType === 'premium_individual').length;
       case 'dealers':
-        return users.filter(user => user.userType === 'dealer' || user.userType === 'premium_dealer').length;
+        return allUsers.filter(user => user.userType === 'dealer' || user.userType === 'premium_dealer').length;
       case 'moderators':
-        return users.filter(user => user.role === 'moderator' || user.role === 'admin' || user.role === 'super_admin').length;
+        return allUsers.filter(user => user.role === 'moderator' || user.role === 'admin' || user.role === 'super_admin').length;
       default:
         return 0;
     }
@@ -221,7 +241,15 @@ const UserManagement: React.FC = () => {
   };
 
   const applyFilters = () => {
-    let filtered = [...users];
+    // Determine which users to filter based on active tab
+    let baseUsers: EnhancedUser[] = [];
+    if (activeTab === 'customers') {
+      baseUsers = [...customers];
+    } else if (activeTab === 'staff') {
+      baseUsers = [...staff];
+    }
+
+    let filtered = baseUsers;
 
     if (filters.search) {
       const searchLower = filters.search.toLowerCase();
@@ -283,7 +311,8 @@ const UserManagement: React.FC = () => {
   const handleUserTypeChange = async (userId: string, newUserType: string) => {
     try {
       await adminApi.post(`/users/${userId}/user-type`, { userType: newUserType });
-      await loadUsers();
+      await loadCustomers();
+      await loadStaff();
       showSuccess('Success', 'User type updated successfully');
     } catch (error) {
       showError('Error', 'Failed to update user type');
@@ -293,7 +322,8 @@ const UserManagement: React.FC = () => {
   const handleTierAssignment = async (userId: string, tierId: string) => {
     try {
       await adminApi.post(`/users/${userId}/tier`, { tierId });
-      await loadUsers();
+      await loadCustomers();
+      await loadStaff();
       showSuccess('Success', 'User tier assigned successfully');
     } catch (error) {
       showError('Error', 'Failed to assign user tier');
@@ -307,7 +337,8 @@ const UserManagement: React.FC = () => {
         enabled,
         expiresAt: enabled ? Date.now() + (365 * 24 * 60 * 60 * 1000) : undefined // 1 year
       });
-      await loadUsers();
+      await loadCustomers();
+      await loadStaff();
       showSuccess('Success', `Capability ${enabled ? 'enabled' : 'disabled'} successfully`);
     } catch (error) {
       showError('Error', 'Failed to update capability');
@@ -338,7 +369,8 @@ const UserManagement: React.FC = () => {
           break;
       }
       setSelectedUsers([]);
-      await loadUsers();
+      await loadCustomers();
+      await loadStaff();
     } catch (error) {
       showError('Error', `Failed to perform bulk action: ${action}`);
     }
@@ -377,7 +409,7 @@ const UserManagement: React.FC = () => {
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-bold text-gray-900">User Management</h1>
         <div className="flex space-x-2">
-          {activeTab === 'users' && (
+          {(activeTab === 'customers' || activeTab === 'staff') && (
             <button
               onClick={() => setShowBulkActions(!showBulkActions)}
               disabled={selectedUsers.length === 0}
@@ -401,14 +433,24 @@ const UserManagement: React.FC = () => {
       <div className="border-b border-gray-200 mb-6">
         <nav className="-mb-px flex space-x-8">
           <button
-            onClick={() => setActiveTab('users')}
+            onClick={() => setActiveTab('customers')}
             className={`py-2 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'users'
+              activeTab === 'customers'
                 ? 'border-indigo-500 text-indigo-600'
                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
             }`}
           >
-            Users ({users.length})
+            Customers ({customers.length})
+          </button>
+          <button
+            onClick={() => setActiveTab('staff')}
+            className={`py-2 px-1 border-b-2 font-medium text-sm ${
+              activeTab === 'staff'
+                ? 'border-indigo-500 text-indigo-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            Staff ({staff.length})
           </button>
           <button
             onClick={() => setActiveTab('groups')}
@@ -423,9 +465,46 @@ const UserManagement: React.FC = () => {
         </nav>
       </div>
 
-      {/* Users Tab Content */}
-      {activeTab === 'users' && (
+      {/* Customers Tab Content */}
+      {activeTab === 'customers' && (
         <>
+          {/* Customer Statistics */}
+          {Object.keys(customerStats).length > 0 && (
+            <div className="bg-white shadow rounded-lg mb-6">
+              <div className="px-6 py-4 border-b border-gray-200">
+                <h2 className="text-lg font-medium text-gray-900">Customer Statistics</h2>
+              </div>
+              <div className="p-6">
+                <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-gray-900">{customerStats.total || 0}</div>
+                    <div className="text-sm text-gray-500">Total Customers</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-green-600">{customerStats.active || 0}</div>
+                    <div className="text-sm text-gray-500">Active</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-yellow-600">{customerStats.suspended || 0}</div>
+                    <div className="text-sm text-gray-500">Suspended</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-red-600">{customerStats.banned || 0}</div>
+                    <div className="text-sm text-gray-500">Banned</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-blue-600">{customerStats.verified || 0}</div>
+                    <div className="text-sm text-gray-500">Verified</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-gray-600">{customerStats.unverified || 0}</div>
+                    <div className="text-sm text-gray-500">Unverified</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Filters */}
           <div className="bg-white shadow rounded-lg mb-6">
         <div className="px-6 py-4 border-b border-gray-200">
@@ -763,6 +842,357 @@ const UserManagement: React.FC = () => {
                   onClick={() => {
                     setShowUserModal(false);
                     showSuccess('Success', 'User updated successfully');
+                  }}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700"
+                >
+                  Save Changes
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+        </>
+      )}
+
+      {/* Staff Tab Content */}
+      {activeTab === 'staff' && (
+        <>
+          {/* Filters */}
+          <div className="bg-white shadow rounded-lg mb-6">
+        <div className="px-6 py-4 border-b border-gray-200">
+          <h2 className="text-lg font-medium text-gray-900">Filters</h2>
+        </div>
+        <div className="p-6">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Search</label>
+              <input
+                type="text"
+                value={filters.search}
+                onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value }))}
+                placeholder="Name or email..."
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+              <select
+                value={filters.status}
+                onChange={(e) => setFilters(prev => ({ ...prev, status: e.target.value }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="">All Statuses</option>
+                <option value="active">Active</option>
+                <option value="suspended">Suspended</option>
+                <option value="banned">Banned</option>
+                <option value="pending_verification">Pending Verification</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
+              <select
+                value={filters.role}
+                onChange={(e) => setFilters(prev => ({ ...prev, role: e.target.value }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="">All Roles</option>
+                <option value="super_admin">Super Admin</option>
+                <option value="admin">Admin</option>
+                <option value="moderator">Moderator</option>
+                <option value="support">Support</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">MFA Status</label>
+              <select
+                value={filters.premiumStatus}
+                onChange={(e) => setFilters(prev => ({ ...prev, premiumStatus: e.target.value }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="">All</option>
+                <option value="active">MFA Enabled</option>
+                <option value="inactive">MFA Disabled</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Staff Statistics */}
+      {Object.keys(staffStats).length > 0 && (
+        <div className="bg-white shadow rounded-lg mb-6">
+          <div className="px-6 py-4 border-b border-gray-200">
+            <h2 className="text-lg font-medium text-gray-900">Staff Statistics</h2>
+          </div>
+          <div className="p-6">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+              <div className="text-center">
+                <div className="text-2xl font-bold text-gray-900">{staffStats.total || 0}</div>
+                <div className="text-sm text-gray-500">Total Staff</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-purple-600">{staffStats.super_admin || 0}</div>
+                <div className="text-sm text-gray-500">Super Admins</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-blue-600">{staffStats.admin || 0}</div>
+                <div className="text-sm text-gray-500">Admins</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-green-600">{staffStats.moderator || 0}</div>
+                <div className="text-sm text-gray-500">Moderators</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-yellow-600">{staffStats.support || 0}</div>
+                <div className="text-sm text-gray-500">Support</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Actions */}
+      {showBulkActions && selectedUsers.length > 0 && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+          <div className="flex items-center justify-between">
+            <span className="text-blue-800 font-medium">
+              {selectedUsers.length} staff member{selectedUsers.length !== 1 ? 's' : ''} selected
+            </span>
+            <div className="flex space-x-2">
+              <button
+                onClick={() => handleBulkAction('activate')}
+                className="bg-green-600 text-white px-3 py-1 rounded text-sm hover:bg-green-700"
+              >
+                Activate
+              </button>
+              <button
+                onClick={() => handleBulkAction('suspend')}
+                className="bg-yellow-600 text-white px-3 py-1 rounded text-sm hover:bg-yellow-700"
+              >
+                Suspend
+              </button>
+              <button
+                onClick={() => handleBulkAction('delete')}
+                className="bg-red-600 text-white px-3 py-1 rounded text-sm hover:bg-red-700"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Staff Table */}
+      <div className="bg-white shadow rounded-lg">
+        <div className="px-6 py-4 border-b border-gray-200">
+          <div className="flex justify-between items-center">
+            <h2 className="text-lg font-medium text-gray-900">
+              Staff Members ({filteredUsers.length})
+            </h2>
+            <div className="flex items-center space-x-2">
+              <input
+                type="checkbox"
+                checked={currentPageUsers.length > 0 && currentPageUsers.every(user => selectedUsers.includes(user.id))}
+                onChange={handleSelectAll}
+                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+              />
+              <span className="text-sm text-gray-500">Select All</span>
+            </div>
+          </div>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Select
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  User
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Role
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Status
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  MFA
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Actions
+                </th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {currentPageUsers.map((user) => (
+                <tr key={user.id} className="hover:bg-gray-50">
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <input
+                      type="checkbox"
+                      checked={selectedUsers.includes(user.id)}
+                      onChange={() => handleUserSelect(user.id)}
+                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                    />
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="flex items-center">
+                      <div className="flex-shrink-0 h-10 w-10">
+                        <div className="h-10 w-10 rounded-full bg-gray-300 flex items-center justify-center">
+                          <span className="text-sm font-medium text-gray-700">
+                            {user.name.charAt(0).toUpperCase()}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="ml-4">
+                        <div className="text-sm font-medium text-gray-900">{user.name}</div>
+                        <div className="text-sm text-gray-500">{user.email}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-purple-100 text-purple-800">
+                      {user.role.replace('_', ' ')}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(user.status)}`}>
+                      {user.status}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    {user.mfaEnabled ? (
+                      <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
+                        Enabled
+                      </span>
+                    ) : (
+                      <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-gray-100 text-gray-800">
+                        Disabled
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                    <button
+                      onClick={() => {
+                        setSelectedUser(user);
+                        setShowUserModal(true);
+                      }}
+                      className="text-indigo-600 hover:text-indigo-900 mr-3"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => updateUserStatus(user.id, user.status === 'active' ? 'suspended' : 'active', 'Admin action')}
+                      className={`${user.status === 'active' ? 'text-red-600 hover:text-red-900' : 'text-green-600 hover:text-green-900'}`}
+                    >
+                      {user.status === 'active' ? 'Suspend' : 'Activate'}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="px-6 py-4 border-t border-gray-200">
+            <div className="flex items-center justify-between">
+              <div className="text-sm text-gray-700">
+                Showing {((currentPage - 1) * itemsPerPage) + 1} to {Math.min(currentPage * itemsPerPage, filteredUsers.length)} of {filteredUsers.length} results
+              </div>
+              <div className="flex space-x-2">
+                <button
+                  onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                  disabled={currentPage === 1}
+                  className="px-3 py-1 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Previous
+                </button>
+                <span className="px-3 py-1 text-sm font-medium text-gray-700">
+                  Page {currentPage} of {totalPages}
+                </span>
+                <button
+                  onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                  disabled={currentPage === totalPages}
+                  className="px-3 py-1 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* User Edit Modal */}
+      {showUserModal && selectedUser && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+          <div className="relative top-20 mx-auto p-5 border w-11/12 md:w-3/4 lg:w-1/2 shadow-lg rounded-md bg-white">
+            <div className="mt-3">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-medium text-gray-900">Edit Staff: {selectedUser.name}</h3>
+                <button
+                  onClick={() => setShowUserModal(false)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <span className="sr-only">Close</span>
+                  <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
+                  <select
+                    value={selectedUser.role || 'support'}
+                    onChange={(e) => handleUserTypeChange(selectedUser.id, e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    <option value="super_admin">Super Admin</option>
+                    <option value="admin">Admin</option>
+                    <option value="moderator">Moderator</option>
+                    <option value="support">Support</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Staff Capabilities</label>
+                  <div className="space-y-2">
+                    {['manage_users', 'moderate_content', 'view_reports', 'manage_listings', 'view_analytics', 'system_settings'].map(capability => {
+                      const hasCapability = selectedUser.capabilities?.some(c => c.feature === capability && c.enabled);
+                      return (
+                        <label key={capability} className="flex items-center">
+                          <input
+                            type="checkbox"
+                            checked={hasCapability}
+                            onChange={(e) => handleCapabilityToggle(selectedUser.id, capability, e.target.checked)}
+                            className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                          />
+                          <span className="ml-2 text-sm text-gray-700">
+                            {capability.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-6 flex justify-end space-x-3">
+                <button
+                  onClick={() => setShowUserModal(false)}
+                  className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    setShowUserModal(false);
+                    showSuccess('Success', 'Staff member updated successfully');
                   }}
                   className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700"
                 >
