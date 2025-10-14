@@ -73,20 +73,43 @@ const UserManagement: React.FC = () => {
     color: '#3B82F6',
     permissions: [] as string[]
   });
+  
+  // Staff team permissions organized by category
   const [availablePermissions] = useState([
-    'browse_listings',
-    'contact_sellers', 
-    'save_favorites',
-    'create_listings',
-    'manage_listings',
-    'view_analytics',
-    'bulk_operations',
-    'advanced_analytics',
-    'api_access',
-    'white_label',
-    'moderate_content',
+    // User Management
     'manage_users',
-    'view_reports'
+    'view_users',
+    'suspend_users',
+    'verify_users',
+    
+    // Content Moderation
+    'moderate_content',
+    'review_listings',
+    'approve_listings',
+    'remove_content',
+    'handle_reports',
+    
+    // Support & Communication
+    'view_support_tickets',
+    'respond_to_tickets',
+    'escalate_tickets',
+    'send_announcements',
+    
+    // Analytics & Reports
+    'view_analytics',
+    'view_reports',
+    'export_data',
+    
+    // Sales & Business
+    'view_sales_data',
+    'manage_promotions',
+    'contact_customers',
+    
+    // System Administration
+    'manage_settings',
+    'manage_staff',
+    'view_audit_logs',
+    'manage_integrations'
   ]);
 
   useEffect(() => {
@@ -1485,7 +1508,7 @@ const UserManagement: React.FC = () => {
                     value={groupFormData.name}
                     onChange={(e) => setGroupFormData(prev => ({ ...prev, name: e.target.value }))}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                    placeholder="Enter group name"
+                    placeholder="e.g., Sales Team, Support Team, Moderation Team"
                   />
                 </div>
 
@@ -1494,9 +1517,9 @@ const UserManagement: React.FC = () => {
                   <textarea
                     value={groupFormData.description}
                     onChange={(e) => setGroupFormData(prev => ({ ...prev, description: e.target.value }))}
-                    rows={3}
+                    rows={2}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                    placeholder="Enter group description"
+                    placeholder="Describe the team's responsibilities"
                   />
                 </div>
 
@@ -1520,33 +1543,201 @@ const UserManagement: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Permissions</label>
-                  <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto border border-gray-200 rounded-md p-3">
-                    {availablePermissions.map((permission) => (
-                      <label key={permission} className="flex items-center space-x-2">
-                        <input
-                          type="checkbox"
-                          checked={groupFormData.permissions.includes(permission)}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setGroupFormData(prev => ({
-                                ...prev,
-                                permissions: [...prev.permissions, permission]
-                              }));
-                            } else {
-                              setGroupFormData(prev => ({
-                                ...prev,
-                                permissions: prev.permissions.filter(p => p !== permission)
-                              }));
-                            }
-                          }}
-                          className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                        />
-                        <span className="text-sm text-gray-700">
-                          {permission.replace(/_/g, ' ')}
-                        </span>
-                      </label>
-                    ))}
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Team Permissions</label>
+                  <p className="text-xs text-gray-500 mb-3">Select permissions for this team. Members will inherit these permissions.</p>
+                  
+                  <div className="max-h-64 overflow-y-auto border border-gray-200 rounded-md p-3 space-y-4">
+                    {/* User Management Permissions */}
+                    <div>
+                      <h4 className="text-xs font-semibold text-gray-700 mb-2 uppercase">User Management</h4>
+                      <div className="grid grid-cols-2 gap-2">
+                        {['manage_users', 'view_users', 'suspend_users', 'verify_users'].map((permission) => (
+                          <label key={permission} className="flex items-center space-x-2">
+                            <input
+                              type="checkbox"
+                              checked={groupFormData.permissions.includes(permission)}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setGroupFormData(prev => ({
+                                    ...prev,
+                                    permissions: [...prev.permissions, permission]
+                                  }));
+                                } else {
+                                  setGroupFormData(prev => ({
+                                    ...prev,
+                                    permissions: prev.permissions.filter(p => p !== permission)
+                                  }));
+                                }
+                              }}
+                              className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                            />
+                            <span className="text-sm text-gray-700 capitalize">
+                              {permission.replace(/_/g, ' ')}
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Content Moderation Permissions */}
+                    <div>
+                      <h4 className="text-xs font-semibold text-gray-700 mb-2 uppercase">Content Moderation</h4>
+                      <div className="grid grid-cols-2 gap-2">
+                        {['moderate_content', 'review_listings', 'approve_listings', 'remove_content', 'handle_reports'].map((permission) => (
+                          <label key={permission} className="flex items-center space-x-2">
+                            <input
+                              type="checkbox"
+                              checked={groupFormData.permissions.includes(permission)}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setGroupFormData(prev => ({
+                                    ...prev,
+                                    permissions: [...prev.permissions, permission]
+                                  }));
+                                } else {
+                                  setGroupFormData(prev => ({
+                                    ...prev,
+                                    permissions: prev.permissions.filter(p => p !== permission)
+                                  }));
+                                }
+                              }}
+                              className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                            />
+                            <span className="text-sm text-gray-700 capitalize">
+                              {permission.replace(/_/g, ' ')}
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Support & Communication Permissions */}
+                    <div>
+                      <h4 className="text-xs font-semibold text-gray-700 mb-2 uppercase">Support & Communication</h4>
+                      <div className="grid grid-cols-2 gap-2">
+                        {['view_support_tickets', 'respond_to_tickets', 'escalate_tickets', 'send_announcements'].map((permission) => (
+                          <label key={permission} className="flex items-center space-x-2">
+                            <input
+                              type="checkbox"
+                              checked={groupFormData.permissions.includes(permission)}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setGroupFormData(prev => ({
+                                    ...prev,
+                                    permissions: [...prev.permissions, permission]
+                                  }));
+                                } else {
+                                  setGroupFormData(prev => ({
+                                    ...prev,
+                                    permissions: prev.permissions.filter(p => p !== permission)
+                                  }));
+                                }
+                              }}
+                              className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                            />
+                            <span className="text-sm text-gray-700 capitalize">
+                              {permission.replace(/_/g, ' ')}
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Analytics & Reports Permissions */}
+                    <div>
+                      <h4 className="text-xs font-semibold text-gray-700 mb-2 uppercase">Analytics & Reports</h4>
+                      <div className="grid grid-cols-2 gap-2">
+                        {['view_analytics', 'view_reports', 'export_data'].map((permission) => (
+                          <label key={permission} className="flex items-center space-x-2">
+                            <input
+                              type="checkbox"
+                              checked={groupFormData.permissions.includes(permission)}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setGroupFormData(prev => ({
+                                    ...prev,
+                                    permissions: [...prev.permissions, permission]
+                                  }));
+                                } else {
+                                  setGroupFormData(prev => ({
+                                    ...prev,
+                                    permissions: prev.permissions.filter(p => p !== permission)
+                                  }));
+                                }
+                              }}
+                              className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                            />
+                            <span className="text-sm text-gray-700 capitalize">
+                              {permission.replace(/_/g, ' ')}
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Sales & Business Permissions */}
+                    <div>
+                      <h4 className="text-xs font-semibold text-gray-700 mb-2 uppercase">Sales & Business</h4>
+                      <div className="grid grid-cols-2 gap-2">
+                        {['view_sales_data', 'manage_promotions', 'contact_customers'].map((permission) => (
+                          <label key={permission} className="flex items-center space-x-2">
+                            <input
+                              type="checkbox"
+                              checked={groupFormData.permissions.includes(permission)}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setGroupFormData(prev => ({
+                                    ...prev,
+                                    permissions: [...prev.permissions, permission]
+                                  }));
+                                } else {
+                                  setGroupFormData(prev => ({
+                                    ...prev,
+                                    permissions: prev.permissions.filter(p => p !== permission)
+                                  }));
+                                }
+                              }}
+                              className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                            />
+                            <span className="text-sm text-gray-700 capitalize">
+                              {permission.replace(/_/g, ' ')}
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* System Administration Permissions */}
+                    <div>
+                      <h4 className="text-xs font-semibold text-gray-700 mb-2 uppercase">System Administration</h4>
+                      <div className="grid grid-cols-2 gap-2">
+                        {['manage_settings', 'manage_staff', 'view_audit_logs', 'manage_integrations'].map((permission) => (
+                          <label key={permission} className="flex items-center space-x-2">
+                            <input
+                              type="checkbox"
+                              checked={groupFormData.permissions.includes(permission)}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setGroupFormData(prev => ({
+                                    ...prev,
+                                    permissions: [...prev.permissions, permission]
+                                  }));
+                                } else {
+                                  setGroupFormData(prev => ({
+                                    ...prev,
+                                    permissions: prev.permissions.filter(p => p !== permission)
+                                  }));
+                                }
+                              }}
+                              className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                            />
+                            <span className="text-sm text-gray-700 capitalize">
+                              {permission.replace(/_/g, ' ')}
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
