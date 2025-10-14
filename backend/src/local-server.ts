@@ -43,7 +43,7 @@ const lambdaToExpressSync = (handler: any) => {
       // Convert Express request to Lambda event
       const event = {
         httpMethod: req.method,
-        path: req.path,
+        path: req.originalUrl, // Use originalUrl to preserve full path including /api/auth
         pathParameters: req.params,
         queryStringParameters: req.query,
         headers: req.headers,
@@ -166,7 +166,7 @@ const lambdaToExpress = (handlerModule: string, handlerName: string = 'handler')
       // Convert Express request to Lambda event
       const event = {
         httpMethod: req.method,
-        path: req.path,
+        path: req.originalUrl, // Use originalUrl to preserve full path including /api/auth
         pathParameters: req.params,
         queryStringParameters: req.query,
         headers: req.headers,

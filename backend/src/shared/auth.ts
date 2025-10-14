@@ -3,6 +3,7 @@ import jwksClient from 'jwks-rsa';
 import { APIGatewayProxyEvent } from 'aws-lambda';
 import * as crypto from 'crypto';
 import { User, UserRole, AdminPermission } from '../types/common';
+import { StaffRole, STAFF_PERMISSIONS } from '../auth-service/interfaces';
 
 export interface JWTPayload {
   sub: string;
@@ -115,13 +116,14 @@ export async function verifyToken(token: string): Promise<JWTPayload> {
     // For LocalStack, use simpler validation - just verify the token structure
     // The auth-service already validated it during login
     const role = mapCognitoGroupsToRole(payload['cognito:groups']);
+    const permissions = getPermissionsForRole(role);
     
     const transformedPayload: JWTPayload = {
       sub: payload.sub || payload['cognito:username'] || '',
       email: payload.email || '',
       name: payload.name || payload.email,
       role: role,
-      permissions: payload.permissions || [],
+      permissions: permissions,
       'cognito:username': payload['cognito:username'],
       'cognito:groups': payload['cognito:groups'],
       iat: payload.iat,
@@ -164,6 +166,26 @@ function mapCognitoGroupsToRole(groups?: string[]): UserRole {
   }
   
   return UserRole.USER;
+}
+
+// Helper function to get permissions for a user role
+function getPermissionsForRole(role: UserRole): AdminPermission[] {
+  // Map UserRole to StaffRole for permission lookup
+  const roleToStaffRole: Record<UserRole, StaffRole | null> = {
+    [UserRole.SUPER_ADMIN]: StaffRole.SUPER_ADMIN,
+    [UserRole.ADMIN]: StaffRole.ADMIN,
+    [UserRole.MODERATOR]: StaffRole.MANAGER,
+    [UserRole.SUPPORT]: StaffRole.TEAM_MEMBER,
+    [UserRole.USER]: null,
+  };
+  
+  const staffRole = roleToStaffRole[role];
+  if (!staffRole) {
+    return [];
+  }
+  
+  // Get permissions from STAFF_PERMISSIONS mapping
+  return [...(STAFF_PERMISSIONS[staffRole] || [])];
 }
 
 export function extractTokenFromEvent(event: APIGatewayProxyEvent): string | null {
