@@ -111,20 +111,15 @@ export async function verifyToken(token: string): Promise<JWTPayload> {
   // Check if we're in LocalStack/local environment
   const isLocalStack = !!process.env.COGNITO_ENDPOINT || !!process.env.LOCALSTACK_ENDPOINT;
   
-  console.log('🔍 Token verification - isLocalStack:', isLocalStack);
-  console.log('🔍 Token payload groups:', payload['cognito:groups']);
-  
   if (isLocalStack) {
     // For LocalStack, use simpler validation - just verify the token structure
     // The auth-service already validated it during login
     const role = mapCognitoGroupsToRole(payload['cognito:groups']);
-    console.log('🔍 Mapped role:', role);
     
     const transformedPayload: JWTPayload = {
       sub: payload.sub || payload['cognito:username'] || '',
       email: payload.email || '',
       name: payload.name || payload.email,
-      // Map cognito:groups to role
       role: role,
       permissions: payload.permissions || [],
       'cognito:username': payload['cognito:username'],
@@ -133,7 +128,6 @@ export async function verifyToken(token: string): Promise<JWTPayload> {
       exp: payload.exp,
     };
     
-    console.log('🔍 Transformed payload role:', transformedPayload.role);
     return transformedPayload;
   }
   
@@ -189,18 +183,15 @@ export function extractTokenFromEvent(event: APIGatewayProxyEvent): string | nul
 
 export async function getUserFromEvent(event: APIGatewayProxyEvent): Promise<JWTPayload> {
   const isLocalStack = !!process.env.COGNITO_ENDPOINT || !!process.env.LOCALSTACK_ENDPOINT;
-  console.log('🔍 getUserFromEvent - isLocalStack:', isLocalStack);
-  console.log('🔍 getUserFromEvent - has authorizer claims:', !!event.requestContext.authorizer?.claims);
   
   // In LocalStack/local mode, skip authorizer claims and always verify token directly
+  // In AWS mode, use authorizer claims if available for better performance
   if (!isLocalStack && event.requestContext.authorizer?.claims) {
     const claims = event.requestContext.authorizer.claims;
-    console.log('🔍 getUserFromEvent - using authorizer claims, groups:', claims['cognito:groups']);
     
     // Map cognito:groups to proper role
     const groups = claims['cognito:groups'] || [];
     const role = mapCognitoGroupsToRole(Array.isArray(groups) ? groups : [groups]);
-    console.log('🔍 getUserFromEvent - authorizer mapped role:', role);
     
     return {
       sub: claims.sub,
@@ -220,18 +211,12 @@ export async function getUserFromEvent(event: APIGatewayProxyEvent): Promise<JWT
     throw new Error('No authentication token provided');
   }
 
-  console.log('🔍 getUserFromEvent - verifying token directly');
-  const result = await verifyToken(token);
-  console.log('🔍 getUserFromEvent - token verified, role:', result.role);
-  return result;
+  return await verifyToken(token);
 }
 
 export function requireAdminRole(payload: JWTPayload, requiredPermissions?: AdminPermission[]): void {
   // Check if user has any admin role
   const adminRoles = [UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.MODERATOR, UserRole.SUPPORT];
-  console.log('🔍 requireAdminRole - payload.role:', payload.role, 'type:', typeof payload.role);
-  console.log('🔍 requireAdminRole - adminRoles:', adminRoles);
-  console.log('🔍 requireAdminRole - includes check:', adminRoles.includes(payload.role!));
   
   if (!payload.role || !adminRoles.includes(payload.role)) {
     throw new Error('Admin access required');
