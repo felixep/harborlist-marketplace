@@ -28,7 +28,7 @@ NC='\033[0m' # No Color
 ENVIRONMENT="local"
 EMAIL="admin@harborlist.com"
 NAME="HarborList Admin"
-ROLE="super_admin"
+ROLE="super-admin"
 PASSWORD=""
 PERMISSIONS=""
 FORCE=false
@@ -92,7 +92,7 @@ $(print_color $YELLOW "USAGE:")
 $(print_color $YELLOW "OPTIONS:")
     -e, --email <email>      Admin user email address [default: admin@harborlist.com]
     -n, --name <name>        Admin user full name [default: HarborList Admin]
-    -r, --role <role>        Admin role [default: super_admin]
+    -r, --role <role>        Admin role [default: super-admin]
     -E, --environment <env>  Target environment (local, dev, staging, prod) [default: local]
     -p, --password <pass>    Custom password (if not provided, one will be generated)
     -P, --permissions <list> Comma-separated permissions (overrides role defaults)
@@ -103,7 +103,7 @@ $(print_color $YELLOW "OPTIONS:")
     -h, --help              Show this help message
 
 $(print_color $YELLOW "AVAILABLE ROLES:")
-    $(print_color $GREEN "super_admin") - Full system access (all permissions)
+    $(print_color $GREEN "super-admin") - Full system access (all permissions)
     $(print_color $GREEN "admin")       - User management, content moderation, analytics
     $(print_color $GREEN "moderator")   - Content moderation and audit log access
     $(print_color $GREEN "support")     - Limited support access (audit logs only)
@@ -117,7 +117,7 @@ $(print_color $YELLOW "AVAILABLE PERMISSIONS:")
     - financial_reports: Access financial and payment reports
 
 $(print_color $YELLOW "EXAMPLES:")
-    # Create default admin (admin@harborlist.com with super_admin role)
+    # Create default admin (admin@harborlist.com with super-admin role)
     $0
 
     # Create admin with custom email
@@ -127,7 +127,7 @@ $(print_color $YELLOW "EXAMPLES:")
     $0 --reset-password
 
     # Update role for existing admin
-    $0 --email admin@harborlist.com --role super_admin --update-role
+    $0 --email admin@harborlist.com --role super-admin --update-role
 
     # Create a production admin with custom password
     $0 --environment prod \\
@@ -176,12 +176,12 @@ validate_email() {
 validate_role() {
     local role=$1
     case $role in
-        super_admin|admin|moderator|support)
+        super-admin|admin|moderator|support)
             return 0
             ;;
         *)
             print_color $RED "❌ Error: Invalid role: $role"
-            print_color $YELLOW "Valid roles: super_admin, admin, moderator, support"
+            print_color $YELLOW "Valid roles: super-admin, admin, moderator, support"
             exit 1
             ;;
     esac
@@ -421,8 +421,8 @@ validate_arguments() {
     if [[ $NAME == "HarborList Admin" ]]; then
         print_color $BLUE "👤 Using default name: HarborList Admin"
     fi
-    if [[ $ROLE == "super_admin" ]]; then
-        print_color $BLUE "🔑 Using default role: super_admin"
+    if [[ $ROLE == "super-admin" ]]; then
+        print_color $BLUE "🔑 Using default role: super-admin"
     fi
 
     # Validate individual fields

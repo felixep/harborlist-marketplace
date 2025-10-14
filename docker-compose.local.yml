@@ -75,7 +75,6 @@ services:
       - "traefik.http.routers.frontend-https.service=frontend"
       - "traefik.http.services.frontend.loadbalancer.server.port=3000"
       - "traefik.http.services.frontend.loadbalancer.server.scheme=http"
-      - "traefik.http.services.frontend.loadbalancer.server.port=3000"
 
   # Backend API server (Express wrapper for Lambda functions)
   backend:
@@ -117,16 +116,15 @@ services:
       - SESSIONS_TABLE=harborlist-sessions
       - LOGIN_ATTEMPTS_TABLE=harborlist-login-attempts
       - AUDIT_LOGS_TABLE=harborlist-audit-logs
-      # Cognito Configuration for LocalStack - Dual Auth Pools
       - COGNITO_ENDPOINT=http://localstack:4566
       - IS_LOCALSTACK=true
-      # Customer User Pool Configuration
-      - CUSTOMER_USER_POOL_ID=us-east-1_686eec394c2b41bf8920a40c1448e12a
-      - CUSTOMER_USER_POOL_CLIENT_ID=jliaskiys11coq53rus1d7njk5
+      # Customer User Pool Configuration (from .env.local)
+      - CUSTOMER_USER_POOL_ID=${CUSTOMER_USER_POOL_ID}
+      - CUSTOMER_USER_POOL_CLIENT_ID=${CUSTOMER_USER_POOL_CLIENT_ID}
       - CUSTOMER_USER_POOL_REGION=us-east-1
-      # Staff User Pool Configuration  
-      - STAFF_USER_POOL_ID=us-east-1_e34df1756a0042d0bc013521e6854ed3
-      - STAFF_USER_POOL_CLIENT_ID=blwhyh70yahs89ig16tznhj3q4
+      # Staff User Pool Configuration (from .env.local)
+      - STAFF_USER_POOL_ID=${STAFF_USER_POOL_ID}
+      - STAFF_USER_POOL_CLIENT_ID=${STAFF_USER_POOL_CLIENT_ID}
       - STAFF_USER_POOL_REGION=us-east-1
       # Auth Service Configuration
       - AUTH_SERVICE_ENDPOINT=http://backend:3001/auth
@@ -340,10 +338,10 @@ services:
       # Cognito Configuration for LocalStack - Dual Auth Pools
       - COGNITO_ENDPOINT=http://localstack:4566
       - IS_LOCALSTACK=true
-      - CUSTOMER_USER_POOL_ID=us-east-1_000000001
-      - CUSTOMER_USER_POOL_CLIENT_ID=customer-client-local
-      - STAFF_USER_POOL_ID=us-east-1_000000002
-      - STAFF_USER_POOL_CLIENT_ID=staff-client-local
+        - CUSTOMER_USER_POOL_ID=${CUSTOMER_USER_POOL_ID}
+        - CUSTOMER_USER_POOL_CLIENT_ID=${CUSTOMER_USER_POOL_CLIENT_ID}
+        - STAFF_USER_POOL_ID=${STAFF_USER_POOL_ID}
+        - STAFF_USER_POOL_CLIENT_ID=${STAFF_USER_POOL_CLIENT_ID}
     depends_on:
       - dynamodb-local
     networks:
@@ -394,10 +392,10 @@ services:
       # Cognito Configuration for LocalStack - Dual Auth Pools
       - COGNITO_ENDPOINT=http://localstack:4566
       - IS_LOCALSTACK=true
-      - CUSTOMER_USER_POOL_ID=us-east-1_000000001
-      - CUSTOMER_USER_POOL_CLIENT_ID=customer-client-local
-      - STAFF_USER_POOL_ID=us-east-1_000000002
-      - STAFF_USER_POOL_CLIENT_ID=staff-client-local
+        - CUSTOMER_USER_POOL_ID=${CUSTOMER_USER_POOL_ID}
+        - CUSTOMER_USER_POOL_CLIENT_ID=${CUSTOMER_USER_POOL_CLIENT_ID}
+        - STAFF_USER_POOL_ID=${STAFF_USER_POOL_ID}
+        - STAFF_USER_POOL_CLIENT_ID=${STAFF_USER_POOL_CLIENT_ID}
     depends_on:
       - dynamodb-local
     networks:

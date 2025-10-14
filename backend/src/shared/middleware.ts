@@ -81,7 +81,7 @@ export function withAuth(handler: AuthenticatedHandler) {
     const requestId = event.requestContext.requestId;
 
     try {
-      const user = getUserFromEvent(event);
+      const user = await getUserFromEvent(event);
       const authenticatedEvent = { ...event, user } as AuthenticatedEvent;
       
       return await handler(authenticatedEvent, context);

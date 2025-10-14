@@ -145,7 +145,7 @@ const lambdaToExpress = (handlerModule: string, handlerName: string = 'handler')
           const token = authHeader.substring(7);
           // Import JWT verification dynamically
           const { verifyToken } = await import('./shared/auth');
-          const decoded = verifyToken(token);
+          const decoded = await verifyToken(token);
           authorizer = {
             claims: {
               sub: decoded.sub,
