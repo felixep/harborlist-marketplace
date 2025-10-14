@@ -202,7 +202,7 @@ class AdminApiService {
       startDate: dateRange.startDate,
       endDate: dateRange.endDate
     }).toString();
-    return this.request(`${config.apiUrl}/admin/analytics/users?${query}`);
+    return this.request(`/admin/analytics/users?${query}`);
   }
 
   async getListingAnalytics(dateRange: { startDate: string; endDate: string }): Promise<any> {
@@ -210,7 +210,7 @@ class AdminApiService {
       startDate: dateRange.startDate,
       endDate: dateRange.endDate
     }).toString();
-    return this.request(`${config.apiUrl}/admin/analytics/listings?${query}`);
+    return this.request(`/admin/analytics/listings?${query}`);
   }
 
   async getEngagementAnalytics(dateRange: { startDate: string; endDate: string }): Promise<any> {
@@ -218,7 +218,7 @@ class AdminApiService {
       startDate: dateRange.startDate,
       endDate: dateRange.endDate
     }).toString();
-    return this.request(`${config.apiUrl}/admin/analytics/engagement?${query}`);
+    return this.request(`/admin/analytics/engagement?${query}`);
   }
 
   async getGeographicAnalytics(dateRange: { startDate: string; endDate: string }): Promise<any> {
@@ -226,12 +226,12 @@ class AdminApiService {
       startDate: dateRange.startDate,
       endDate: dateRange.endDate
     }).toString();
-    return this.request(`${config.apiUrl}/admin/analytics/geographic?${query}`);
+    return this.request(`/admin/analytics/geographic?${query}`);
   }
 
   async getAuditLogs(params?: any): Promise<any> {
     const query = params ? `?${new URLSearchParams(params).toString()}` : '';
-    return this.request(`${config.apiUrl}/admin/audit-logs${query}`);
+    return this.request(`/admin/audit-logs${query}`);
   }
 
   // System monitoring endpoints
@@ -278,11 +278,11 @@ class AdminApiService {
 
   // Platform Settings endpoints
   async getPlatformSettings(): Promise<any> {
-    return this.request(`${config.apiUrl}/admin/settings`);
+    return this.request(`/admin/settings`);
   }
 
   async updatePlatformSettings(section: string, data: any, reason: string): Promise<any> {
-    return this.request(`${config.apiUrl}/admin/settings/${section}`, {
+    return this.request(`/admin/settings/${section}`, {
       method: 'PUT',
       body: JSON.stringify({ data, reason })
     });
@@ -290,18 +290,18 @@ class AdminApiService {
 
   async getSettingsAuditLog(params?: any): Promise<any> {
     const query = params ? `?${new URLSearchParams(params).toString()}` : '';
-    return this.request(`${config.apiUrl}/admin/settings/audit-log${query}`);
+    return this.request(`/admin/settings/audit-log${query}`);
   }
 
   async validateSettings(section: string, data: any): Promise<any> {
-    return this.request(`${config.apiUrl}/admin/settings/${section}/validate`, {
+    return this.request(`/admin/settings/${section}/validate`, {
       method: 'POST',
       body: JSON.stringify(data)
     });
   }
 
   async resetSettings(section: string, reason: string): Promise<any> {
-    return this.request(`${config.apiUrl}/admin/settings/${section}/reset`, {
+    return this.request(`/admin/settings/${section}/reset`, {
       method: 'POST',
       body: JSON.stringify({ reason })
     });
@@ -310,40 +310,40 @@ class AdminApiService {
   // Support and Communication endpoints
   async getSupportTickets(params?: any): Promise<any> {
     const query = params ? `?${new URLSearchParams(params).toString()}` : '';
-    return this.request(`${config.apiUrl}/admin/support/tickets${query}`);
+    return this.request(`/admin/support/tickets${query}`);
   }
 
   async getSupportStats(): Promise<any> {
-    return this.request(`${config.apiUrl}/admin/support/stats`);
+    return this.request(`/admin/support/stats`);
   }
 
   async getTicketDetails(ticketId: string): Promise<any> {
-    return this.request(`${config.apiUrl}/admin/support/tickets/${ticketId}`);
+    return this.request(`/admin/support/tickets/${ticketId}`);
   }
 
   async updateTicket(ticketId: string, updates: any): Promise<any> {
-    return this.request(`${config.apiUrl}/admin/support/tickets/${ticketId}`, {
+    return this.request(`/admin/support/tickets/${ticketId}`, {
       method: 'PUT',
       body: JSON.stringify(updates)
     });
   }
 
   async assignTicket(ticketId: string, assignedTo: string): Promise<any> {
-    return this.request(`${config.apiUrl}/admin/support/tickets/${ticketId}/assign`, {
+    return this.request(`/admin/support/tickets/${ticketId}/assign`, {
       method: 'POST',
       body: JSON.stringify({ assignedTo })
     });
   }
 
   async addTicketResponse(ticketId: string, message: string, isInternal: boolean = false): Promise<any> {
-    return this.request(`${config.apiUrl}/admin/support/tickets/${ticketId}/responses`, {
+    return this.request(`/admin/support/tickets/${ticketId}/responses`, {
       method: 'POST',
       body: JSON.stringify({ message, isInternal })
     });
   }
 
   async escalateTicket(ticketId: string, reason: string): Promise<any> {
-    return this.request(`${config.apiUrl}/admin/support/tickets/${ticketId}/escalate`, {
+    return this.request(`/admin/support/tickets/${ticketId}/escalate`, {
       method: 'POST',
       body: JSON.stringify({ reason })
     });
@@ -351,45 +351,45 @@ class AdminApiService {
 
   async getAnnouncements(params?: any): Promise<any> {
     const query = params ? `?${new URLSearchParams(params).toString()}` : '';
-    return this.request(`${config.apiUrl}/admin/support/announcements${query}`);
+    return this.request(`/admin/support/announcements${query}`);
   }
 
   async getAnnouncementStats(): Promise<any> {
-    return this.request(`${config.apiUrl}/admin/support/announcements/stats`);
+    return this.request(`/admin/support/announcements/stats`);
   }
 
   async createAnnouncement(announcement: any): Promise<any> {
-    return this.request(`${config.apiUrl}/admin/support/announcements`, {
+    return this.request(`/admin/support/announcements`, {
       method: 'POST',
       body: JSON.stringify(announcement)
     });
   }
 
   async updateAnnouncement(announcementId: string, updates: any): Promise<any> {
-    return this.request(`${config.apiUrl}/admin/support/announcements/${announcementId}`, {
+    return this.request(`/admin/support/announcements/${announcementId}`, {
       method: 'PUT',
       body: JSON.stringify(updates)
     });
   }
 
   async publishAnnouncement(announcementId: string): Promise<any> {
-    return this.request(`${config.apiUrl}/admin/support/announcements/${announcementId}/publish`, {
+    return this.request(`/admin/support/announcements/${announcementId}/publish`, {
       method: 'POST'
     });
   }
 
   async archiveAnnouncement(announcementId: string): Promise<any> {
-    return this.request(`${config.apiUrl}/admin/support/announcements/${announcementId}/archive`, {
+    return this.request(`/admin/support/announcements/${announcementId}/archive`, {
       method: 'POST'
     });
   }
 
   async getSupportTemplates(): Promise<any> {
-    return this.request(`${config.apiUrl}/admin/support/templates`);
+    return this.request(`/admin/support/templates`);
   }
 
   async createSupportTemplate(template: any): Promise<any> {
-    return this.request(`${config.apiUrl}/admin/support/templates`, {
+    return this.request(`/admin/support/templates`, {
       method: 'POST',
       body: JSON.stringify(template)
     });

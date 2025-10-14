@@ -205,6 +205,18 @@ const RATE_LIMIT_TIERS = {
     ADMIN: { maxRequests: 120, windowMs: 60000 },
     MODERATOR: { maxRequests: 50, windowMs: 60000 },
     SUPPORT: { maxRequests: 30, windowMs: 60000 }
+  },
+  [AdminPermission.PLATFORM_SETTINGS]: {
+    SUPER_ADMIN: { maxRequests: 100, windowMs: 60000 },
+    ADMIN: { maxRequests: 80, windowMs: 60000 },
+    MODERATOR: { maxRequests: 20, windowMs: 60000 },
+    SUPPORT: { maxRequests: 5, windowMs: 60000 }
+  },
+  [AdminPermission.SUPPORT_ACCESS]: {
+    SUPER_ADMIN: { maxRequests: 150, windowMs: 60000 },
+    ADMIN: { maxRequests: 120, windowMs: 60000 },
+    MODERATOR: { maxRequests: 80, windowMs: 60000 },
+    SUPPORT: { maxRequests: 200, windowMs: 60000 }
   }
 };
 

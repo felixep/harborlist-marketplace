@@ -300,9 +300,76 @@ create_simple_table "harborlist-user-groups"
 # Admin-specific tables
 create_simple_table "harborlist-platform-settings"
 create_simple_table "harborlist-settings-audit"
-create_simple_table "harborlist-support-tickets"
+
+# Create support tickets table with proper schema and indexes
+echo "📊 Creating support tickets table: harborlist-support-tickets"
+if aws dynamodb describe-table --table-name "harborlist-support-tickets" --endpoint-url "$DYNAMODB_ENDPOINT" --region "$AWS_REGION" >/dev/null 2>&1; then
+    echo "   ✅ Table harborlist-support-tickets already exists"
+else
+    aws dynamodb create-table \
+        --table-name "harborlist-support-tickets" \
+        --key-schema AttributeName=id,KeyType=HASH AttributeName=createdAt,KeyType=RANGE \
+        --attribute-definitions \
+            AttributeName=id,AttributeType=S \
+            AttributeName=createdAt,AttributeType=N \
+            AttributeName=userId,AttributeType=S \
+            AttributeName=status,AttributeType=S \
+        --provisioned-throughput ReadCapacityUnits=5,WriteCapacityUnits=5 \
+        --global-secondary-indexes \
+        '[{
+            "IndexName": "user-index",
+            "KeySchema": [{"AttributeName": "userId", "KeyType": "HASH"}, {"AttributeName": "createdAt", "KeyType": "RANGE"}],
+            "Projection": {"ProjectionType": "ALL"},
+            "ProvisionedThroughput": {"ReadCapacityUnits": 5, "WriteCapacityUnits": 5}
+        },
+        {
+            "IndexName": "status-index",
+            "KeySchema": [{"AttributeName": "status", "KeyType": "HASH"}, {"AttributeName": "createdAt", "KeyType": "RANGE"}],
+            "Projection": {"ProjectionType": "ALL"},
+            "ProvisionedThroughput": {"ReadCapacityUnits": 5, "WriteCapacityUnits": 5}
+        }]' \
+        --endpoint-url "$DYNAMODB_ENDPOINT" \
+        --region "$AWS_REGION" >/dev/null 2>&1
+    
+    if [ $? -eq 0 ]; then
+        echo "   ✅ Support tickets table created successfully with user-index and status-index GSIs"
+    else
+        echo "   ❌ Failed to create support tickets table"
+    fi
+fi
+
 create_simple_table "harborlist-support-responses"
-create_simple_table "harborlist-announcements"
+
+# Create announcements table with proper schema and indexes
+echo "📊 Creating announcements table: harborlist-announcements"
+if aws dynamodb describe-table --table-name "harborlist-announcements" --endpoint-url "$DYNAMODB_ENDPOINT" --region "$AWS_REGION" >/dev/null 2>&1; then
+    echo "   ✅ Table harborlist-announcements already exists"
+else
+    aws dynamodb create-table \
+        --table-name "harborlist-announcements" \
+        --key-schema AttributeName=id,KeyType=HASH AttributeName=createdAt,KeyType=RANGE \
+        --attribute-definitions \
+            AttributeName=id,AttributeType=S \
+            AttributeName=createdAt,AttributeType=N \
+            AttributeName=status,AttributeType=S \
+        --provisioned-throughput ReadCapacityUnits=5,WriteCapacityUnits=5 \
+        --global-secondary-indexes \
+        '[{
+            "IndexName": "status-index",
+            "KeySchema": [{"AttributeName": "status", "KeyType": "HASH"}, {"AttributeName": "createdAt", "KeyType": "RANGE"}],
+            "Projection": {"ProjectionType": "ALL"},
+            "ProvisionedThroughput": {"ReadCapacityUnits": 5, "WriteCapacityUnits": 5}
+        }]' \
+        --endpoint-url "$DYNAMODB_ENDPOINT" \
+        --region "$AWS_REGION" >/dev/null 2>&1
+    
+    if [ $? -eq 0 ]; then
+        echo "   ✅ Announcements table created successfully with status-index GSI"
+    else
+        echo "   ❌ Failed to create announcements table"
+    fi
+fi
+
 create_simple_table "harborlist-support-templates"
 
 echo ""

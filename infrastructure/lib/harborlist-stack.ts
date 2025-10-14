@@ -339,6 +339,54 @@ export class HarborListStack extends cdk.Stack {
       sortKey: { name: 'timestamp', type: dynamodb.AttributeType.STRING },
     });
 
+    // Platform Settings Table - stores system-wide configuration
+    const platformSettingsTable = new dynamodb.Table(this, 'PlatformSettingsTable', {
+      tableName: 'harborlist-platform-settings',
+      partitionKey: { name: 'settingKey', type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+      pointInTimeRecovery: true,
+    });
+
+    // Support Tickets Table - stores customer support requests
+    const supportTicketsTable = new dynamodb.Table(this, 'SupportTicketsTable', {
+      tableName: 'harborlist-support-tickets',
+      partitionKey: { name: 'id', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'createdAt', type: dynamodb.AttributeType.NUMBER },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
+    // GSI for querying tickets by user
+    supportTicketsTable.addGlobalSecondaryIndex({
+      indexName: 'user-index',
+      partitionKey: { name: 'userId', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'createdAt', type: dynamodb.AttributeType.NUMBER },
+    });
+
+    // GSI for querying tickets by status
+    supportTicketsTable.addGlobalSecondaryIndex({
+      indexName: 'status-index',
+      partitionKey: { name: 'status', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'createdAt', type: dynamodb.AttributeType.NUMBER },
+    });
+
+    // Announcements Table - stores platform announcements
+    const announcementsTable = new dynamodb.Table(this, 'AnnouncementsTable', {
+      tableName: 'harborlist-announcements',
+      partitionKey: { name: 'id', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'createdAt', type: dynamodb.AttributeType.NUMBER },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
+    // GSI for querying announcements by status
+    announcementsTable.addGlobalSecondaryIndex({
+      indexName: 'status-index',
+      partitionKey: { name: 'status', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'createdAt', type: dynamodb.AttributeType.NUMBER },
+    });
+
     // S3 Buckets
     const mediaBucket = new s3.Bucket(this, 'MediaBucket', {
       bucketName: `harborlist-media-${this.account}`,
@@ -513,6 +561,9 @@ export class HarborListStack extends cdk.Stack {
         FINANCE_CALCULATIONS_TABLE: financeCalculationsTable.tableName,
         MODERATION_QUEUE_TABLE: moderationQueueTable.tableName,
         USER_GROUPS_TABLE: userGroupsTable.tableName,
+        PLATFORM_SETTINGS_TABLE: platformSettingsTable.tableName,
+        SUPPORT_TICKETS_TABLE: supportTicketsTable.tableName,
+        ANNOUNCEMENTS_TABLE: announcementsTable.tableName,
         JWT_SECRET: jwtConfig.JWT_SECRET,
         JWT_SECRET_ARN: jwtConfig.JWT_SECRET_ARN,
         ENVIRONMENT: environment,
@@ -618,6 +669,9 @@ export class HarborListStack extends cdk.Stack {
     financeCalculationsTable.grantReadWriteData(adminFunction);
     moderationQueueTable.grantReadWriteData(adminFunction);
     userGroupsTable.grantReadWriteData(adminFunction);
+    platformSettingsTable.grantReadWriteData(adminFunction);
+    supportTicketsTable.grantReadWriteData(adminFunction);
+    announcementsTable.grantReadWriteData(adminFunction);
 
     // Grant admin function scan permissions
     adminFunction.addToRolePolicy(new iam.PolicyStatement({

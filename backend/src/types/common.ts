@@ -97,7 +97,9 @@ export enum AdminPermission {
   TIER_MANAGEMENT = 'tier_management',
   CAPABILITY_ASSIGNMENT = 'capability_assignment',
   BILLING_MANAGEMENT = 'billing_management',
-  SALES_MANAGEMENT = 'sales_management'
+  SALES_MANAGEMENT = 'sales_management',
+  PLATFORM_SETTINGS = 'platform_settings',
+  SUPPORT_ACCESS = 'support_access'
 }
 
 export interface User {

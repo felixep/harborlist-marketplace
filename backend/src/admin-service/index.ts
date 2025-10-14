@@ -72,6 +72,9 @@ const AUDIT_LOGS_TABLE = process.env.AUDIT_LOGS_TABLE || 'harborlist-audit-logs'
 const LOGIN_ATTEMPTS_TABLE = process.env.LOGIN_ATTEMPTS_TABLE || 'harborlist-login-attempts';
 const MODERATION_QUEUE_TABLE = process.env.MODERATION_QUEUE_TABLE || 'harborlist-moderation-queue';
 const USER_GROUPS_TABLE = process.env.USER_GROUPS_TABLE || 'harborlist-user-groups';
+const PLATFORM_SETTINGS_TABLE = process.env.PLATFORM_SETTINGS_TABLE || 'harborlist-platform-settings';
+const SUPPORT_TICKETS_TABLE = process.env.SUPPORT_TICKETS_TABLE || 'harborlist-support-tickets';
+const ANNOUNCEMENTS_TABLE = process.env.ANNOUNCEMENTS_TABLE || 'harborlist-announcements';
 const STAFF_USER_POOL_ID = process.env.STAFF_USER_POOL_ID || '';
 
 /**
@@ -160,6 +163,39 @@ export const handler = async (event: APIGatewayProxyEvent, context: any): Promis
       )(handleGetSystemErrors)(event as AuthenticatedEvent, {});
     }
 
+    // Analytics endpoints - MUST BE BEFORE /users routes!
+    if (path.includes('/analytics/users') && method === 'GET') {
+      return await compose(
+        withRateLimit(100, 60000),
+        withAdminAuth([AdminPermission.ANALYTICS_VIEW]),
+        withAuditLog('VIEW_USER_ANALYTICS', 'analytics')
+      )(handleGetUserAnalytics)(event as AuthenticatedEvent, {});
+    }
+
+    if (path.includes('/analytics/listings') && method === 'GET') {
+      return await compose(
+        withRateLimit(100, 60000),
+        withAdminAuth([AdminPermission.ANALYTICS_VIEW]),
+        withAuditLog('VIEW_LISTING_ANALYTICS', 'analytics')
+      )(handleGetListingAnalytics)(event as AuthenticatedEvent, {});
+    }
+
+    if (path.includes('/analytics/engagement') && method === 'GET') {
+      return await compose(
+        withRateLimit(100, 60000),
+        withAdminAuth([AdminPermission.ANALYTICS_VIEW]),
+        withAuditLog('VIEW_ENGAGEMENT_ANALYTICS', 'analytics')
+      )(handleGetEngagementAnalytics)(event as AuthenticatedEvent, {});
+    }
+
+    if (path.includes('/analytics/geographic') && method === 'GET') {
+      return await compose(
+        withRateLimit(100, 60000),
+        withAdminAuth([AdminPermission.ANALYTICS_VIEW]),
+        withAuditLog('VIEW_GEOGRAPHIC_ANALYTICS', 'analytics')
+      )(handleGetGeographicAnalytics)(event as AuthenticatedEvent, {});
+    }
+
     // User management endpoints
     if (path.includes('/users/customers') && method === 'GET') {
       return await compose(
@@ -185,7 +221,7 @@ export const handler = async (event: APIGatewayProxyEvent, context: any): Promis
       )(handleCreateStaff)(event as AuthenticatedEvent, {});
     }
 
-    if (path.includes('/users') && method === 'GET' && !path.includes('/customers') && !path.includes('/staff')) {
+    if (path.includes('/users') && method === 'GET' && !path.includes('/customers') && !path.includes('/staff') && !path.includes('/analytics')) {
       return await compose(
         withRateLimit(100, 60000),
         withAdminAuth([AdminPermission.USER_MANAGEMENT]),
@@ -207,6 +243,106 @@ export const handler = async (event: APIGatewayProxyEvent, context: any): Promis
         withAdminAuth([AdminPermission.TIER_MANAGEMENT]),
         withAuditLog('LIST_USER_TIERS', 'user_tiers')
       )(handleListUserTiers)(event as AuthenticatedEvent, {});
+    }
+
+    // Audit logs endpoints
+    if (path.includes('/audit-logs') && method === 'GET') {
+      return await compose(
+        withRateLimit(100, 60000),
+        withAdminAuth([AdminPermission.AUDIT_LOG_VIEW]),
+        withAuditLog('VIEW_AUDIT_LOGS', 'audit')
+      )(handleGetAuditLogs)(event as AuthenticatedEvent, {});
+    }
+
+    if (path.includes('/audit-logs/stats') && method === 'GET') {
+      return await compose(
+        withRateLimit(100, 60000),
+        withAdminAuth([AdminPermission.AUDIT_LOG_VIEW]),
+        withAuditLog('VIEW_AUDIT_STATS', 'audit')
+      )(handleGetAuditStats)(event as AuthenticatedEvent, {});
+    }
+
+    if (path.includes('/audit-logs/export') && method === 'POST') {
+      return await compose(
+        withRateLimit(20, 60000),
+        withAdminAuth([AdminPermission.AUDIT_LOG_VIEW]),
+        withAuditLog('EXPORT_AUDIT_LOGS', 'audit')
+      )(handleExportAuditLogs)(event as AuthenticatedEvent, {});
+    }
+
+    // Platform settings endpoints
+    if (path.includes('/settings') && method === 'GET' && !path.includes('/settings/')) {
+      return await compose(
+        withRateLimit(100, 60000),
+        withAdminAuth([AdminPermission.PLATFORM_SETTINGS]),
+        withAuditLog('VIEW_SETTINGS', 'settings')
+      )(handleGetPlatformSettings)(event as AuthenticatedEvent, {});
+    }
+
+    if (path.includes('/settings/') && method === 'PUT') {
+      return await compose(
+        withRateLimit(20, 60000),
+        withAdminAuth([AdminPermission.PLATFORM_SETTINGS]),
+        withAuditLog('UPDATE_SETTINGS', 'settings')
+      )(handleUpdatePlatformSettings)(event as AuthenticatedEvent, {});
+    }
+
+    if (path.includes('/settings/audit-log') && method === 'GET') {
+      return await compose(
+        withRateLimit(100, 60000),
+        withAdminAuth([AdminPermission.PLATFORM_SETTINGS]),
+        withAuditLog('VIEW_SETTINGS_AUDIT', 'settings')
+      )(handleGetSettingsAuditLog)(event as AuthenticatedEvent, {});
+    }
+
+    // Support endpoints
+    if (path.includes('/support/tickets') && method === 'GET' && !path.includes('/support/tickets/')) {
+      return await compose(
+        withRateLimit(100, 60000),
+        withAdminAuth([AdminPermission.SUPPORT_ACCESS]),
+        withAuditLog('VIEW_SUPPORT_TICKETS', 'support')
+      )(handleGetSupportTickets)(event as AuthenticatedEvent, {});
+    }
+
+    if (path.includes('/support/stats') && method === 'GET') {
+      return await compose(
+        withRateLimit(100, 60000),
+        withAdminAuth([AdminPermission.SUPPORT_ACCESS]),
+        withAuditLog('VIEW_SUPPORT_STATS', 'support')
+      )(handleGetSupportStats)(event as AuthenticatedEvent, {});
+    }
+
+    if (path.includes('/support/announcements') && method === 'GET' && !path.includes('/support/announcements/')) {
+      return await compose(
+        withRateLimit(100, 60000),
+        withAdminAuth([AdminPermission.SUPPORT_ACCESS]),
+        withAuditLog('VIEW_ANNOUNCEMENTS', 'support')
+      )(handleGetAnnouncements)(event as AuthenticatedEvent, {});
+    }
+
+    if (path.includes('/support/announcements/stats') && method === 'GET') {
+      return await compose(
+        withRateLimit(100, 60000),
+        withAdminAuth([AdminPermission.SUPPORT_ACCESS]),
+        withAuditLog('VIEW_ANNOUNCEMENT_STATS', 'support')
+      )(handleGetAnnouncementStats)(event as AuthenticatedEvent, {});
+    }
+
+    // Moderation endpoints
+    if (path.includes('/listings/flagged') && method === 'GET') {
+      return await compose(
+        withRateLimit(100, 60000),
+        withAdminAuth([AdminPermission.CONTENT_MODERATION]),
+        withAuditLog('VIEW_FLAGGED_LISTINGS', 'moderation')
+      )(handleGetFlaggedListings)(event as AuthenticatedEvent, {});
+    }
+
+    if (path.includes('/moderation/stats') && method === 'GET') {
+      return await compose(
+        withRateLimit(100, 60000),
+        withAdminAuth([AdminPermission.CONTENT_MODERATION]),
+        withAuditLog('VIEW_MODERATION_STATS', 'moderation')
+      )(handleGetModerationStats)(event as AuthenticatedEvent, {});
     }
 
     // Default response for unhandled routes
@@ -1774,4 +1910,956 @@ async function calculateRealErrorRate(timeRange: string, deploymentContext: any)
     // Return environment-appropriate default
     return deploymentContext.environment === 'local' ? 0.01 : 0.02;
   }
+}
+
+/**
+ * ANALYTICS HANDLERS - Real data implementations
+ */
+async function handleGetUserAnalytics(event: AuthenticatedEvent): Promise<APIGatewayProxyResult> {
+  try {
+    const { startDate, endDate } = event.queryStringParameters || {};
+    const start = startDate ? new Date(startDate) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const end = endDate ? new Date(endDate) : new Date();
+
+    // Get all users from database
+    const usersResult = await docClient.send(new ScanCommand({
+      TableName: USERS_TABLE
+    }));
+
+    const allUsers = usersResult.Items || [];
+    const totalUsers = allUsers.length;
+
+    // Filter users created in date range and group by date
+    const registrationsByDate: { [key: string]: number } = {};
+    const usersByRegion: { [key: string]: number } = {};
+
+    allUsers.forEach((user: any) => {
+      // Registration by date
+      const createdDate = user.createdAt ? new Date(user.createdAt).toISOString().split('T')[0] : null;
+      if (createdDate && new Date(createdDate) >= start && new Date(createdDate) <= end) {
+        registrationsByDate[createdDate] = (registrationsByDate[createdDate] || 0) + 1;
+      }
+
+      // Users by region (from location field)
+      const location = user.location || 'Unknown';
+      // Extract state/region from location string
+      const region = location.includes(',') ? location.split(',').pop()?.trim() : location;
+      usersByRegion[region] = (usersByRegion[region] || 0) + 1;
+    });
+
+    // Convert to array format
+    const registrationsArray = Object.entries(registrationsByDate)
+      .map(([date, value]) => ({ date, value }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    const regionsArray = Object.entries(usersByRegion)
+      .map(([region, count]) => ({ region, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10); // Top 10 regions
+
+    const data = {
+      totalUsers,
+      registrationsByDate: registrationsArray,
+      usersByRegion: regionsArray
+    };
+
+    return createResponse(200, data);
+  } catch (error: unknown) {
+    console.error('Error fetching user analytics:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    return createErrorResponse(500, 'ANALYTICS_ERROR', 'Failed to fetch user analytics', event.requestContext.requestId, [{ error: errorMessage }]);
+  }
+}
+
+async function handleGetListingAnalytics(event: AuthenticatedEvent): Promise<APIGatewayProxyResult> {
+  try {
+    const { startDate, endDate } = event.queryStringParameters || {};
+    const start = startDate ? new Date(startDate) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const end = endDate ? new Date(endDate) : new Date();
+
+    // Get all listings from database
+    const listingsResult = await docClient.send(new ScanCommand({
+      TableName: LISTINGS_TABLE
+    }));
+
+    const allListings = listingsResult.Items || [];
+    const totalListings = allListings.length;
+
+    // Group by date and category
+    const listingsByDate: { [key: string]: number } = {};
+    const listingsByCategory: { [key: string]: number } = {};
+
+    allListings.forEach((listing: any) => {
+      // Listings by date
+      const createdDate = listing.createdAt ? new Date(listing.createdAt * 1000).toISOString().split('T')[0] : null;
+      if (createdDate && new Date(createdDate) >= start && new Date(createdDate) <= end) {
+        listingsByDate[createdDate] = (listingsByDate[createdDate] || 0) + 1;
+      }
+
+      // Listings by category (from boatDetails.type)
+      const category = listing.boatDetails?.type || 'Other';
+      listingsByCategory[category] = (listingsByCategory[category] || 0) + 1;
+    });
+
+    // Convert to array format
+    const dateArray = Object.entries(listingsByDate)
+      .map(([date, value]) => ({ date, value }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    const categoryArray = Object.entries(listingsByCategory)
+      .map(([category, count]) => ({ category, count }))
+      .sort((a, b) => b.count - a.count);
+
+    const data = {
+      totalListings,
+      listingsByDate: dateArray,
+      listingsByCategory: categoryArray
+    };
+
+    return createResponse(200, data);
+  } catch (error: unknown) {
+    console.error('Error fetching listing analytics:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    return createErrorResponse(500, 'ANALYTICS_ERROR', 'Failed to fetch listing analytics', event.requestContext.requestId, [{ error: errorMessage }]);
+  }
+}
+
+async function handleGetEngagementAnalytics(event: AuthenticatedEvent): Promise<APIGatewayProxyResult> {
+  try {
+    // Get audit logs for engagement data
+    const auditLogsResult = await docClient.send(new ScanCommand({
+      TableName: AUDIT_LOGS_TABLE,
+      FilterExpression: '#action IN (:search, :view, :inquiry)',
+      ExpressionAttributeNames: {
+        '#action': 'action'
+      },
+      ExpressionAttributeValues: {
+        ':search': 'SEARCH_LISTINGS',
+        ':view': 'VIEW_LISTING',
+        ':inquiry': 'SEND_INQUIRY'
+      }
+    }));
+
+    const engagementLogs = auditLogsResult.Items || [];
+    
+    // Get unique search terms and counts
+    const searchTerms: { [key: string]: number } = {};
+    const uniqueSearchers = new Set<string>();
+    let totalSearches = 0;
+    let listingViews = 0;
+    let inquiries = 0;
+
+    engagementLogs.forEach((log: any) => {
+      if (log.action === 'SEARCH_LISTINGS') {
+        totalSearches++;
+        uniqueSearchers.add(log.userId);
+        const term = log.details?.query || log.details?.searchTerm;
+        if (term) {
+          searchTerms[term.toLowerCase()] = (searchTerms[term.toLowerCase()] || 0) + 1;
+        }
+      } else if (log.action === 'VIEW_LISTING') {
+        listingViews++;
+      } else if (log.action === 'SEND_INQUIRY') {
+        inquiries++;
+      }
+    });
+
+    // Get total listings for average calculation
+    const listingsResult = await docClient.send(new ScanCommand({
+      TableName: LISTINGS_TABLE,
+      Select: 'COUNT'
+    }));
+
+    const totalListings = listingsResult.Count || 1; // Avoid division by zero
+
+    // Convert search terms to array and sort
+    const topSearchTerms = Object.entries(searchTerms)
+      .map(([term, count]) => ({ term, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+
+    const data = {
+      totalSearches,
+      uniqueSearchers: uniqueSearchers.size,
+      averageSearchesPerUser: uniqueSearchers.size > 0 ? parseFloat((totalSearches / uniqueSearchers.size).toFixed(1)) : 0,
+      listingViews,
+      averageViewsPerListing: parseFloat((listingViews / totalListings).toFixed(1)),
+      inquiryRate: listingViews > 0 ? parseFloat(((inquiries / listingViews) * 100).toFixed(1)) : 0,
+      topSearchTerms
+    };
+
+    return createResponse(200, data);
+  } catch (error: unknown) {
+    console.error('Error fetching engagement analytics:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    return createErrorResponse(500, 'ANALYTICS_ERROR', 'Failed to fetch engagement analytics', event.requestContext.requestId, [{ error: errorMessage }]);
+  }
+}
+
+async function handleGetGeographicAnalytics(event: AuthenticatedEvent): Promise<APIGatewayProxyResult> {
+  try {
+    // Get all users from database
+    const usersResult = await docClient.send(new ScanCommand({
+      TableName: USERS_TABLE
+    }));
+
+    const allUsers = usersResult.Items || [];
+    const usersByRegion: { [key: string]: number } = {};
+
+    allUsers.forEach((user: any) => {
+      const location = user.location || 'Unknown';
+      // Extract state/region from location string
+      const region = location.includes(',') ? location.split(',').pop()?.trim() : location;
+      usersByRegion[region] = (usersByRegion[region] || 0) + 1;
+    });
+
+    const regionsArray = Object.entries(usersByRegion)
+      .map(([region, count]) => ({ region, count }))
+      .sort((a, b) => b.count - a.count);
+
+    const data = {
+      usersByRegion: regionsArray
+    };
+
+    return createResponse(200, data);
+  } catch (error: unknown) {
+    console.error('Error fetching geographic analytics:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    return createErrorResponse(500, 'ANALYTICS_ERROR', 'Failed to fetch geographic analytics', event.requestContext.requestId, [{ error: errorMessage }]);
+  }
+}
+
+/**
+ * AUDIT LOGS HANDLERS - Real data implementations
+ */
+async function handleGetAuditLogs(event: AuthenticatedEvent): Promise<APIGatewayProxyResult> {
+  try {
+    const { 
+      page = '1', 
+      limit = '50', 
+      sortBy = 'timestamp', 
+      sortOrder = 'desc',
+      userId,
+      action,
+      resource,
+      startDate,
+      endDate,
+      search
+    } = event.queryStringParameters || {};
+
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+
+    // Build filter expression
+    const filterExpressions: string[] = [];
+    const expressionAttributeNames: { [key: string]: string } = {};
+    const expressionAttributeValues: { [key: string]: any } = {};
+
+    if (userId) {
+      filterExpressions.push('#userId = :userId');
+      expressionAttributeNames['#userId'] = 'userId';
+      expressionAttributeValues[':userId'] = userId;
+    }
+
+    if (action) {
+      filterExpressions.push('contains(#action, :action)');
+      expressionAttributeNames['#action'] = 'action';
+      expressionAttributeValues[':action'] = action;
+    }
+
+    if (resource) {
+      filterExpressions.push('#resource = :resource');
+      expressionAttributeNames['#resource'] = 'resource';
+      expressionAttributeValues[':resource'] = resource;
+    }
+
+    if (search) {
+      filterExpressions.push('contains(#userEmail, :search)');
+      expressionAttributeNames['#userEmail'] = 'userEmail';
+      expressionAttributeValues[':search'] = search;
+    }
+
+    if (startDate) {
+      filterExpressions.push('#timestamp >= :startDate');
+      expressionAttributeNames['#timestamp'] = 'timestamp';
+      expressionAttributeValues[':startDate'] = startDate;
+    }
+
+    if (endDate) {
+      filterExpressions.push('#timestamp <= :endDate');
+      expressionAttributeNames['#timestamp'] = 'timestamp';
+      expressionAttributeValues[':endDate'] = endDate;
+    }
+
+    // Query audit logs
+    const scanParams: any = {
+      TableName: AUDIT_LOGS_TABLE
+    };
+
+    if (filterExpressions.length > 0) {
+      scanParams.FilterExpression = filterExpressions.join(' AND ');
+      scanParams.ExpressionAttributeNames = expressionAttributeNames;
+      scanParams.ExpressionAttributeValues = expressionAttributeValues;
+    }
+
+    const result = await docClient.send(new ScanCommand(scanParams));
+    let auditLogs = result.Items || [];
+
+    // Sort logs
+    auditLogs.sort((a: any, b: any) => {
+      const aVal = a[sortBy] || '';
+      const bVal = b[sortBy] || '';
+      if (sortOrder === 'asc') {
+        return aVal > bVal ? 1 : -1;
+      }
+      return aVal < bVal ? 1 : -1;
+    });
+
+    // Paginate
+    const total = auditLogs.length;
+    const totalPages = Math.ceil(total / limitNum);
+    const startIndex = (pageNum - 1) * limitNum;
+    const paginatedLogs = auditLogs.slice(startIndex, startIndex + limitNum);
+
+    return createResponse(200, {
+      auditLogs: paginatedLogs,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        totalPages
+      }
+    });
+  } catch (error: unknown) {
+    console.error('Error fetching audit logs:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    return createErrorResponse(500, 'AUDIT_ERROR', 'Failed to fetch audit logs', event.requestContext.requestId, [{ error: errorMessage }]);
+  }
+}
+
+async function handleGetAuditStats(event: AuthenticatedEvent): Promise<APIGatewayProxyResult> {
+  try {
+    const { timeRange = '7d' } = event.queryStringParameters || {};
+    
+    // Calculate date range
+    const now = new Date();
+    let startDate: Date;
+    switch (timeRange) {
+      case '1d':
+        startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+        break;
+      case '7d':
+        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        break;
+      case '30d':
+        startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        break;
+      default:
+        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    }
+
+    // Get audit logs within time range
+    const result = await docClient.send(new ScanCommand({
+      TableName: AUDIT_LOGS_TABLE,
+      FilterExpression: '#timestamp >= :startDate',
+      ExpressionAttributeNames: {
+        '#timestamp': 'timestamp'
+      },
+      ExpressionAttributeValues: {
+        ':startDate': startDate.toISOString()
+      }
+    }));
+
+    const logs = result.Items || [];
+    const totalActions = logs.length;
+    const uniqueUsers = new Set(logs.map((log: any) => log.userId)).size;
+
+    // Action breakdown
+    const actionBreakdown: { [key: string]: number } = {};
+    const resourceBreakdown: { [key: string]: number } = {};
+    const userActivity: { [key: string]: { userId: string; email: string; count: number } } = {};
+
+    logs.forEach((log: any) => {
+      // Actions
+      const action = log.action || 'UNKNOWN';
+      actionBreakdown[action] = (actionBreakdown[action] || 0) + 1;
+
+      // Resources
+      const resource = log.resource || 'unknown';
+      resourceBreakdown[resource] = (resourceBreakdown[resource] || 0) + 1;
+
+      // User activity
+      if (!userActivity[log.userId]) {
+        userActivity[log.userId] = {
+          userId: log.userId,
+          email: log.userEmail || 'unknown',
+          count: 0
+        };
+      }
+      userActivity[log.userId].count++;
+    });
+
+    // Get top users
+    const topUsers = Object.values(userActivity)
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+
+    const stats = {
+      totalActions,
+      uniqueUsers,
+      actionBreakdown,
+      resourceBreakdown,
+      topUsers
+    };
+
+    return createResponse(200, stats);
+  } catch (error: unknown) {
+    console.error('Error fetching audit stats:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    return createErrorResponse(500, 'AUDIT_ERROR', 'Failed to fetch audit stats', event.requestContext.requestId, [{ error: errorMessage }]);
+  }
+}
+
+async function handleExportAuditLogs(event: AuthenticatedEvent): Promise<APIGatewayProxyResult> {
+  try {
+    const body = JSON.parse(event.body || '{}');
+    const { format = 'csv', startDate, endDate, userId, action, resource } = body;
+
+    // Build filter
+    const filterExpressions: string[] = [];
+    const expressionAttributeNames: { [key: string]: string } = {};
+    const expressionAttributeValues: { [key: string]: any } = {};
+
+    if (startDate) {
+      filterExpressions.push('#timestamp >= :startDate');
+      expressionAttributeNames['#timestamp'] = 'timestamp';
+      expressionAttributeValues[':startDate'] = startDate;
+    }
+
+    if (endDate) {
+      filterExpressions.push('#timestamp <= :endDate');
+      expressionAttributeNames['#timestamp'] = 'timestamp';
+      expressionAttributeValues[':endDate'] = endDate;
+    }
+
+    if (userId) {
+      filterExpressions.push('#userId = :userId');
+      expressionAttributeNames['#userId'] = 'userId';
+      expressionAttributeValues[':userId'] = userId;
+    }
+
+    if (action) {
+      filterExpressions.push('contains(#action, :action)');
+      expressionAttributeNames['#action'] = 'action';
+      expressionAttributeValues[':action'] = action;
+    }
+
+    if (resource) {
+      filterExpressions.push('#resource = :resource');
+      expressionAttributeNames['#resource'] = 'resource';
+      expressionAttributeValues[':resource'] = resource;
+    }
+
+    const scanParams: any = {
+      TableName: AUDIT_LOGS_TABLE
+    };
+
+    if (filterExpressions.length > 0) {
+      scanParams.FilterExpression = filterExpressions.join(' AND ');
+      scanParams.ExpressionAttributeNames = expressionAttributeNames;
+      scanParams.ExpressionAttributeValues = expressionAttributeValues;
+    }
+
+    const result = await docClient.send(new ScanCommand(scanParams));
+    const logs = result.Items || [];
+
+    let exportData: string;
+    if (format === 'csv') {
+      // Create CSV
+      const headers = ['ID', 'Timestamp', 'User ID', 'User Email', 'Action', 'Resource', 'Resource ID', 'IP Address'];
+      const rows = logs.map((log: any) => [
+        log.id || '',
+        log.timestamp || '',
+        log.userId || '',
+        log.userEmail || '',
+        log.action || '',
+        log.resource || '',
+        log.resourceId || '',
+        log.ipAddress || ''
+      ]);
+      
+      exportData = [headers.join(','), ...rows.map(row => row.join(','))].join('\n');
+    } else {
+      // Create JSON
+      exportData = JSON.stringify(logs, null, 2);
+    }
+
+    const filename = `audit-logs-${startDate || 'all'}-to-${endDate || 'now'}.${format}`;
+
+    return createResponse(200, {
+      data: exportData,
+      filename,
+      recordCount: logs.length
+    });
+  } catch (error: unknown) {
+    console.error('Error exporting audit logs:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    return createErrorResponse(500, 'EXPORT_ERROR', 'Failed to export audit logs', event.requestContext.requestId, [{ error: errorMessage }]);
+  }
+}
+
+/**
+ * PLATFORM SETTINGS HANDLERS - Stub implementations
+ */
+/**
+ * PLATFORM SETTINGS HANDLERS - Real data implementations
+ */
+
+// Default settings structure
+const DEFAULT_PLATFORM_SETTINGS = {
+  general: {
+    siteName: 'HarborList',
+    maintenanceMode: false,
+    allowRegistration: true
+  },
+  features: {
+    premiumListings: true,
+    advancedSearch: true,
+    messagingSystem: true
+  },
+  content: {
+    maxListingImages: 10,
+    autoModerationEnabled: true
+  },
+  listings: {
+    approvalRequired: true,
+    maxActiveListings: 100
+  },
+  notifications: {
+    emailNotifications: true,
+    smsNotifications: false
+  }
+};
+
+async function handleGetPlatformSettings(event: AuthenticatedEvent): Promise<APIGatewayProxyResult> {
+  try {
+    // Try to get settings from DynamoDB
+    try {
+      const result = await docClient.send(new GetCommand({
+        TableName: PLATFORM_SETTINGS_TABLE,
+        Key: { settingKey: 'platform-config' }
+      }));
+
+      if (result.Item) {
+        return createResponse(200, result.Item.settings || DEFAULT_PLATFORM_SETTINGS);
+      }
+    } catch (dbError) {
+      console.log('Settings table not found or error accessing it, using defaults:', dbError);
+    }
+
+    // Return default settings if table doesn't exist or no settings found
+    return createResponse(200, DEFAULT_PLATFORM_SETTINGS);
+  } catch (error: unknown) {
+    console.error('Error fetching platform settings:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    return createErrorResponse(500, 'SETTINGS_ERROR', 'Failed to fetch platform settings', event.requestContext.requestId, [{ error: errorMessage }]);
+  }
+}
+
+async function handleUpdatePlatformSettings(event: AuthenticatedEvent): Promise<APIGatewayProxyResult> {
+  try {
+    const settings = JSON.parse(event.body || '{}');
+    const { userId, userEmail } = event.requestContext.authorizer || {};
+
+    // Save settings to DynamoDB
+    await docClient.send(new PutCommand({
+      TableName: PLATFORM_SETTINGS_TABLE,
+      Item: {
+        settingKey: 'platform-config',
+        settings,
+        lastUpdatedBy: userId || userEmail,
+        lastUpdatedAt: Math.floor(Date.now() / 1000),
+        version: Date.now() // Simple versioning
+      }
+    }));
+
+    // Log the settings change to audit logs
+    await docClient.send(new PutCommand({
+      TableName: AUDIT_LOGS_TABLE,
+      Item: {
+        id: crypto.randomUUID(),
+        timestamp: Math.floor(Date.now() / 1000),
+        userId: userId || userEmail || 'unknown',
+        userEmail: userEmail || 'unknown',
+        action: 'UPDATE_PLATFORM_SETTINGS',
+        resource: 'platform-config',
+        details: {
+          changes: settings,
+          previousVersion: 'check settings history for details'
+        },
+        ipAddress: event.requestContext.identity?.sourceIp || 'unknown',
+        userAgent: event.headers?.['User-Agent'] || 'unknown'
+      }
+    }));
+
+    return createResponse(200, { 
+      success: true, 
+      message: 'Settings updated successfully',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error: unknown) {
+    console.error('Error updating platform settings:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    return createErrorResponse(500, 'SETTINGS_ERROR', 'Failed to update platform settings', event.requestContext.requestId, [{ error: errorMessage }]);
+  }
+}
+
+async function handleGetSettingsAuditLog(event: AuthenticatedEvent): Promise<APIGatewayProxyResult> {
+  try {
+    // Query audit logs for settings changes
+    const result = await docClient.send(new ScanCommand({
+      TableName: AUDIT_LOGS_TABLE,
+      FilterExpression: '#action = :action',
+      ExpressionAttributeNames: {
+        '#action': 'action'
+      },
+      ExpressionAttributeValues: {
+        ':action': 'UPDATE_PLATFORM_SETTINGS'
+      }
+    }));
+
+    const logs = (result.Items || [])
+      .sort((a: any, b: any) => b.timestamp - a.timestamp)
+      .slice(0, 50) // Limit to last 50 changes
+      .map((item: any) => ({
+        id: item.id,
+        timestamp: new Date(item.timestamp * 1000).toISOString(),
+        userId: item.userId,
+        userEmail: item.userEmail,
+        section: 'platform-settings',
+        action: 'UPDATE',
+        changes: item.details?.changes || {},
+        ipAddress: item.ipAddress
+      }));
+
+    return createResponse(200, { logs });
+  } catch (error: unknown) {
+    console.error('Error fetching settings audit log:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    return createErrorResponse(500, 'SETTINGS_ERROR', 'Failed to fetch settings audit log', event.requestContext.requestId, [{ error: errorMessage }]);
+  }
+}
+
+/**
+ * SUPPORT HANDLERS - Real data implementations
+ */
+async function handleGetSupportTickets(event: AuthenticatedEvent): Promise<APIGatewayProxyResult> {
+  try {
+    const queryParams = event.queryStringParameters || {};
+    const status = queryParams.status;
+    const limit = parseInt(queryParams.limit || '50');
+
+    // Build scan parameters
+    const scanParams: any = {
+      TableName: SUPPORT_TICKETS_TABLE,
+      Limit: limit
+    };
+
+    // Add filter if status is specified
+    if (status) {
+      scanParams.FilterExpression = '#status = :status';
+      scanParams.ExpressionAttributeNames = { '#status': 'status' };
+      scanParams.ExpressionAttributeValues = { ':status': status };
+    }
+
+    try {
+      const result = await docClient.send(new ScanCommand(scanParams));
+
+      const tickets = (result.Items || [])
+        .sort((a: any, b: any) => b.createdAt - a.createdAt)
+        .map((ticket: any) => ({
+          id: ticket.id,
+          subject: ticket.subject || 'No subject',
+          status: ticket.status || 'open',
+          priority: ticket.priority || 'medium',
+          createdAt: new Date(ticket.createdAt * 1000).toISOString(),
+          userId: ticket.userId,
+          assignedTo: ticket.assignedTo,
+          lastUpdated: ticket.lastUpdated ? new Date(ticket.lastUpdated * 1000).toISOString() : undefined
+        }));
+
+      return createResponse(200, { tickets, total: tickets.length });
+    } catch (dbError) {
+      console.log('Support tickets table may not exist yet, returning empty array');
+      return createResponse(200, { tickets: [], total: 0 });
+    }
+  } catch (error: unknown) {
+    console.error('Error fetching support tickets:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    return createErrorResponse(500, 'SUPPORT_ERROR', 'Failed to fetch support tickets', event.requestContext.requestId, [{ error: errorMessage }]);
+  }
+}
+
+async function handleGetSupportStats(event: AuthenticatedEvent): Promise<APIGatewayProxyResult> {
+  try {
+    try {
+      const result = await docClient.send(new ScanCommand({
+        TableName: SUPPORT_TICKETS_TABLE
+      }));
+
+      const tickets = result.Items || [];
+      const now = Date.now() / 1000;
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+      const todayTimestamp = Math.floor(todayStart.getTime() / 1000);
+
+      // Calculate stats
+      const openTickets = tickets.filter((t: any) => t.status === 'open').length;
+      const resolvedToday = tickets.filter((t: any) => 
+        t.status === 'resolved' && 
+        t.resolvedAt && 
+        t.resolvedAt >= todayTimestamp
+      ).length;
+
+      // Calculate average response time for resolved tickets
+      const resolvedWithResponseTime = tickets.filter((t: any) => 
+        t.status === 'resolved' && 
+        t.firstResponseAt && 
+        t.createdAt
+      );
+
+      let averageResponseTime = 0;
+      if (resolvedWithResponseTime.length > 0) {
+        const totalResponseTime = resolvedWithResponseTime.reduce((sum: number, t: any) => {
+          return sum + (t.firstResponseAt - t.createdAt);
+        }, 0);
+        averageResponseTime = Math.round((totalResponseTime / resolvedWithResponseTime.length) / 60); // Convert to minutes
+      }
+
+      // Calculate satisfaction score (if available)
+      const ticketsWithRating = tickets.filter((t: any) => t.satisfactionRating);
+      const satisfactionScore = ticketsWithRating.length > 0
+        ? ticketsWithRating.reduce((sum: number, t: any) => sum + t.satisfactionRating, 0) / ticketsWithRating.length
+        : 0;
+
+      return createResponse(200, {
+        openTickets,
+        averageResponseTime,
+        resolvedToday,
+        satisfactionScore: satisfactionScore ? Number(satisfactionScore.toFixed(2)) : 0
+      });
+    } catch (dbError) {
+      console.log('Support tickets table may not exist yet, returning default stats');
+      return createResponse(200, {
+        openTickets: 0,
+        averageResponseTime: 0,
+        resolvedToday: 0,
+        satisfactionScore: 0
+      });
+    }
+  } catch (error: unknown) {
+    console.error('Error fetching support stats:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    return createErrorResponse(500, 'SUPPORT_ERROR', 'Failed to fetch support stats', event.requestContext.requestId, [{ error: errorMessage }]);
+  }
+}
+
+async function handleGetAnnouncements(event: AuthenticatedEvent): Promise<APIGatewayProxyResult> {
+  try {
+    const queryParams = event.queryStringParameters || {};
+    const status = queryParams.status;
+    const limit = parseInt(queryParams.limit || '50');
+
+    const scanParams: any = {
+      TableName: ANNOUNCEMENTS_TABLE,
+      Limit: limit
+    };
+
+    if (status) {
+      scanParams.FilterExpression = '#status = :status';
+      scanParams.ExpressionAttributeNames = { '#status': 'status' };
+      scanParams.ExpressionAttributeValues = { ':status': status };
+    }
+
+    try {
+      const result = await docClient.send(new ScanCommand(scanParams));
+
+      const announcements = (result.Items || [])
+        .sort((a: any, b: any) => b.createdAt - a.createdAt)
+        .map((announcement: any) => ({
+          id: announcement.id,
+          title: announcement.title,
+          content: announcement.content,
+          status: announcement.status || 'draft',
+          createdAt: new Date(announcement.createdAt * 1000).toISOString(),
+          publishedAt: announcement.publishedAt ? new Date(announcement.publishedAt * 1000).toISOString() : undefined,
+          author: announcement.author
+        }));
+
+      return createResponse(200, { announcements, total: announcements.length });
+    } catch (dbError) {
+      console.log('Announcements table may not exist yet, returning empty array');
+      return createResponse(200, { announcements: [], total: 0 });
+    }
+  } catch (error: unknown) {
+    console.error('Error fetching announcements:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    return createErrorResponse(500, 'SUPPORT_ERROR', 'Failed to fetch announcements', event.requestContext.requestId, [{ error: errorMessage }]);
+  }
+}
+
+async function handleGetAnnouncementStats(event: AuthenticatedEvent): Promise<APIGatewayProxyResult> {
+  try {
+    try {
+      const result = await docClient.send(new ScanCommand({
+        TableName: ANNOUNCEMENTS_TABLE
+      }));
+
+      const announcements = result.Items || [];
+      
+      const totalAnnouncements = announcements.length;
+      const publishedAnnouncements = announcements.filter((a: any) => a.status === 'published').length;
+      
+      // Calculate average reach (views count if available)
+      const announcementsWithViews = announcements.filter((a: any) => a.viewCount);
+      const averageReach = announcementsWithViews.length > 0
+        ? Math.round(announcementsWithViews.reduce((sum: number, a: any) => sum + a.viewCount, 0) / announcementsWithViews.length)
+        : 0;
+
+      return createResponse(200, {
+        totalAnnouncements,
+        publishedAnnouncements,
+        averageReach
+      });
+    } catch (dbError) {
+      console.log('Announcements table may not exist yet, returning default stats');
+      return createResponse(200, {
+        totalAnnouncements: 0,
+        publishedAnnouncements: 0,
+        averageReach: 0
+      });
+    }
+  } catch (error: unknown) {
+    console.error('Error fetching announcement stats:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    return createErrorResponse(500, 'SUPPORT_ERROR', 'Failed to fetch announcement stats', event.requestContext.requestId, [{ error: errorMessage }]);
+  }
+}
+
+/**
+ * MODERATION HANDLERS - Real data implementations  
+ */
+async function handleGetFlaggedListings(event: AuthenticatedEvent): Promise<APIGatewayProxyResult> {
+  try {
+    // Get listings that are flagged or pending review
+    const result = await docClient.send(new ScanCommand({
+      TableName: LISTINGS_TABLE,
+      FilterExpression: '#status IN (:pending, :flagged)',
+      ExpressionAttributeNames: {
+        '#status': 'status'
+      },
+      ExpressionAttributeValues: {
+        ':pending': 'pending_review',
+        ':flagged': 'flagged'
+      }
+    }));
+
+    const listings = (result.Items || []).map((listing: any) => ({
+      listingId: listing.listingId,
+      title: listing.title,
+      ownerId: listing.ownerId,
+      flagReason: listing.moderationStatus?.rejectionReason || 'Pending review',
+      status: listing.status,
+      flaggedAt: listing.moderationStatus?.reviewedAt 
+        ? new Date(listing.moderationStatus.reviewedAt * 1000).toISOString()
+        : new Date(listing.createdAt * 1000).toISOString(),
+      images: listing.images || [],
+      price: listing.price,
+      location: listing.location
+    }));
+
+    return createResponse(200, { listings });
+  } catch (error: unknown) {
+    console.error('Error fetching flagged listings:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    return createErrorResponse(500, 'MODERATION_ERROR', 'Failed to fetch flagged listings', event.requestContext.requestId, [{ error: errorMessage }]);
+  }
+}
+
+async function handleGetModerationStats(event: AuthenticatedEvent): Promise<APIGatewayProxyResult> {
+  try {
+    // Scan all listings to calculate moderation statistics
+    const result = await docClient.send(new ScanCommand({
+      TableName: LISTINGS_TABLE
+    }));
+
+    const listings = result.Items || [];
+    
+    // Calculate current stats
+    const pending = listings.filter((l: any) => l.status === 'pending_review').length;
+    const approved = listings.filter((l: any) => l.status === 'active' || l.status === 'approved').length;
+    const rejected = listings.filter((l: any) => l.status === 'rejected').length;
+    const flagged = listings.filter((l: any) => l.status === 'flagged').length;
+
+    // Calculate today's actions
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const todayTimestamp = Math.floor(todayStart.getTime() / 1000);
+
+    const approvedToday = listings.filter((l: any) => 
+      (l.status === 'active' || l.status === 'approved') && 
+      l.moderationStatus?.reviewedAt >= todayTimestamp
+    ).length;
+
+    const rejectedToday = listings.filter((l: any) => 
+      l.status === 'rejected' && 
+      l.moderationStatus?.reviewedAt >= todayTimestamp
+    ).length;
+
+    // Calculate average review time
+    const reviewedListings = listings.filter((l: any) => 
+      l.moderationStatus?.reviewedAt && l.createdAt
+    );
+
+    let averageReviewTime = 0;
+    if (reviewedListings.length > 0) {
+      const totalReviewTime = reviewedListings.reduce((sum: number, listing: any) => {
+        const reviewTime = listing.moderationStatus.reviewedAt - listing.createdAt;
+        return sum + reviewTime;
+      }, 0);
+      // Return average in hours
+      averageReviewTime = Number(((totalReviewTime / reviewedListings.length) / 3600).toFixed(1));
+    }
+
+    const mockStats = {
+      totalFlagged: flagged,
+      pendingReview: pending,
+      approvedToday,
+      rejectedToday,
+      averageReviewTime
+    };
+
+    return createResponse(200, mockStats);
+  } catch (error: unknown) {
+    console.error('Error fetching moderation stats:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    return createErrorResponse(500, 'MODERATION_ERROR', 'Failed to fetch moderation stats', event.requestContext.requestId, [{ error: errorMessage }]);
+  }
+}
+
+/**
+ * Helper function to generate date series for analytics
+ */
+function generateDateSeries(startDate: string | undefined, endDate: string | undefined, min: number, max: number): any[] {
+  const start = startDate ? new Date(startDate) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const end = endDate ? new Date(endDate) : new Date();
+  const days = Math.ceil((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000));
+  
+  return Array.from({ length: Math.min(days, 30) }, (_, i) => {
+    const date = new Date(start.getTime() + i * 24 * 60 * 60 * 1000);
+    return {
+      date: date.toISOString().split('T')[0],
+      value: Math.floor(Math.random() * (max - min + 1)) + min
+    };
+  });
 }
