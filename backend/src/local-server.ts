@@ -277,7 +277,8 @@ app.use('/api/search', lambdaToExpress('./search'));
 app.use('/api/media', lambdaToExpress('./media'));
 app.use('/api/email', lambdaToExpress('./email'));
 app.use('/api/admin', lambdaToExpress('./admin-service'));
-app.use('/api/stats', lambdaToExpress('./stats-service'));
+app.use('/api/analytics', lambdaToExpress('./analytics-service'));
+app.use('/api/stats', lambdaToExpress('./analytics-service')); // Platform stats
 
 // Catch-all for undefined routes
 app.use('*', (req: Request, res: Response) => {
@@ -292,6 +293,7 @@ app.use('*', (req: Request, res: Response) => {
       '/api/media',
       '/api/email',
       '/api/admin',
+      '/api/analytics',
       '/api/stats',
     ],
   });
