@@ -140,7 +140,23 @@ export const handler = async (event: APIGatewayProxyEvent, context: any): Promis
     }
 
     // User management endpoints
-    if (path.includes('/users') && method === 'GET') {
+    if (path.includes('/users/customers') && method === 'GET') {
+      return await compose(
+        withRateLimit(100, 60000),
+        withAdminAuth([AdminPermission.USER_MANAGEMENT]),
+        withAuditLog('LIST_CUSTOMERS', 'customers')
+      )(handleListCustomers)(event as AuthenticatedEvent, {});
+    }
+
+    if (path.includes('/users/staff') && method === 'GET') {
+      return await compose(
+        withRateLimit(100, 60000),
+        withAdminAuth([AdminPermission.USER_MANAGEMENT]),
+        withAuditLog('LIST_STAFF', 'staff')
+      )(handleListStaff)(event as AuthenticatedEvent, {});
+    }
+
+    if (path.includes('/users') && method === 'GET' && !path.includes('/customers') && !path.includes('/staff')) {
       return await compose(
         withRateLimit(100, 60000),
         withAdminAuth([AdminPermission.USER_MANAGEMENT]),
@@ -175,6 +191,8 @@ export const handler = async (event: APIGatewayProxyEvent, context: any): Promis
         '/api/admin/system/alerts',
         '/api/admin/system/errors',
         '/api/admin/users',
+        '/api/admin/users/customers',
+        '/api/admin/users/staff',
         '/api/admin/user-groups',
         '/api/admin/user-tiers',
         '/health',
@@ -470,11 +488,14 @@ async function handleGetSystemErrors(event: AuthenticatedEvent): Promise<APIGate
 
 /**
  * Handle list users request
+ * Supports filtering by user type: 'customer', 'staff', or 'all'
  */
 async function handleListUsers(event: AuthenticatedEvent): Promise<APIGatewayProxyResult> {
   try {
     const limit = parseInt(event.queryStringParameters?.limit || '50');
     const lastKey = event.queryStringParameters?.lastKey;
+    const userType = event.queryStringParameters?.type || 'all'; // 'customer', 'staff', or 'all'
+    const searchTerm = event.queryStringParameters?.search;
 
     // Scan users table
     const params: any = {
@@ -487,11 +508,46 @@ async function handleListUsers(event: AuthenticatedEvent): Promise<APIGatewayPro
     }
 
     const result = await docClient.send(new ScanCommand(params));
+    let users = result.Items || [];
+
+    // Filter by user type if specified
+    if (userType !== 'all') {
+      const staffRoles = ['admin', 'super_admin', 'moderator', 'support'];
+      
+      if (userType === 'staff') {
+        users = users.filter(user => staffRoles.includes(user.role));
+      } else if (userType === 'customer') {
+        users = users.filter(user => !staffRoles.includes(user.role) || user.role === 'user');
+      }
+    }
+
+    // Apply search filter if provided
+    if (searchTerm) {
+      const search = searchTerm.toLowerCase();
+      users = users.filter(user => 
+        user.email?.toLowerCase().includes(search) ||
+        user.name?.toLowerCase().includes(search) ||
+        user.id?.toLowerCase().includes(search)
+      );
+    }
+
+    // Get statistics
+    const staffRoles = ['admin', 'super_admin', 'moderator', 'support'];
+    const allUsers = result.Items || [];
+    const stats = {
+      total: allUsers.length,
+      customers: allUsers.filter(u => !staffRoles.includes(u.role) || u.role === 'user').length,
+      staff: allUsers.filter(u => staffRoles.includes(u.role)).length,
+      active: allUsers.filter(u => u.status === 'active').length,
+      suspended: allUsers.filter(u => u.status === 'suspended').length,
+      banned: allUsers.filter(u => u.status === 'banned').length
+    };
 
     const response = {
-      users: result.Items || [],
+      users: users,
       lastKey: result.LastEvaluatedKey ? encodeURIComponent(JSON.stringify(result.LastEvaluatedKey)) : null,
-      count: result.Items?.length || 0
+      count: users.length,
+      stats: stats
     };
 
     return createResponse(200, response);
@@ -500,6 +556,145 @@ async function handleListUsers(event: AuthenticatedEvent): Promise<APIGatewayPro
     console.error('Error listing users:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return createErrorResponse(500, 'LIST_USERS_ERROR', 'Failed to list users', event.requestContext.requestId, [{ error: errorMessage }]);
+  }
+}
+
+/**
+ * Handle list customers request
+ * Returns only non-staff users (customers)
+ */
+async function handleListCustomers(event: AuthenticatedEvent): Promise<APIGatewayProxyResult> {
+  try {
+    const limit = parseInt(event.queryStringParameters?.limit || '50');
+    const lastKey = event.queryStringParameters?.lastKey;
+    const searchTerm = event.queryStringParameters?.search;
+    const status = event.queryStringParameters?.status; // 'active', 'suspended', 'banned'
+
+    // Scan users table
+    const params: any = {
+      TableName: USERS_TABLE,
+      Limit: limit
+    };
+
+    if (lastKey) {
+      params.ExclusiveStartKey = JSON.parse(decodeURIComponent(lastKey));
+    }
+
+    const result = await docClient.send(new ScanCommand(params));
+    let allUsers = result.Items || [];
+
+    // Filter for customers only (non-staff roles)
+    const staffRoles = ['admin', 'super_admin', 'moderator', 'support'];
+    let customers = allUsers.filter(user => !staffRoles.includes(user.role) || user.role === 'user');
+
+    // Apply status filter if provided
+    if (status) {
+      customers = customers.filter(user => user.status === status);
+    }
+
+    // Apply search filter if provided
+    if (searchTerm) {
+      const search = searchTerm.toLowerCase();
+      customers = customers.filter(user => 
+        user.email?.toLowerCase().includes(search) ||
+        user.name?.toLowerCase().includes(search) ||
+        user.id?.toLowerCase().includes(search)
+      );
+    }
+
+    // Get customer statistics
+    const stats = {
+      total: customers.length,
+      active: customers.filter(u => u.status === 'active').length,
+      suspended: customers.filter(u => u.status === 'suspended').length,
+      banned: customers.filter(u => u.status === 'banned').length,
+      verified: customers.filter(u => u.emailVerified === true).length,
+      unverified: customers.filter(u => !u.emailVerified).length
+    };
+
+    const response = {
+      customers: customers,
+      lastKey: result.LastEvaluatedKey ? encodeURIComponent(JSON.stringify(result.LastEvaluatedKey)) : null,
+      count: customers.length,
+      stats: stats
+    };
+
+    return createResponse(200, response);
+
+  } catch (error: unknown) {
+    console.error('Error listing customers:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    return createErrorResponse(500, 'LIST_CUSTOMERS_ERROR', 'Failed to list customers', event.requestContext.requestId, [{ error: errorMessage }]);
+  }
+}
+
+/**
+ * Handle list staff request
+ * Returns only staff members (admin, super_admin, moderator, support)
+ */
+async function handleListStaff(event: AuthenticatedEvent): Promise<APIGatewayProxyResult> {
+  try {
+    const limit = parseInt(event.queryStringParameters?.limit || '50');
+    const lastKey = event.queryStringParameters?.lastKey;
+    const searchTerm = event.queryStringParameters?.search;
+    const role = event.queryStringParameters?.role; // 'admin', 'super_admin', 'moderator', 'support'
+
+    // Scan users table
+    const params: any = {
+      TableName: USERS_TABLE,
+      Limit: limit
+    };
+
+    if (lastKey) {
+      params.ExclusiveStartKey = JSON.parse(decodeURIComponent(lastKey));
+    }
+
+    const result = await docClient.send(new ScanCommand(params));
+    let allUsers = result.Items || [];
+
+    // Filter for staff only
+    const staffRoles = ['admin', 'super_admin', 'moderator', 'support'];
+    let staff = allUsers.filter(user => staffRoles.includes(user.role));
+
+    // Apply role filter if provided
+    if (role && staffRoles.includes(role)) {
+      staff = staff.filter(user => user.role === role);
+    }
+
+    // Apply search filter if provided
+    if (searchTerm) {
+      const search = searchTerm.toLowerCase();
+      staff = staff.filter(user => 
+        user.email?.toLowerCase().includes(search) ||
+        user.name?.toLowerCase().includes(search) ||
+        user.id?.toLowerCase().includes(search)
+      );
+    }
+
+    // Get staff statistics by role
+    const stats = {
+      total: staff.length,
+      super_admin: staff.filter(u => u.role === 'super_admin').length,
+      admin: staff.filter(u => u.role === 'admin').length,
+      moderator: staff.filter(u => u.role === 'moderator').length,
+      support: staff.filter(u => u.role === 'support').length,
+      active: staff.filter(u => u.status === 'active').length,
+      mfaEnabled: staff.filter(u => u.mfaEnabled === true).length
+    };
+
+    const response = {
+      staff: staff,
+      lastKey: result.LastEvaluatedKey ? encodeURIComponent(JSON.stringify(result.LastEvaluatedKey)) : null,
+      count: staff.length,
+      stats: stats
+    };
+
+    return createResponse(200, response);
+
+  } catch (error: unknown) {
+    console.error('Error listing staff:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    return createErrorResponse(500, 'LIST_STAFF_ERROR', 'Failed to list staff', event.requestContext.requestId, [{ error: errorMessage }]);
   }
 }
 
