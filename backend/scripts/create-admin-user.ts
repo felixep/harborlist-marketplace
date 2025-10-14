@@ -1,78 +1,97 @@
 #!/usr/bin/env ts-node
 
 /**
- * Admin User Creation Script
+ * Cognito Admin User Creation Script
  * 
- * This script creates an admin user in the HarborList system.
- * It can be run locally or in production to set up the initial admin account.
+ * This script creates an admin user in the Cognito Staff User Pool for the HarborList system.
+ * It works with both LocalStack (local development) and AWS Cognito (production).
  * 
  * Usage:
  *   npm run create-admin -- --email admin@example.com --name "Admin User" --role super_admin
  *   
  * Environment Variables Required:
- *   - USERS_TABLE: DynamoDB users table name
+ *   - STAFF_USER_POOL_ID: Cognito Staff User Pool ID
  *   - AWS_REGION: AWS region (default: us-east-1)
+ *   - COGNITO_ENDPOINT: LocalStack endpoint (for local development)
+ *   - IS_LOCALSTACK: Set to 'true' for local development
  */
 
-import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, PutCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
-import { hashPassword, createAdminUser } from '../src/shared/auth';
-import { User, UserRole, AdminPermission } from '../src/types/common';
-import crypto from 'crypto';
+import { 
+  CognitoIdentityProviderClient, 
+  AdminCreateUserCommand,
+  AdminSetUserPasswordCommand,
+  AdminAddUserToGroupCommand,
+  AdminGetUserCommand,
+  AdminDeleteUserCommand,
+  AdminUpdateUserAttributesCommand,
+  ListUsersCommand
+} from '@aws-sdk/client-cognito-identity-provider';
 
-// Configuration
-const USERS_TABLE = process.env.USERS_TABLE || 'harborlist-users';
+// Configuration from environment
+const STAFF_USER_POOL_ID = process.env.STAFF_USER_POOL_ID;
 const AWS_REGION = process.env.AWS_REGION || 'us-east-1';
+const IS_LOCALSTACK = process.env.IS_LOCALSTACK === 'true';
+const COGNITO_ENDPOINT = process.env.COGNITO_ENDPOINT;
 
-// Initialize DynamoDB client with local endpoint support
-const client = new DynamoDBClient({ 
+// Initialize Cognito client
+const cognitoConfig: any = {
   region: AWS_REGION,
-  ...(process.env.DYNAMODB_ENDPOINT && {
-    endpoint: process.env.DYNAMODB_ENDPOINT,
-    credentials: {
-      accessKeyId: 'test',
-      secretAccessKey: 'test',
-    },
-  }),
-});
-const docClient = DynamoDBDocumentClient.from(client);
+};
+
+// Add LocalStack endpoint if running locally
+if (IS_LOCALSTACK && COGNITO_ENDPOINT) {
+  cognitoConfig.endpoint = COGNITO_ENDPOINT;
+  cognitoConfig.credentials = {
+    accessKeyId: 'test',
+    secretAccessKey: 'test',
+  };
+}
+
+const cognitoClient = new CognitoIdentityProviderClient(cognitoConfig);
+
+// Valid admin roles for Cognito groups
+type AdminRole = 'super-admin' | 'admin' | 'manager' | 'team-member';
 
 interface CreateAdminOptions {
   email: string;
   name: string;
-  role: UserRole;
+  role: AdminRole;
   password?: string;
-  permissions?: AdminPermission[];
   resetPassword?: boolean;
   updateRole?: boolean;
 }
 
+// Check if user exists in Cognito Staff User Pool
 async function checkUserExists(email: string): Promise<boolean> {
   try {
-    const result = await docClient.send(new ScanCommand({
-      TableName: USERS_TABLE,
-      FilterExpression: 'email = :email',
-      ExpressionAttributeValues: {
-        ':email': email
-      }
+    await cognitoClient.send(new AdminGetUserCommand({
+      UserPoolId: STAFF_USER_POOL_ID,
+      Username: email
     }));
-
-    return !!(result.Items && result.Items.length > 0);
-  } catch (error) {
+    return true;
+  } catch (error: any) {
+    if (error.name === 'UserNotFoundException') {
+      return false;
+    }
     console.error('Error checking if user exists:', error);
     throw error;
   }
 }
 
-async function createAdminUserInDB(options: CreateAdminOptions): Promise<User> {
-  const { email, name, role, password, permissions, resetPassword, updateRole } = options;
+// Create admin user in Cognito Staff User Pool
+async function createAdminUserInCognito(options: CreateAdminOptions): Promise<void> {
+  const { email, name, role, password, resetPassword, updateRole } = options;
+
+  if (!STAFF_USER_POOL_ID) {
+    throw new Error('STAFF_USER_POOL_ID environment variable is required');
+  }
 
   // Check if user already exists
   const userExists = await checkUserExists(email);
   if (userExists) {
     if (!resetPassword && !updateRole) {
       console.log(`✅ User with email ${email} already exists. Use --reset-password to reset their password or --update-role to update their role.`);
-      return null as any; // Exit gracefully without error
+      return;
     }
     if (resetPassword) {
       console.log(`🔄 User exists. Resetting password for ${email}...`);
@@ -84,153 +103,92 @@ async function createAdminUserInDB(options: CreateAdminOptions): Promise<User> {
 
   // Generate a secure password if not provided
   const userPassword = password || generateSecurePassword();
-  const hashedPassword = await hashPassword(userPassword);
 
-  // Determine permissions based on role
-  let userPermissions: AdminPermission[];
-  if (permissions) {
-    userPermissions = permissions;
-  } else {
-    switch (role) {
-      case UserRole.SUPER_ADMIN:
-        userPermissions = Object.values(AdminPermission);
-        break;
-      case UserRole.ADMIN:
-        userPermissions = [
-          AdminPermission.USER_MANAGEMENT,
-          AdminPermission.CONTENT_MODERATION,
-          AdminPermission.ANALYTICS_VIEW,
-          AdminPermission.AUDIT_LOG_VIEW
-        ];
-        break;
-      case UserRole.MODERATOR:
-        userPermissions = [
-          AdminPermission.CONTENT_MODERATION,
-          AdminPermission.AUDIT_LOG_VIEW
-        ];
-        break;
-      case UserRole.SUPPORT:
-        userPermissions = [
-          AdminPermission.AUDIT_LOG_VIEW
-        ];
-        break;
-      default:
-        throw new Error(`Invalid admin role: ${role}`);
-    }
-  }
-
-  let user: User;
-
-  if (userExists && (resetPassword || updateRole)) {
-    // Update existing user's password and/or role
-    const result = await docClient.send(new ScanCommand({
-      TableName: USERS_TABLE,
-      FilterExpression: 'email = :email',
-      ExpressionAttributeValues: {
-        ':email': email
+  try {
+    if (userExists) {
+      // Update existing user
+      if (resetPassword) {
+        await cognitoClient.send(new AdminSetUserPasswordCommand({
+          UserPoolId: STAFF_USER_POOL_ID,
+          Username: email,
+          Password: userPassword,
+          Permanent: true
+        }));
       }
-    }));
 
-    const existingUser = result.Items![0] as User;
-    
-    // Update the user with new password and/or role
-    user = {
-      ...existingUser,
-      updatedAt: new Date().toISOString(),
-    };
+      if (updateRole) {
+        // Update user attributes (name)
+        await cognitoClient.send(new AdminUpdateUserAttributesCommand({
+          UserPoolId: STAFF_USER_POOL_ID,
+          Username: email,
+          UserAttributes: [
+            { Name: 'name', Value: name }
+          ]
+        }));
 
-    // Update password if requested
-    if (resetPassword) {
-      user.password = hashedPassword;
-      user.loginAttempts = 0; // Reset login attempts
-      user.lockedUntil = undefined;
-      user.passwordResetToken = undefined;
-      user.passwordResetExpires = undefined;
+        // Add to new group (Cognito allows multiple groups, so this is additive)
+        await cognitoClient.send(new AdminAddUserToGroupCommand({
+          UserPoolId: STAFF_USER_POOL_ID,
+          Username: email,
+          GroupName: role
+        }));
+      }
+
+      console.log(`✅ User ${email} updated successfully!`);
+      if (resetPassword) {
+        console.log(`🔐 New Password: ${userPassword}`);
+        console.log(`⚠️  IMPORTANT: Save this password securely!`);
+      }
+    } else {
+      // Create new user
+      await cognitoClient.send(new AdminCreateUserCommand({
+        UserPoolId: STAFF_USER_POOL_ID,
+        Username: email,
+        UserAttributes: [
+          { Name: 'email', Value: email },
+          { Name: 'email_verified', Value: 'true' },
+          { Name: 'name', Value: name }
+        ],
+        TemporaryPassword: 'TempPass123!',
+        MessageAction: 'SUPPRESS' // Don't send welcome email
+      }));
+
+      // Set permanent password
+      await cognitoClient.send(new AdminSetUserPasswordCommand({
+        UserPoolId: STAFF_USER_POOL_ID,
+        Username: email,
+        Password: userPassword,
+        Permanent: true
+      }));
+
+      // Add user to appropriate group
+      await cognitoClient.send(new AdminAddUserToGroupCommand({
+        UserPoolId: STAFF_USER_POOL_ID,
+        Username: email,
+        GroupName: role
+      }));
+
+      console.log(`✅ Admin user created successfully in Cognito Staff User Pool!`);
+      console.log(`📧 Email: ${email}`);
+      console.log(`👤 Name: ${name}`);
+      console.log(`🔑 Role: ${role}`);
+      console.log(`🔐 Password: ${userPassword}`);
+      console.log(`⚠️  IMPORTANT: Save this password securely!`);
     }
 
-    // Update role and permissions if requested
-    if (updateRole) {
-      user.role = role;
-      user.permissions = userPermissions;
-      user.name = name; // Also update name if provided
-    }
+    console.log(`\n📋 Next Steps:`);
+    console.log(`1. Log in to the admin panel using the staff login endpoint`);
+    console.log(`2. Change the password after first login (recommended)`);
+    console.log(`3. Set up MFA for enhanced security (if available)`);
 
-    await docClient.send(new PutCommand({
-      TableName: USERS_TABLE,
-      Item: user
-    }));
-
-  } else {
-    // Create admin user object
-    const adminUserData = createAdminUser({
-      email,
-      name,
-      role,
-      permissions: userPermissions
-    });
-
-    // Add password and other required fields
-    user = {
-      ...adminUserData,
-      password: hashedPassword,
-      // MFA is optional for admin accounts
-      mfaEnabled: false,
-      sessionTimeout: role === UserRole.SUPER_ADMIN ? 30 : 60 // minutes
-    } as User;
-
-    // Save to database
-    await docClient.send(new PutCommand({
-      TableName: USERS_TABLE,
-      Item: user,
-      ConditionExpression: 'attribute_not_exists(id)' // Prevent overwriting
-    }));
+  } catch (error: any) {
+    console.error('❌ Error creating/updating admin user:', error.message);
+    throw error;
   }
-
-  if (userExists && (resetPassword || updateRole)) {
-    if (resetPassword && updateRole) {
-      console.log(`✅ Password reset and role updated successfully for existing user!`);
-      console.log(`📧 Email: ${email}`);
-      console.log(`👤 Name: ${user.name}`);
-      console.log(`🔑 New Role: ${role}`);
-      console.log(`🛡️  New Permissions: ${userPermissions.join(', ')}`);
-      console.log(`🔐 New Password: ${userPassword}`);
-      console.log(`⚠️  IMPORTANT: Save this new password securely!`);
-    } else if (resetPassword) {
-      console.log(`✅ Password reset successfully for existing user!`);
-      console.log(`📧 Email: ${email}`);
-      console.log(`👤 Name: ${user.name}`);
-      console.log(`🔐 New Password: ${userPassword}`);
-      console.log(`⚠️  IMPORTANT: Save this new password securely!`);
-    } else if (updateRole) {
-      console.log(`✅ Role updated successfully for existing user!`);
-      console.log(`📧 Email: ${email}`);
-      console.log(`👤 Name: ${user.name}`);
-      console.log(`🔑 New Role: ${role}`);
-      console.log(`🛡️  New Permissions: ${userPermissions.join(', ')}`);
-    }
-  } else {
-    console.log(`✅ Admin user created successfully!`);
-    console.log(`📧 Email: ${email}`);
-    console.log(`👤 Name: ${name}`);
-    console.log(`🔑 Role: ${role}`);
-    console.log(`🛡️  Permissions: ${userPermissions.join(', ')}`);
-    
-    if (!password) {
-      console.log(`🔐 Generated Password: ${userPassword}`);
-      console.log(`⚠️  IMPORTANT: Save this password securely! It won't be shown again.`);
-    }
-  }
-  
-  console.log(`\n📋 Next Steps:`);
-  console.log(`1. Log in to the admin panel at: /admin/login`);
-  console.log(`2. Optionally set up MFA for enhanced security`);
-  console.log(`3. Change the password after first login`);
-
-  return user;
 }
 
+// Generate a secure password
 function generateSecurePassword(): string {
-  // Generate a secure 16-character password with mixed case, numbers, and symbols
   const lowercase = 'abcdefghijklmnopqrstuvwxyz';
   const uppercase = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
   const numbers = '0123456789';
@@ -254,6 +212,7 @@ function generateSecurePassword(): string {
   return password.split('').sort(() => Math.random() - 0.5).join('');
 }
 
+// Parse command line arguments
 function parseArguments(): CreateAdminOptions {
   const args = process.argv.slice(2);
   const options: Partial<CreateAdminOptions> = {};
@@ -270,21 +229,14 @@ function parseArguments(): CreateAdminOptions {
         options.name = value;
         break;
       case '--role':
-        if (!Object.values(UserRole).includes(value as UserRole)) {
-          throw new Error(`Invalid role: ${value}. Valid roles: ${Object.values(UserRole).join(', ')}`);
+        const validRoles: AdminRole[] = ['super-admin', 'admin', 'manager', 'team-member'];
+        if (!validRoles.includes(value as AdminRole)) {
+          throw new Error(`Invalid role: ${value}. Valid roles: ${validRoles.join(', ')}`);
         }
-        options.role = value as UserRole;
+        options.role = value as AdminRole;
         break;
       case '--password':
         options.password = value;
-        break;
-      case '--permissions':
-        const perms = value.split(',').map(p => p.trim());
-        const validPerms = perms.filter(p => Object.values(AdminPermission).includes(p as AdminPermission));
-        if (validPerms.length !== perms.length) {
-          throw new Error(`Invalid permissions. Valid permissions: ${Object.values(AdminPermission).join(', ')}`);
-        }
-        options.permissions = validPerms as AdminPermission[];
         break;
       case '--reset-password':
         options.resetPassword = true;
@@ -301,18 +253,18 @@ function parseArguments(): CreateAdminOptions {
     }
   }
 
-  // Set default email if not provided
+  // Set defaults
   if (!options.email) {
-    options.email = 'admin@harborlist.com';
-    console.log('📧 Using default email: admin@harborlist.com');
+    options.email = 'admin@harborlist.local';
+    console.log('📧 Using default email: admin@harborlist.local');
   }
   if (!options.name) {
     options.name = 'HarborList Admin';
     console.log('👤 Using default name: HarborList Admin');
   }
   if (!options.role) {
-    options.role = UserRole.SUPER_ADMIN;
-    console.log('🔑 Using default role: super_admin');
+    options.role = 'super-admin';
+    console.log('🔑 Using default role: super-admin');
   }
 
   // Validate email format
@@ -324,24 +276,30 @@ function parseArguments(): CreateAdminOptions {
   return options as CreateAdminOptions;
 }
 
+// Print usage information
 function printUsage() {
   console.log(`
-🚀 HarborList Admin User Creation Script
+🚀 HarborList Cognito Admin User Creation Script
 
 Usage:
   npm run create-admin [options]
 
 Optional Arguments:
-  --email <email>     Admin user email address (default: admin@harborlist.com)
+  --email <email>     Admin user email address (default: admin@harborlist.local)
   --name <name>       Admin user full name (default: HarborList Admin)
-  --role <role>       Admin role (default: super_admin)
+  --role <role>       Admin role (default: super-admin)
   --password <pass>   Custom password (if not provided, one will be generated)
   --reset-password    Reset password if user already exists
   --update-role       Update role for existing user
-  --permissions <p>   Comma-separated list of permissions (overrides role defaults)
+
+Available Roles:
+  - super-admin: Full system access
+  - admin: Management access
+  - manager: Team oversight
+  - team-member: Basic staff access
 
 Examples:
-  # Create default admin (admin@harborlist.com, super_admin role)
+  # Create default admin (admin@harborlist.local, super-admin role)
   npm run create-admin
 
   # Create admin with custom email
@@ -350,28 +308,18 @@ Examples:
   # Reset password for existing admin
   npm run create-admin -- --reset-password
 
-  # Update role for existing admin
-  npm run create-admin -- --email admin@harborlist.com --role super_admin --update-role
-
-  # Create a moderator with custom password  
-  npm run create-admin -- --email mod@harborlist.com --name "Content Moderator" --role moderator --password MySecurePass123!
-
-  # Create admin with specific permissions
-  npm run create-admin -- --email support@harborlist.com --name "Support User" --role support --permissions user_management,audit_log_viewAvailable Roles:
-  - super_admin: Full system access
-  - admin: User management, content moderation, analytics
-  - moderator: Content moderation only
-  - support: Limited support access
-
-Available Permissions:
-  ${Object.values(AdminPermission).map(p => `- ${p}`).join('\n  ')}
+  # Create a manager with custom password  
+  npm run create-admin -- --email manager@harborlist.local --name "Team Manager" --role manager --password MySecurePass123!
 
 Environment Variables:
-  USERS_TABLE: DynamoDB users table name (default: boat-users)
+  STAFF_USER_POOL_ID: Cognito Staff User Pool ID (required)
   AWS_REGION: AWS region (default: us-east-1)
+  COGNITO_ENDPOINT: LocalStack endpoint for local development
+  IS_LOCALSTACK: Set to 'true' for local development
 `);
 }
 
+// Main function
 async function main() {
   try {
     // Check for help flag
@@ -380,7 +328,7 @@ async function main() {
       process.exit(0);
     }
 
-    console.log('🚀 HarborList Admin User Creation Script\n');
+    console.log('🚀 HarborList Cognito Admin User Creation Script\n');
 
     // Parse command line arguments
     const options = parseArguments();
@@ -390,11 +338,11 @@ async function main() {
     console.log(`   Email: ${options.email}`);
     console.log(`   Name: ${options.name}`);
     console.log(`   Role: ${options.role}`);
-    console.log(`   Table: ${USERS_TABLE}`);
+    console.log(`   User Pool: ${STAFF_USER_POOL_ID}`);
     console.log(`   Region: ${AWS_REGION}\n`);
 
     // Create the admin user
-    await createAdminUserInDB(options);
+    await createAdminUserInCognito(options);
 
   } catch (error) {
     console.error('❌ Error creating admin user:', error instanceof Error ? error.message : error);
@@ -408,4 +356,4 @@ if (require.main === module) {
   main();
 }
 
-export { createAdminUserInDB, generateSecurePassword };
+export { createAdminUserInCognito, generateSecurePassword };

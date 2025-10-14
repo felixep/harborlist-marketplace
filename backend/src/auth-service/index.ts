@@ -67,13 +67,20 @@ import {
   TokenSet,
   CustomerTier,
   StaffRole,
-  AuthError,
   AuthEvent,
   CUSTOMER_PERMISSIONS,
   STAFF_PERMISSIONS,
   isCustomerClaims,
   isStaffClaims
 } from './interfaces';
+import {
+  AuthError,
+  AuthErrorCodes,
+  createAuthError,
+  createCrossPoolError,
+  handleCognitoError,
+  logAuthError
+} from './auth-errors';
 import { AdminPermission } from '../types/common';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
@@ -283,7 +290,12 @@ class CognitoAuthService implements AuthService {
         additionalData: { error: error.message },
       });
 
-      return this.handleCognitoError(error, 'customer');
+      return this.handleCognitoError(error, 'customer', {
+        email,
+        ipAddress: clientInfo.ipAddress,
+        userAgent: clientInfo.userAgent,
+        endpoint: '/auth/customer/login'
+      });
     }
   }
 
@@ -327,9 +339,14 @@ class CognitoAuthService implements AuthService {
       };
     } catch (error: any) {
       console.error('Customer registration error:', error);
+      const authError = createAuthError(error, 'customer', {
+        email: userData.email,
+        endpoint: '/auth/customer/register'
+      });
+      await logAuthError(authError, 'customer_registration');
       return {
         success: false,
-        message: this.getCognitoErrorMessage(error),
+        message: authError.userMessage,
       };
     }
   }
@@ -379,9 +396,14 @@ class CognitoAuthService implements AuthService {
       };
     } catch (error: any) {
       console.error('Customer forgot password error:', error);
+      const authError = createAuthError(error, 'customer', {
+        email,
+        endpoint: '/auth/customer/forgot-password'
+      });
+      await logAuthError(authError, 'customer_forgot_password');
       return {
         success: false,
-        message: this.getCognitoErrorMessage(error),
+        message: authError.userMessage,
       };
     }
   }
@@ -403,9 +425,14 @@ class CognitoAuthService implements AuthService {
       };
     } catch (error: any) {
       console.error('Customer confirm forgot password error:', error);
+      const authError = createAuthError(error, 'customer', {
+        email,
+        endpoint: '/auth/customer/confirm-forgot-password'
+      });
+      await logAuthError(authError, 'customer_confirm_forgot_password');
       return {
         success: false,
-        message: this.getCognitoErrorMessage(error),
+        message: authError.userMessage,
       };
     }
   }
@@ -425,9 +452,14 @@ class CognitoAuthService implements AuthService {
       };
     } catch (error: any) {
       console.error('Customer resend confirmation error:', error);
+      const authError = createAuthError(error, 'customer', {
+        email,
+        endpoint: '/auth/customer/resend-confirmation'
+      });
+      await logAuthError(authError, 'customer_resend_confirmation');
       return {
         success: false,
-        message: this.getCognitoErrorMessage(error),
+        message: authError.userMessage,
       };
     }
   }
@@ -448,9 +480,14 @@ class CognitoAuthService implements AuthService {
       };
     } catch (error: any) {
       console.error('Customer confirm sign up error:', error);
+      const authError = createAuthError(error, 'customer', {
+        email,
+        endpoint: '/auth/customer/confirm-signup'
+      });
+      await logAuthError(authError, 'customer_confirm_signup');
       return {
         success: false,
-        message: this.getCognitoErrorMessage(error),
+        message: authError.userMessage,
       };
     }
   }
@@ -626,7 +663,12 @@ class CognitoAuthService implements AuthService {
         additionalData: { error: error.message },
       });
 
-      return this.handleCognitoError(error, 'staff') as StaffAuthResult;
+      return this.handleCognitoError(error, 'staff', {
+        email,
+        ipAddress: clientInfo.ipAddress,
+        userAgent: clientInfo.userAgent,
+        endpoint: '/auth/staff/login'
+      }) as StaffAuthResult;
     }
   }
 
@@ -675,9 +717,14 @@ class CognitoAuthService implements AuthService {
       };
     } catch (error: any) {
       console.error('Staff forgot password error:', error);
+      const authError = createAuthError(error, 'staff', {
+        email,
+        endpoint: '/auth/staff/forgot-password'
+      });
+      await logAuthError(authError, 'staff_forgot_password');
       return {
         success: false,
-        message: this.getCognitoErrorMessage(error),
+        message: authError.userMessage,
       };
     }
   }
@@ -699,9 +746,14 @@ class CognitoAuthService implements AuthService {
       };
     } catch (error: any) {
       console.error('Staff confirm forgot password error:', error);
+      const authError = createAuthError(error, 'staff', {
+        email,
+        endpoint: '/auth/staff/confirm-forgot-password'
+      });
+      await logAuthError(authError, 'staff_confirm_forgot_password');
       return {
         success: false,
-        message: this.getCognitoErrorMessage(error),
+        message: authError.userMessage,
       };
     }
   }
@@ -1182,9 +1234,14 @@ class CognitoAuthService implements AuthService {
       };
     } catch (error: any) {
       console.error('Error assigning customer tier:', error);
+      const authError = createAuthError(error, 'customer', {
+        email,
+        endpoint: '/auth/customer/assign-tier'
+      });
+      await logAuthError(authError, 'assign_customer_tier');
       return {
         success: false,
-        message: this.getCognitoErrorMessage(error),
+        message: authError.userMessage,
       };
     }
   }
@@ -1226,9 +1283,14 @@ class CognitoAuthService implements AuthService {
       };
     } catch (error: any) {
       console.error('Error modifying customer tier:', error);
+      const authError = createAuthError(error, 'customer', {
+        email,
+        endpoint: '/auth/customer/modify-tier'
+      });
+      await logAuthError(authError, 'modify_customer_tier');
       return {
         success: false,
-        message: this.getCognitoErrorMessage(error),
+        message: authError.userMessage,
       };
     }
   }
@@ -1327,9 +1389,14 @@ class CognitoAuthService implements AuthService {
       };
     } catch (error: any) {
       console.error('Error getting customer tier info:', error);
+      const authError = createAuthError(error, 'customer', {
+        email,
+        endpoint: '/auth/customer/tier-info'
+      });
+      await logAuthError(authError, 'get_customer_tier_info');
       return {
         success: false,
-        message: this.getCognitoErrorMessage(error),
+        message: authError.userMessage,
       };
     }
   }
@@ -1426,9 +1493,14 @@ class CognitoAuthService implements AuthService {
       };
     } catch (error: any) {
       console.error('Error assigning staff role:', error);
+      const authError = createAuthError(error, 'staff', {
+        email,
+        endpoint: '/auth/staff/assign-role'
+      });
+      await logAuthError(authError, 'assign_staff_role');
       return {
         success: false,
-        message: this.getCognitoErrorMessage(error),
+        message: authError.userMessage,
       };
     }
   }
@@ -1499,9 +1571,14 @@ class CognitoAuthService implements AuthService {
       };
     } catch (error: any) {
       console.error('Error modifying staff permissions:', error);
+      const authError = createAuthError(error, 'staff', {
+        email,
+        endpoint: '/auth/staff/modify-permissions'
+      });
+      await logAuthError(authError, 'modify_staff_permissions');
       return {
         success: false,
-        message: this.getCognitoErrorMessage(error),
+        message: authError.userMessage,
       };
     }
   }
@@ -1564,9 +1641,14 @@ class CognitoAuthService implements AuthService {
       };
     } catch (error: any) {
       console.error('Error assigning staff to team:', error);
+      const authError = createAuthError(error, 'staff', {
+        email,
+        endpoint: '/auth/staff/assign-team'
+      });
+      await logAuthError(authError, 'assign_staff_to_team');
       return {
         success: false,
-        message: this.getCognitoErrorMessage(error),
+        message: authError.userMessage,
       };
     }
   }
@@ -1633,9 +1715,14 @@ class CognitoAuthService implements AuthService {
       };
     } catch (error: any) {
       console.error('Error getting staff role info:', error);
+      const authError = createAuthError(error, 'staff', {
+        email,
+        endpoint: '/auth/staff/role-info'
+      });
+      await logAuthError(authError, 'get_staff_role_info');
       return {
         success: false,
-        message: this.getCognitoErrorMessage(error),
+        message: authError.userMessage,
       };
     }
   }
@@ -1677,50 +1764,32 @@ class CognitoAuthService implements AuthService {
     return [...(STAFF_PERMISSIONS[staffRole] || STAFF_PERMISSIONS[StaffRole.TEAM_MEMBER])];
   }
 
-  private handleCognitoError(error: any, userType: 'customer' | 'staff'): CustomerAuthResult | StaffAuthResult {
-    const errorCode = error.name || 'UNKNOWN_ERROR';
-    const errorMessage = this.getCognitoErrorMessage(error);
-
-    if (userType === 'customer') {
-      return {
-        success: false,
-        error: errorMessage,
-        errorCode,
-      } as CustomerAuthResult;
-    } else {
-      return {
-        success: false,
-        error: errorMessage,
-        errorCode,
-      } as StaffAuthResult;
+  /**
+   * Enhanced Cognito error handling with dual-pool support
+   * Uses the new comprehensive error handling system
+   */
+  private handleCognitoError(
+    error: any, 
+    userType: 'customer' | 'staff',
+    context?: {
+      email?: string;
+      ipAddress?: string;
+      userAgent?: string;
+      endpoint?: string;
+      requestId?: string;
     }
+  ): CustomerAuthResult | StaffAuthResult {
+    // Use the new comprehensive error handling
+    return handleCognitoError(error, userType, context);
   }
 
+  /**
+   * Legacy method for backward compatibility
+   * @deprecated Use handleCognitoError instead
+   */
   private getCognitoErrorMessage(error: any): string {
-    switch (error.name) {
-      case 'NotAuthorizedException':
-        return 'Invalid email or password';
-      case 'UserNotConfirmedException':
-        return 'Please verify your email address before logging in';
-      case 'UserNotFoundException':
-        return 'User not found';
-      case 'InvalidPasswordException':
-        return 'Password does not meet requirements';
-      case 'UsernameExistsException':
-        return 'User with this email already exists';
-      case 'InvalidParameterException':
-        return 'Invalid parameters provided';
-      case 'TooManyRequestsException':
-        return 'Too many requests. Please try again later';
-      case 'LimitExceededException':
-        return 'Request limit exceeded. Please try again later';
-      case 'CodeMismatchException':
-        return 'Invalid verification code';
-      case 'ExpiredCodeException':
-        return 'Verification code has expired';
-      default:
-        return error.message || 'Authentication failed';
-    }
+    const authError = createAuthError(error, 'customer');
+    return authError.userMessage;
   }
 
   private getAttributeValue(attributes: AttributeType[] | undefined, name: string): string {
@@ -1858,47 +1927,320 @@ function validateEmail(email: string): boolean {
   return emailRegex.test(email);
 }
 
-// Handler functions (placeholder implementations)
+// Initialize auth service instance (singleton)
+let authServiceInstance: CognitoAuthService | null = null;
+
+function getAuthService(): CognitoAuthService {
+  if (!authServiceInstance) {
+    authServiceInstance = new CognitoAuthService();
+  }
+  return authServiceInstance;
+}
+
+// Handler functions - implementing actual dual authentication
 async function handleCustomerLogin(body: any, requestId: string, clientInfo: any): Promise<APIGatewayProxyResult> {
-  return createErrorResponse(501, 'NOT_IMPLEMENTED', 'Handler not implemented', requestId);
+  try {
+    const { email, password, deviceId } = body;
+    
+    if (!email || !password) {
+      return createErrorResponse(400, 'VALIDATION_ERROR', 'Email and password are required', requestId);
+    }
+
+    if (!validateEmail(email)) {
+      return createErrorResponse(400, 'VALIDATION_ERROR', 'Invalid email format', requestId);
+    }
+
+    const result = await getAuthService().customerLogin(email, password, clientInfo, deviceId);
+    
+    if (result.success) {
+      return createResponse(200, {
+        success: true,
+        tokens: result.tokens,
+        customer: result.customer,
+      });
+    } else {
+      return createErrorResponse(401, result.errorCode || 'AUTH_FAILED', result.error || 'Authentication failed', requestId);
+    }
+  } catch (error) {
+    console.error('Customer login handler error:', error);
+    return createErrorResponse(500, 'INTERNAL_ERROR', 'Internal server error', requestId);
+  }
 }
 
 async function handleCustomerRegister(body: any, requestId: string, clientInfo: any): Promise<APIGatewayProxyResult> {
-  return createErrorResponse(501, 'NOT_IMPLEMENTED', 'Handler not implemented', requestId);
+  try {
+    const { email, password, name, customerType, phone } = body;
+    
+    if (!email || !password || !name || !customerType) {
+      return createErrorResponse(400, 'VALIDATION_ERROR', 'Email, password, name, and customer type are required', requestId);
+    }
+
+    if (!validateEmail(email)) {
+      return createErrorResponse(400, 'VALIDATION_ERROR', 'Invalid email format', requestId);
+    }
+
+    if (!['individual', 'dealer', 'premium'].includes(customerType)) {
+      return createErrorResponse(400, 'VALIDATION_ERROR', 'Invalid customer type', requestId);
+    }
+
+    const userData: CustomerRegistration = {
+      email,
+      password,
+      name,
+      customerType: customerType as CustomerTier,
+      phone,
+      agreeToTerms: body.agreeToTerms || true, // Default to true for testing
+      marketingOptIn: body.marketingOptIn || false,
+    };
+
+    const result = await getAuthService().customerRegister(userData);
+    
+    if (result.success) {
+      return createResponse(201, {
+        success: true,
+        message: result.message,
+        requiresVerification: result.requiresVerification,
+      });
+    } else {
+      return createErrorResponse(400, 'REGISTRATION_FAILED', result.message, requestId);
+    }
+  } catch (error) {
+    console.error('Customer register handler error:', error);
+    return createErrorResponse(500, 'INTERNAL_ERROR', 'Internal server error', requestId);
+  }
 }
 
 async function handleCustomerRefresh(body: any, requestId: string, clientInfo: any): Promise<APIGatewayProxyResult> {
-  return createErrorResponse(501, 'NOT_IMPLEMENTED', 'Handler not implemented', requestId);
+  try {
+    const { refreshToken } = body;
+    
+    if (!refreshToken) {
+      return createErrorResponse(400, 'VALIDATION_ERROR', 'Refresh token is required', requestId);
+    }
+
+    const tokens = await getAuthService().customerRefreshToken(refreshToken);
+    
+    return createResponse(200, {
+      success: true,
+      tokens,
+    });
+  } catch (error) {
+    console.error('Customer refresh handler error:', error);
+    return createErrorResponse(401, 'TOKEN_REFRESH_FAILED', 'Token refresh failed', requestId);
+  }
 }
 
 async function handleCustomerLogout(event: any, requestId: string, clientInfo: any): Promise<APIGatewayProxyResult> {
-  return createErrorResponse(501, 'NOT_IMPLEMENTED', 'Handler not implemented', requestId);
+  try {
+    const authHeader = event.headers.Authorization || event.headers.authorization;
+    
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return createErrorResponse(400, 'VALIDATION_ERROR', 'Authorization header is required', requestId);
+    }
+
+    const accessToken = authHeader.substring(7);
+    const sessionId = event.headers['X-Session-ID'] || event.headers['x-session-id'];
+
+    const result = await getAuthService().logout(accessToken, 'customer', clientInfo, sessionId);
+    
+    if (result.success) {
+      return createResponse(200, {
+        success: true,
+        message: result.message,
+      });
+    } else {
+      return createErrorResponse(400, 'LOGOUT_FAILED', result.message, requestId);
+    }
+  } catch (error) {
+    console.error('Customer logout handler error:', error);
+    return createErrorResponse(500, 'INTERNAL_ERROR', 'Internal server error', requestId);
+  }
 }
 
 async function handleCustomerForgotPassword(body: any, requestId: string, clientInfo: any): Promise<APIGatewayProxyResult> {
-  return createErrorResponse(501, 'NOT_IMPLEMENTED', 'Handler not implemented', requestId);
+  try {
+    const { email } = body;
+    
+    if (!email) {
+      return createErrorResponse(400, 'VALIDATION_ERROR', 'Email is required', requestId);
+    }
+
+    if (!validateEmail(email)) {
+      return createErrorResponse(400, 'VALIDATION_ERROR', 'Invalid email format', requestId);
+    }
+
+    const result = await getAuthService().customerForgotPassword(email);
+    
+    if (result.success) {
+      return createResponse(200, {
+        success: true,
+        message: result.message,
+      });
+    } else {
+      return createErrorResponse(400, 'FORGOT_PASSWORD_FAILED', result.message, requestId);
+    }
+  } catch (error) {
+    console.error('Customer forgot password handler error:', error);
+    return createErrorResponse(500, 'INTERNAL_ERROR', 'Internal server error', requestId);
+  }
 }
 
 async function handleCustomerConfirmForgotPassword(body: any, requestId: string, clientInfo: any): Promise<APIGatewayProxyResult> {
-  return createErrorResponse(501, 'NOT_IMPLEMENTED', 'Handler not implemented', requestId);
+  try {
+    const { email, confirmationCode, newPassword } = body;
+    
+    if (!email || !confirmationCode || !newPassword) {
+      return createErrorResponse(400, 'VALIDATION_ERROR', 'Email, confirmation code, and new password are required', requestId);
+    }
+
+    if (!validateEmail(email)) {
+      return createErrorResponse(400, 'VALIDATION_ERROR', 'Invalid email format', requestId);
+    }
+
+    const result = await getAuthService().customerConfirmForgotPassword(email, confirmationCode, newPassword);
+    
+    if (result.success) {
+      return createResponse(200, {
+        success: true,
+        message: result.message,
+      });
+    } else {
+      return createErrorResponse(400, 'CONFIRM_FORGOT_PASSWORD_FAILED', result.message, requestId);
+    }
+  } catch (error) {
+    console.error('Customer confirm forgot password handler error:', error);
+    return createErrorResponse(500, 'INTERNAL_ERROR', 'Internal server error', requestId);
+  }
 }
 
 async function handleCustomerConfirmSignUp(body: any, requestId: string, clientInfo: any): Promise<APIGatewayProxyResult> {
-  return createErrorResponse(501, 'NOT_IMPLEMENTED', 'Handler not implemented', requestId);
+  try {
+    const { email, confirmationCode } = body;
+    
+    if (!email || !confirmationCode) {
+      return createErrorResponse(400, 'VALIDATION_ERROR', 'Email and confirmation code are required', requestId);
+    }
+
+    if (!validateEmail(email)) {
+      return createErrorResponse(400, 'VALIDATION_ERROR', 'Invalid email format', requestId);
+    }
+
+    const result = await getAuthService().customerConfirmSignUp(email, confirmationCode);
+    
+    if (result.success) {
+      return createResponse(200, {
+        success: true,
+        message: result.message,
+      });
+    } else {
+      return createErrorResponse(400, 'CONFIRM_SIGNUP_FAILED', result.message, requestId);
+    }
+  } catch (error) {
+    console.error('Customer confirm signup handler error:', error);
+    return createErrorResponse(500, 'INTERNAL_ERROR', 'Internal server error', requestId);
+  }
 }
 
 async function handleCustomerResendConfirmation(body: any, requestId: string, clientInfo: any): Promise<APIGatewayProxyResult> {
-  return createErrorResponse(501, 'NOT_IMPLEMENTED', 'Handler not implemented', requestId);
+  try {
+    const { email } = body;
+    
+    if (!email) {
+      return createErrorResponse(400, 'VALIDATION_ERROR', 'Email is required', requestId);
+    }
+
+    if (!validateEmail(email)) {
+      return createErrorResponse(400, 'VALIDATION_ERROR', 'Invalid email format', requestId);
+    }
+
+    const result = await getAuthService().customerResendConfirmation(email);
+    
+    if (result.success) {
+      return createResponse(200, {
+        success: true,
+        message: result.message,
+      });
+    } else {
+      return createErrorResponse(400, 'RESEND_CONFIRMATION_FAILED', result.message, requestId);
+    }
+  } catch (error) {
+    console.error('Customer resend confirmation handler error:', error);
+    return createErrorResponse(500, 'INTERNAL_ERROR', 'Internal server error', requestId);
+  }
 }
 
 async function handleStaffLogin(body: any, requestId: string, clientInfo: any): Promise<APIGatewayProxyResult> {
-  return createErrorResponse(501, 'NOT_IMPLEMENTED', 'Handler not implemented', requestId);
+  try {
+    const { email, password, deviceId } = body;
+    
+    if (!email || !password) {
+      return createErrorResponse(400, 'VALIDATION_ERROR', 'Email and password are required', requestId);
+    }
+
+    if (!validateEmail(email)) {
+      return createErrorResponse(400, 'VALIDATION_ERROR', 'Invalid email format', requestId);
+    }
+
+    const result = await getAuthService().staffLogin(email, password, clientInfo, deviceId);
+    
+    if (result.success) {
+      return createResponse(200, {
+        success: true,
+        tokens: result.tokens,
+        staff: result.staff,
+      });
+    } else {
+      return createErrorResponse(401, result.errorCode || 'AUTH_FAILED', result.error || 'Authentication failed', requestId);
+    }
+  } catch (error) {
+    console.error('Staff login handler error:', error);
+    return createErrorResponse(500, 'INTERNAL_ERROR', 'Internal server error', requestId);
+  }
 }
 
 async function handleStaffRefresh(body: any, requestId: string, clientInfo: any): Promise<APIGatewayProxyResult> {
-  return createErrorResponse(501, 'NOT_IMPLEMENTED', 'Handler not implemented', requestId);
+  try {
+    const { refreshToken } = body;
+    
+    if (!refreshToken) {
+      return createErrorResponse(400, 'VALIDATION_ERROR', 'Refresh token is required', requestId);
+    }
+
+    const tokens = await getAuthService().staffRefreshToken(refreshToken);
+    
+    return createResponse(200, {
+      success: true,
+      tokens,
+    });
+  } catch (error) {
+    console.error('Staff refresh handler error:', error);
+    return createErrorResponse(401, 'TOKEN_REFRESH_FAILED', 'Token refresh failed', requestId);
+  }
 }
 
 async function handleStaffLogout(event: any, requestId: string, clientInfo: any): Promise<APIGatewayProxyResult> {
-  return createErrorResponse(501, 'NOT_IMPLEMENTED', 'Handler not implemented', requestId);
+  try {
+    const authHeader = event.headers.Authorization || event.headers.authorization;
+    
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return createErrorResponse(400, 'VALIDATION_ERROR', 'Authorization header is required', requestId);
+    }
+
+    const accessToken = authHeader.substring(7);
+    const sessionId = event.headers['X-Session-ID'] || event.headers['x-session-id'];
+
+    const result = await getAuthService().logout(accessToken, 'staff', clientInfo, sessionId);
+    
+    if (result.success) {
+      return createResponse(200, {
+        success: true,
+        message: result.message,
+      });
+    } else {
+      return createErrorResponse(400, 'LOGOUT_FAILED', result.message, requestId);
+    }
+  } catch (error) {
+    console.error('Staff logout handler error:', error);
+    return createErrorResponse(500, 'INTERNAL_ERROR', 'Internal server error', requestId);
+  }
 }

@@ -1,18 +1,11 @@
 # HarborList Local Development Environment
-# Single Docker Compose file with profiles for basic and enhanced setups
-# Usage: docker-compose --profile basic up  OR  docker-compose --profile enhanced up
-
-# HarborList Local Development Environment
-# Usage:
-#   Basic:    docker-compose up
-#   Enhanced: docker-compose --profile enhanced up
-#   Full:     docker-compose --profile enhanced --profile monitoring up
+# Enhanced setup with all services enabled
+# Usage: docker-compose up
 
 services:
-  # Traefik Reverse Proxy (Enhanced profile only)
+  # Traefik Reverse Proxy
   traefik:
     image: traefik:v3.0
-    profiles: ["enhanced"]
     command:
       - "--api.insecure=true"
       - "--providers.docker=true"
@@ -30,7 +23,7 @@ services:
     ports:
       - "80:80"
       - "443:443"
-      - "8088:8080"  # Traefik dashboard (moved to avoid conflicts)
+      - "8088:8080" # Traefik dashboard (moved to avoid conflicts)
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./traefik-config:/etc/traefik/dynamic:ro
@@ -51,7 +44,6 @@ services:
 
   # Frontend development server
   frontend:
-    profiles: ["basic", "enhanced"]
     build:
       context: .
       dockerfile: ./frontend/Dockerfile.dev
@@ -87,7 +79,6 @@ services:
 
   # Backend API server (Express wrapper for Lambda functions)
   backend:
-    profiles: ["basic", "enhanced"]
     build:
       context: .
       dockerfile: ./backend/Dockerfile.dev
@@ -109,7 +100,7 @@ services:
       - SMTP_HOST=smtp4dev
       - SMTP_PORT=25
       - SMTP_SECURE=false
-      - ACCESS_TOKEN_EXPIRY_SECONDS=86400  # 24 hours for local development
+      - ACCESS_TOKEN_EXPIRY_SECONDS=86400 # 24 hours for local development
       - FROM_EMAIL=noreply@harborlist.local
       - JWT_SECRET=local-dev-secret-harborlist-2025
       - AWS_ACCESS_KEY_ID=test
@@ -130,12 +121,12 @@ services:
       - COGNITO_ENDPOINT=http://localstack:4566
       - IS_LOCALSTACK=true
       # Customer User Pool Configuration
-      - CUSTOMER_USER_POOL_ID=us-east-1_000000001
-      - CUSTOMER_USER_POOL_CLIENT_ID=customer-client-local
+      - CUSTOMER_USER_POOL_ID=us-east-1_686eec394c2b41bf8920a40c1448e12a
+      - CUSTOMER_USER_POOL_CLIENT_ID=jliaskiys11coq53rus1d7njk5
       - CUSTOMER_USER_POOL_REGION=us-east-1
       # Staff User Pool Configuration  
-      - STAFF_USER_POOL_ID=us-east-1_000000002
-      - STAFF_USER_POOL_CLIENT_ID=staff-client-local
+      - STAFF_USER_POOL_ID=us-east-1_e34df1756a0042d0bc013521e6854ed3
+      - STAFF_USER_POOL_CLIENT_ID=blwhyh70yahs89ig16tznhj3q4
       - STAFF_USER_POOL_REGION=us-east-1
       # Auth Service Configuration
       - AUTH_SERVICE_ENDPOINT=http://backend:3001/auth
@@ -179,18 +170,16 @@ services:
 
   # Local DynamoDB
   dynamodb-local:
-    profiles: ["basic", "enhanced"]
     image: amazon/dynamodb-local:latest
     ports:
       - "8000:8000"
-    command: ["-jar", "DynamoDBLocal.jar", "-inMemory", "-sharedDb"]
+    command: [ "-jar", "DynamoDBLocal.jar", "-inMemory", "-sharedDb" ]
     networks:
       - harborlist-local
 
-  # LocalStack for S3, SES, CloudWatch, Cognito etc.
+  # LocalStack Pro for S3, SES, CloudWatch, Cognito etc.
   localstack:
-    profiles: ["basic", "enhanced"]
-    image: localstack/localstack:3.0
+    image: localstack/localstack-pro:4.9.2
     ports:
       - "4566:4566"
       - "4510-4559:4510-4559"
@@ -202,6 +191,8 @@ services:
       - DOCKER_HOST=unix:///var/run/docker.sock
       - PERSISTENCE=1
       - SKIP_INFRA_DOWNLOADS=1
+      # LocalStack Pro License
+      - LOCALSTACK_AUTH_TOKEN=${LOCALSTACK_AUTH_TOKEN:-}
       # Cognito-specific configuration for dual auth pools
       - COGNITO_PROVIDER_DEVELOPER_USER_IDENTITY_POOL_ID=us-east-1:00000000-0000-0000-0000-000000000000
       - COGNITO_PROVIDER_DEVELOPER_USER_IDENTITY_POOL_NAME=harborlist_local_identity_pool
@@ -244,8 +235,7 @@ services:
 
   # LocalStack initialization service
   localstack-init:
-    profiles: ["basic", "enhanced"]
-    image: amazon/aws-cli:latest
+    image: alpine:latest
     depends_on:
       - localstack
     volumes:
@@ -259,6 +249,7 @@ services:
       - harborlist-local
     command: >
       sh -c "
+        apk add --no-cache curl aws-cli &&
         echo 'Waiting for LocalStack to be ready...' &&
         until curl -s http://localstack:4566/_localstack/health | grep -q '\"s3\": \"available\"'; do
           echo 'Waiting for LocalStack S3 service...'
@@ -289,7 +280,6 @@ services:
 
   # DynamoDB Admin UI
   dynamodb-admin:
-    profiles: ["basic", "enhanced"]
     image: aaronshaf/dynamodb-admin:latest
     ports:
       - "8001:8001"
@@ -303,7 +293,6 @@ services:
 
   # Redis for caching (optional but useful for development)
   redis:
-    profiles: ["basic", "enhanced"]
     image: redis:7-alpine
     ports:
       - "6379:6379"
@@ -312,9 +301,8 @@ services:
     networks:
       - harborlist-local
 
-  # Billing Service (for enhanced features)
+  # Billing Service
   billing-service:
-    profiles: ["enhanced"]
     build:
       context: .
       dockerfile: ./backend/Dockerfile.dev
@@ -374,9 +362,8 @@ services:
       - "traefik.http.services.billing-service.loadbalancer.server.port=3002"
       - "traefik.http.services.billing-service.loadbalancer.server.scheme=http"
 
-  # Finance Service (for enhanced features)
+  # Finance Service
   finance-service:
-    profiles: ["enhanced"]
     build:
       context: .
       dockerfile: ./backend/Dockerfile.dev
@@ -431,11 +418,10 @@ services:
 
   # SMTP4Dev for local email testing
   smtp4dev:
-    profiles: ["basic", "enhanced"]
     image: rnwood/smtp4dev:v3
     ports:
-      - "5001:80"    # Web UI (changed from 5000 to avoid conflict with macOS Control Center)
-      - "2525:25"    # SMTP port
+      - "5001:80" # Web UI (changed from 5000 to avoid conflict with macOS Control Center)
+      - "2525:25" # SMTP port
     environment:
       - ServerOptions__HostName=smtp4dev
     networks:

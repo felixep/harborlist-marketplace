@@ -40,16 +40,23 @@ UPDATE_ROLE=false
 get_env_config() {
     case $1 in
         local)
-            echo "USERS_TABLE=harborlist-users AWS_REGION=us-east-1 DYNAMODB_ENDPOINT=http://localhost:8000"
+            # Load from .env.local file for local development
+            if [[ -f "${PROJECT_ROOT}/.env.local" ]]; then
+                # Export variables from .env.local
+                export $(grep -v '^#' "${PROJECT_ROOT}/.env.local" | xargs)
+                echo "AWS_REGION=${AWS_REGION:-us-east-1} IS_LOCALSTACK=true COGNITO_ENDPOINT=${COGNITO_ENDPOINT:-http://localhost:4566}"
+            else
+                echo "AWS_REGION=us-east-1 IS_LOCALSTACK=true COGNITO_ENDPOINT=http://localhost:4566"
+            fi
             ;;
         dev)
-            echo "USERS_TABLE=harborlist-users-dev AWS_REGION=us-east-1"
+            echo "AWS_REGION=us-east-1 IS_LOCALSTACK=false"
             ;;
         staging)
-            echo "USERS_TABLE=harborlist-users-staging AWS_REGION=us-east-1"
+            echo "AWS_REGION=us-east-1 IS_LOCALSTACK=false"
             ;;
         prod)
-            echo "USERS_TABLE=harborlist-users-prod AWS_REGION=us-east-1"
+            echo "AWS_REGION=us-east-1 IS_LOCALSTACK=false"
             ;;
         *)
             return 1
@@ -255,8 +262,10 @@ setup_environment() {
     export $env_config
     
     print_color $GREEN "✅ Environment configured:"
-    echo "   USERS_TABLE: ${USERS_TABLE:-not set}"
+    echo "   STAFF_USER_POOL_ID: ${STAFF_USER_POOL_ID:-not set}"
     echo "   AWS_REGION: ${AWS_REGION:-not set}"
+    echo "   IS_LOCALSTACK: ${IS_LOCALSTACK:-not set}"
+    echo "   COGNITO_ENDPOINT: ${COGNITO_ENDPOINT:-not set}"
 }
 
 # Function to confirm user creation
@@ -273,7 +282,7 @@ confirm_creation() {
     echo "   Role: $ROLE"
     [[ -n $PASSWORD ]] && echo "   Password: [provided]" || echo "   Password: [will be generated]"
     [[ -n $PERMISSIONS ]] && echo "   Permissions: $PERMISSIONS" || echo "   Permissions: [role defaults]"
-    echo "   Users Table: ${USERS_TABLE:-not set}"
+    echo "   Staff User Pool: ${STAFF_USER_POOL_ID:-not set}"
     echo "   AWS Region: ${AWS_REGION:-not set}"
     echo
 
