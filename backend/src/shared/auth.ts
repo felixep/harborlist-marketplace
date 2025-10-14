@@ -39,7 +39,7 @@ async function getSigningKey(kid: string, userType: 'buyer' | 'seller'): Promise
   const client = userType === 'buyer' ? buyerJwksClient : sellerJwksClient;
   
   return new Promise((resolve, reject) => {
-    client.getSigningKey(kid, (err, key) => {
+    client.getSigningKey(kid, (err: any, key: any) => {
       if (err) {
         reject(err);
         return;
