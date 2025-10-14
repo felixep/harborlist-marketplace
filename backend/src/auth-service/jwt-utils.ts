@@ -221,11 +221,18 @@ export async function validateJWTToken(
       ? `${endpoint}/${userPoolId}` 
       : `https://cognito-idp.${region}.amazonaws.com/${userPoolId}`;
 
-    const verified = jwt.verify(token, publicKey, {
+    // For LocalStack, skip audience and issuer validation as they use different formats
+    const verifyOptions: jwt.VerifyOptions = {
       algorithms: ['RS256'],
-      audience: clientId,
-      issuer,
-    });
+    };
+    
+    // Only validate audience and issuer for AWS Cognito (not LocalStack)
+    if (!endpoint || !endpoint.includes('localstack')) {
+      verifyOptions.audience = clientId;
+      verifyOptions.issuer = issuer;
+    }
+
+    const verified = jwt.verify(token, publicKey, verifyOptions);
 
     return verified;
   } catch (error) {
