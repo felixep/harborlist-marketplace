@@ -38,6 +38,15 @@ const UserManagement: React.FC = () => {
   const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
   const [selectedUser, setSelectedUser] = useState<EnhancedUser | null>(null);
   const [showUserModal, setShowUserModal] = useState(false);
+  const [isCreatingStaff, setIsCreatingStaff] = useState(false);
+  const [staffFormData, setStaffFormData] = useState({
+    email: '',
+    name: '',
+    role: 'support',
+    password: '',
+    sendWelcomeEmail: true,
+    groupId: ''
+  });
   const [showBulkActions, setShowBulkActions] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(20);
@@ -345,6 +354,46 @@ const UserManagement: React.FC = () => {
     }
   };
 
+  const handleCreateStaff = async () => {
+    try {
+      // Validate required fields
+      if (!staffFormData.email || !staffFormData.name || !staffFormData.role) {
+        showError('Validation Error', 'Please fill in all required fields');
+        return;
+      }
+
+      // Validate email format
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(staffFormData.email)) {
+        showError('Validation Error', 'Please enter a valid email address');
+        return;
+      }
+
+      const response = await adminApi.post('/users/staff', staffFormData);
+      const data = response.data as any;
+      
+      if (data.success) {
+        showSuccess('Success', 'Staff member created successfully');
+        setShowUserModal(false);
+        setIsCreatingStaff(false);
+        await loadStaff();
+        
+        // Reset form
+        setStaffFormData({
+          email: '',
+          name: '',
+          role: 'support',
+          password: '',
+          sendWelcomeEmail: true,
+          groupId: ''
+        });
+      }
+    } catch (error: any) {
+      const errorMessage = error?.response?.data?.message || error?.message || 'Failed to create staff member';
+      showError('Error', errorMessage);
+    }
+  };
+
   const handleBulkAction = async (action: string) => {
     if (selectedUsers.length === 0) {
       showWarning('Warning', 'Please select users first');
@@ -409,13 +458,33 @@ const UserManagement: React.FC = () => {
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-bold text-gray-900">User Management</h1>
         <div className="flex space-x-2">
-          {(activeTab === 'customers' || activeTab === 'staff') && (
+          {(activeTab === 'customers' || activeTab === 'staff') && selectedUsers.length > 0 && (
             <button
               onClick={() => setShowBulkActions(!showBulkActions)}
               disabled={selectedUsers.length === 0}
               className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Bulk Actions ({selectedUsers.length})
+            </button>
+          )}
+          {activeTab === 'staff' && (
+            <button
+              onClick={() => {
+                setIsCreatingStaff(true);
+                setSelectedUser(null);
+                setStaffFormData({
+                  email: '',
+                  name: '',
+                  role: 'support',
+                  password: '',
+                  sendWelcomeEmail: true,
+                  groupId: ''
+                });
+                setShowUserModal(true);
+              }}
+              className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
+            >
+              Create Staff Member
             </button>
           )}
           {activeTab === 'groups' && (
@@ -511,7 +580,7 @@ const UserManagement: React.FC = () => {
           <h2 className="text-lg font-medium text-gray-900">Filters</h2>
         </div>
         <div className="p-6">
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Search</label>
               <input
@@ -548,21 +617,6 @@ const UserManagement: React.FC = () => {
                 <option value="suspended">Suspended</option>
                 <option value="banned">Banned</option>
                 <option value="pending_verification">Pending Verification</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
-              <select
-                value={filters.role}
-                onChange={(e) => setFilters(prev => ({ ...prev, role: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              >
-                <option value="">All Roles</option>
-                <option value="user">User</option>
-                <option value="admin">Admin</option>
-                <option value="super_admin">Super Admin</option>
-                <option value="moderator">Moderator</option>
-                <option value="sales">Sales</option>
               </select>
             </div>
             <div>
@@ -647,9 +701,6 @@ const UserManagement: React.FC = () => {
                   Status
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Role
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Premium
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -692,9 +743,6 @@ const UserManagement: React.FC = () => {
                     <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(user.status)}`}>
                       {user.status}
                     </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {user.role}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     {user.premiumActive ? (
@@ -1126,15 +1174,21 @@ const UserManagement: React.FC = () => {
         )}
       </div>
 
-      {/* User Edit Modal */}
-      {showUserModal && selectedUser && (
+      {/* User Edit/Create Modal */}
+      {showUserModal && (isCreatingStaff || selectedUser) && (
         <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
           <div className="relative top-20 mx-auto p-5 border w-11/12 md:w-3/4 lg:w-1/2 shadow-lg rounded-md bg-white">
             <div className="mt-3">
               <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-medium text-gray-900">Edit Staff: {selectedUser.name}</h3>
+                <h3 className="text-lg font-medium text-gray-900">
+                  {isCreatingStaff ? 'Create New Staff Member' : `Edit Staff: ${selectedUser?.name}`}
+                </h3>
                 <button
-                  onClick={() => setShowUserModal(false)}
+                  onClick={() => {
+                    setShowUserModal(false);
+                    setIsCreatingStaff(false);
+                    setSelectedUser(null);
+                  }}
                   className="text-gray-400 hover:text-gray-600"
                 >
                   <span className="sr-only">Close</span>
@@ -1145,58 +1199,159 @@ const UserManagement: React.FC = () => {
               </div>
               
               <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
-                  <select
-                    value={selectedUser.role || 'support'}
-                    onChange={(e) => handleUserTypeChange(selectedUser.id, e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  >
-                    <option value="super_admin">Super Admin</option>
-                    <option value="admin">Admin</option>
-                    <option value="moderator">Moderator</option>
-                    <option value="support">Support</option>
-                  </select>
-                </div>
+                {isCreatingStaff ? (
+                  <>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Email <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="email"
+                        value={staffFormData.email}
+                        onChange={(e) => setStaffFormData(prev => ({ ...prev, email: e.target.value }))}
+                        placeholder="staff@harborlist.com"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        required
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Full Name <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={staffFormData.name}
+                        onChange={(e) => setStaffFormData(prev => ({ ...prev, name: e.target.value }))}
+                        placeholder="John Doe"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        required
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Role <span className="text-red-500">*</span>
+                      </label>
+                      <select
+                        value={staffFormData.role}
+                        onChange={(e) => setStaffFormData(prev => ({ ...prev, role: e.target.value }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      >
+                        <option value="support">Support</option>
+                        <option value="moderator">Moderator</option>
+                        <option value="admin">Admin</option>
+                        <option value="super_admin">Super Admin</option>
+                      </select>
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Password (Optional)
+                      </label>
+                      <input
+                        type="password"
+                        value={staffFormData.password}
+                        onChange={(e) => setStaffFormData(prev => ({ ...prev, password: e.target.value }))}
+                        placeholder="Leave empty to auto-generate"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        If left empty, a temporary password will be generated and sent via email
+                      </p>
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Team/Group</label>
+                      <select
+                        value={staffFormData.groupId}
+                        onChange={(e) => setStaffFormData(prev => ({ ...prev, groupId: e.target.value }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      >
+                        <option value="">No Team</option>
+                        {userGroups.map(group => (
+                          <option key={group.id} value={group.id}>{group.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    
+                    <div className="flex items-center">
+                      <input
+                        type="checkbox"
+                        id="sendWelcomeEmail"
+                        checked={staffFormData.sendWelcomeEmail}
+                        onChange={(e) => setStaffFormData(prev => ({ ...prev, sendWelcomeEmail: e.target.checked }))}
+                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                      />
+                      <label htmlFor="sendWelcomeEmail" className="ml-2 text-sm text-gray-700">
+                        Send welcome email with login instructions
+                      </label>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
+                      <select
+                        value={selectedUser?.role || 'support'}
+                        onChange={(e) => selectedUser && handleUserTypeChange(selectedUser.id, e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      >
+                        <option value="super_admin">Super Admin</option>
+                        <option value="admin">Admin</option>
+                        <option value="moderator">Moderator</option>
+                        <option value="support">Support</option>
+                      </select>
+                    </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Staff Capabilities</label>
-                  <div className="space-y-2">
-                    {['manage_users', 'moderate_content', 'view_reports', 'manage_listings', 'view_analytics', 'system_settings'].map(capability => {
-                      const hasCapability = selectedUser.capabilities?.some(c => c.feature === capability && c.enabled);
-                      return (
-                        <label key={capability} className="flex items-center">
-                          <input
-                            type="checkbox"
-                            checked={hasCapability}
-                            onChange={(e) => handleCapabilityToggle(selectedUser.id, capability, e.target.checked)}
-                            className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                          />
-                          <span className="ml-2 text-sm text-gray-700">
-                            {capability.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                          </span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Staff Capabilities</label>
+                      <div className="space-y-2">
+                        {['manage_users', 'moderate_content', 'view_reports', 'manage_listings', 'view_analytics', 'system_settings'].map(capability => {
+                          const hasCapability = selectedUser?.capabilities?.some(c => c.feature === capability && c.enabled);
+                          return (
+                            <label key={capability} className="flex items-center">
+                              <input
+                                type="checkbox"
+                                checked={hasCapability}
+                                onChange={(e) => selectedUser && handleCapabilityToggle(selectedUser.id, capability, e.target.checked)}
+                                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                              />
+                              <span className="ml-2 text-sm text-gray-700">
+                                {capability.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
 
               <div className="mt-6 flex justify-end space-x-3">
                 <button
-                  onClick={() => setShowUserModal(false)}
+                  onClick={() => {
+                    setShowUserModal(false);
+                    setIsCreatingStaff(false);
+                    setSelectedUser(null);
+                  }}
                   className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={() => {
-                    setShowUserModal(false);
-                    showSuccess('Success', 'Staff member updated successfully');
+                    if (isCreatingStaff) {
+                      handleCreateStaff();
+                    } else {
+                      setShowUserModal(false);
+                      showSuccess('Success', 'Staff member updated successfully');
+                    }
                   }}
                   className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700"
                 >
-                  Save Changes
+                  {isCreatingStaff ? 'Create Staff Member' : 'Save Changes'}
                 </button>
               </div>
             </div>
@@ -1209,6 +1364,16 @@ const UserManagement: React.FC = () => {
       {/* Groups Tab Content */}
       {activeTab === 'groups' && (
         <>
+          <div className="bg-white shadow rounded-lg mb-6">
+            <div className="px-6 py-4 border-b border-gray-200">
+              <h2 className="text-lg font-medium text-gray-900">Staff Teams</h2>
+              <p className="text-sm text-gray-500 mt-1">
+                Organize your staff into teams (Sales, Content Moderation, Support, etc.). 
+                Managers can be assigned to teams to oversee staff members.
+              </p>
+            </div>
+          </div>
+          
           <div className="bg-white shadow rounded-lg">
             <div className="px-6 py-4 border-b border-gray-200">
               <h2 className="text-lg font-medium text-gray-900">User Groups</h2>

@@ -14,6 +14,14 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, QueryCommand, ScanCommand, UpdateCommand, GetCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
+import { 
+  CognitoIdentityProviderClient,
+  AdminCreateUserCommand,
+  AdminSetUserPasswordCommand,
+  AdminAddUserToGroupCommand,
+  MessageActionType
+} from '@aws-sdk/client-cognito-identity-provider';
+import * as crypto from 'crypto';
 import { createResponse, createErrorResponse } from '../shared/utils';
 
 // Import the existing secure middleware system
@@ -43,6 +51,18 @@ const client = new DynamoDBClient({
 const docClient = DynamoDBDocumentClient.from(client);
 
 /**
+ * Cognito client configuration for staff user management
+ */
+const cognitoClient = new CognitoIdentityProviderClient({
+  endpoint: process.env.COGNITO_ENDPOINT,
+  region: process.env.AWS_REGION || 'us-east-1',
+  credentials: process.env.COGNITO_ENDPOINT ? {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID || 'test',
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || 'test'
+  } : undefined
+});
+
+/**
  * Environment-based table name configuration with fallback defaults
  */
 const USERS_TABLE = process.env.USERS_TABLE || 'harborlist-users';
@@ -52,6 +72,7 @@ const AUDIT_LOGS_TABLE = process.env.AUDIT_LOGS_TABLE || 'harborlist-audit-logs'
 const LOGIN_ATTEMPTS_TABLE = process.env.LOGIN_ATTEMPTS_TABLE || 'harborlist-login-attempts';
 const MODERATION_QUEUE_TABLE = process.env.MODERATION_QUEUE_TABLE || 'harborlist-moderation-queue';
 const USER_GROUPS_TABLE = process.env.USER_GROUPS_TABLE || 'harborlist-user-groups';
+const STAFF_USER_POOL_ID = process.env.STAFF_USER_POOL_ID || '';
 
 /**
  * Main Lambda handler for admin service operations with comprehensive security
@@ -156,6 +177,14 @@ export const handler = async (event: APIGatewayProxyEvent, context: any): Promis
       )(handleListStaff)(event as AuthenticatedEvent, {});
     }
 
+    if (path.includes('/users/staff') && method === 'POST') {
+      return await compose(
+        withRateLimit(20, 60000),
+        withAdminAuth([AdminPermission.USER_MANAGEMENT]),
+        withAuditLog('CREATE_STAFF', 'staff')
+      )(handleCreateStaff)(event as AuthenticatedEvent, {});
+    }
+
     if (path.includes('/users') && method === 'GET' && !path.includes('/customers') && !path.includes('/staff')) {
       return await compose(
         withRateLimit(100, 60000),
@@ -192,7 +221,7 @@ export const handler = async (event: APIGatewayProxyEvent, context: any): Promis
         '/api/admin/system/errors',
         '/api/admin/users',
         '/api/admin/users/customers',
-        '/api/admin/users/staff',
+        '/api/admin/users/staff (GET, POST)',
         '/api/admin/user-groups',
         '/api/admin/user-tiers',
         '/health',
@@ -696,6 +725,174 @@ async function handleListStaff(event: AuthenticatedEvent): Promise<APIGatewayPro
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return createErrorResponse(500, 'LIST_STAFF_ERROR', 'Failed to list staff', event.requestContext.requestId, [{ error: errorMessage }]);
   }
+}
+
+/**
+ * Handle create staff member request
+ */
+async function handleCreateStaff(event: AuthenticatedEvent): Promise<APIGatewayProxyResult> {
+  try {
+    const body = JSON.parse(event.body || '{}');
+    const { email, name, role, password, sendWelcomeEmail = true, groupId } = body;
+
+    // Validate required fields
+    if (!email || !name || !role) {
+      return createErrorResponse(400, 'VALIDATION_ERROR', 'Missing required fields: email, name, role', event.requestContext.requestId);
+    }
+
+    // Validate role
+    const validRoles = ['super_admin', 'admin', 'moderator', 'support'];
+    if (!validRoles.includes(role)) {
+      return createErrorResponse(400, 'INVALID_ROLE', `Invalid role. Must be one of: ${validRoles.join(', ')}`, event.requestContext.requestId);
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return createErrorResponse(400, 'INVALID_EMAIL', 'Invalid email format', event.requestContext.requestId);
+    }
+
+    // Check if user already exists in DynamoDB
+    const existingUserCheck = await docClient.send(new ScanCommand({
+      TableName: USERS_TABLE,
+      FilterExpression: 'email = :email',
+      ExpressionAttributeValues: {
+        ':email': email
+      }
+    }));
+
+    if (existingUserCheck.Items && existingUserCheck.Items.length > 0) {
+      return createErrorResponse(409, 'USER_EXISTS', 'A user with this email already exists', event.requestContext.requestId);
+    }
+
+    // Create user in Cognito Staff Pool
+    const createUserCommand = new AdminCreateUserCommand({
+      UserPoolId: STAFF_USER_POOL_ID,
+      Username: email,
+      UserAttributes: [
+        { Name: 'email', Value: email },
+        { Name: 'email_verified', Value: 'true' },
+        { Name: 'name', Value: name },
+        { Name: 'custom:role', Value: role }
+      ],
+      MessageAction: sendWelcomeEmail ? MessageActionType.RESEND : MessageActionType.SUPPRESS,
+      TemporaryPassword: password || generateTemporaryPassword()
+    });
+
+    const cognitoResponse = await cognitoClient.send(createUserCommand);
+    const cognitoUserId = cognitoResponse.User?.Username || email;
+
+    // If password provided, set it as permanent
+    if (password) {
+      await cognitoClient.send(new AdminSetUserPasswordCommand({
+        UserPoolId: STAFF_USER_POOL_ID,
+        Username: cognitoUserId,
+        Password: password,
+        Permanent: true
+      }));
+    }
+
+    // Add user to appropriate Cognito group based on role
+    const cognitoGroupMap: Record<string, string> = {
+      'super_admin': 'SuperAdmins',
+      'admin': 'Admins',
+      'moderator': 'Moderators',
+      'support': 'Support'
+    };
+
+    const cognitoGroup = cognitoGroupMap[role];
+    if (cognitoGroup) {
+      try {
+        await cognitoClient.send(new AdminAddUserToGroupCommand({
+          UserPoolId: STAFF_USER_POOL_ID,
+          Username: cognitoUserId,
+          GroupName: cognitoGroup
+        }));
+      } catch (groupError) {
+        console.warn(`Warning: Could not add user to group ${cognitoGroup}:`, groupError);
+        // Continue even if group doesn't exist in LocalStack
+      }
+    }
+
+    // Create user record in DynamoDB
+    const userId = cognitoResponse.User?.Attributes?.find(attr => attr.Name === 'sub')?.Value || crypto.randomUUID();
+    const now = new Date().toISOString();
+
+    const userRecord = {
+      id: userId,
+      email: email,
+      name: name,
+      role: role,
+      status: 'active',
+      userType: 'staff',
+      createdAt: now,
+      updatedAt: now,
+      lastLoginAt: null,
+      mfaEnabled: false,
+      emailVerified: true,
+      cognitoUsername: cognitoUserId,
+      groupId: groupId || null,
+      permissions: [],
+      metadata: {
+        createdBy: event.user.sub,
+        createdByEmail: event.user.email,
+        createdAt: now
+      }
+    };
+
+    await docClient.send(new PutCommand({
+      TableName: USERS_TABLE,
+      Item: userRecord
+    }));
+
+    // Return success response
+    return createResponse(201, {
+      success: true,
+      message: 'Staff member created successfully',
+      staff: {
+        id: userId,
+        email: email,
+        name: name,
+        role: role,
+        status: 'active',
+        cognitoUsername: cognitoUserId,
+        temporaryPassword: !password ? 'Sent via email' : undefined
+      }
+    });
+
+  } catch (error: unknown) {
+    console.error('Error creating staff member:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    
+    // Handle specific Cognito errors
+    if (error instanceof Error) {
+      if (error.name === 'UsernameExistsException') {
+        return createErrorResponse(409, 'USER_EXISTS', 'A user with this email already exists in Cognito', event.requestContext.requestId);
+      }
+      if (error.name === 'InvalidPasswordException') {
+        return createErrorResponse(400, 'INVALID_PASSWORD', 'Password does not meet security requirements', event.requestContext.requestId);
+      }
+    }
+    
+    return createErrorResponse(500, 'CREATE_STAFF_ERROR', 'Failed to create staff member', event.requestContext.requestId, [{ error: errorMessage }]);
+  }
+}
+
+/**
+ * Generate a secure temporary password
+ */
+function generateTemporaryPassword(): string {
+  const length = 16;
+  const charset = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*';
+  let password = '';
+  const randomBytes = crypto.randomBytes(length);
+  
+  for (let i = 0; i < length; i++) {
+    password += charset[randomBytes[i] % charset.length];
+  }
+  
+  // Ensure password meets requirements (uppercase, lowercase, number, special char)
+  return password + 'Aa1!';
 }
 
 /**
