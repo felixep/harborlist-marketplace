@@ -33,11 +33,11 @@ export default function Profile() {
         <div className="flex items-center justify-between">
           <div className="flex items-center">
             <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center text-white text-xl font-bold">
-              {user.name.charAt(0).toUpperCase()}
+              {user.name?.charAt(0)?.toUpperCase() || user.email?.charAt(0)?.toUpperCase() || 'U'}
             </div>
             <div className="ml-4">
-              <h1 className="text-2xl font-bold text-gray-900">{user.name}</h1>
-              <p className="text-gray-600">{user.email}</p>
+              <h1 className="text-2xl font-bold text-gray-900">{user.name || 'User'}</h1>
+              <p className="text-gray-600">{user.email || 'No email'}</p>
               <p className="text-sm text-gray-500">
                 Member since {new Date().toLocaleDateString()}
               </p>
@@ -160,7 +160,7 @@ export default function Profile() {
               </label>
               <input
                 type="text"
-                value={user.name}
+                value={user.name || ''}
                 className="form-input"
                 readOnly
               />
@@ -172,7 +172,7 @@ export default function Profile() {
               </label>
               <input
                 type="email"
-                value={user.email}
+                value={user.email || ''}
                 className="form-input"
                 readOnly
               />

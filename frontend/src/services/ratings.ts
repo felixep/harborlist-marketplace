@@ -55,12 +55,24 @@ export const getPlatformStats = async (): Promise<PlatformStats> => {
   try {
     const response = await fetch(`${API_BASE_URL}/stats/platform`);
     if (!response.ok) {
+      // Silently return defaults if endpoint doesn't exist yet
+      if (response.status === 404) {
+        return {
+          totalListings: 0,
+          totalReviews: 0,
+          averageRating: 0,
+          userSatisfactionScore: 0,
+        };
+      }
       throw new Error('Failed to fetch platform stats');
     }
     return await response.json();
   } catch (error) {
-    console.error('Error fetching platform stats:', error);
-    // Return default stats if API is not available yet
+    // Silently return default stats if API is not available yet
+    // (Don't log 404s to avoid console noise during development)
+    if (error instanceof Error && !error.message.includes('Failed to fetch')) {
+      console.warn('Platform stats endpoint not available, using defaults');
+    }
     return {
       totalListings: 0,
       totalReviews: 0,
