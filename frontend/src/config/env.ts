@@ -19,10 +19,10 @@ export const endpoints = {
   media: `${config.apiUrl}/media`,
   email: `${config.apiUrl}/email`,
   auth: {
-    login: `${config.apiUrl}/auth/login`,
-    register: `${config.apiUrl}/auth/register`,
-    verifyEmail: `${config.apiUrl}/auth/verify-email`,
-    resendVerification: `${config.apiUrl}/auth/resend-verification`,
+    login: `${config.apiUrl}/auth/customer/login`,
+    register: `${config.apiUrl}/auth/customer/register`,
+    verifyEmail: `${config.apiUrl}/auth/customer/confirm-signup`,
+    resendVerification: `${config.apiUrl}/auth/customer/resend-confirmation`,
   },
   admin: {
     base: `${config.apiUrl}/admin`,

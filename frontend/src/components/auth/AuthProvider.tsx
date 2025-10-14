@@ -55,7 +55,7 @@ interface RegistrationResponse {
 interface AuthContextType {
   user: User | null;
   login: (email: string, password: string) => Promise<void>;
-  register: (name: string, email: string, password: string) => Promise<RegistrationResponse>;
+  register: (name: string, email: string, password: string, customerType?: string) => Promise<RegistrationResponse>;
   logout: () => void;
   loading: boolean;
   isAuthenticated: boolean;

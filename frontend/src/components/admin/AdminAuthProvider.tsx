@@ -293,6 +293,59 @@ export const AdminAuthProvider: React.FC<AdminAuthProviderProps> = ({ children }
     initializeSession();
   }, [validateAndRestoreSession]);
 
+  // Define logout function first to avoid hoisting issues
+  const logout = useCallback(() => {
+    // Clear tokens
+    localStorage.removeItem(ADMIN_TOKEN_KEY);
+    localStorage.removeItem(`${ADMIN_TOKEN_KEY}_refresh`);
+    
+    // Reset state
+    setAdminUser(null);
+    setSessionTimeRemaining(0);
+    setRequiresMFA(false);
+    setMfaToken(null);
+    
+    // Clear intervals
+    if (sessionCheckInterval.current) {
+      clearInterval(sessionCheckInterval.current);
+      sessionCheckInterval.current = null;
+    }
+    
+    if (sessionRefreshInterval.current) {
+      clearInterval(sessionRefreshInterval.current);
+      sessionRefreshInterval.current = null;
+    }
+  }, []);
+
+  const refreshSession = useCallback(async () => {
+    const token = localStorage.getItem(ADMIN_TOKEN_KEY);
+    if (!token) {
+      logout();
+      return;
+    }
+
+    try {
+      // Extract refresh token from stored token or use the access token for staff refresh
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      const refreshToken = localStorage.getItem(`${ADMIN_TOKEN_KEY}_refresh`) || token;
+      
+      const data = await adminApi.staffRefreshToken(refreshToken);
+      
+      // Store new access token
+      localStorage.setItem(ADMIN_TOKEN_KEY, data.accessToken);
+      if (data.refreshToken) {
+        localStorage.setItem(`${ADMIN_TOKEN_KEY}_refresh`, data.refreshToken);
+      }
+      
+      // Validate and restore session with new token
+      await validateAndRestoreSession(data.accessToken);
+      lastActivityTime.current = Date.now();
+    } catch (error) {
+      console.error('Staff session refresh failed:', error);
+      logout();
+    }
+  }, [logout, validateAndRestoreSession]);
+
   // Enhanced session timeout management for staff users (8 hours)
   useEffect(() => {
     if (adminUser && adminUser.sessionTimeout) {
@@ -472,59 +525,7 @@ export const AdminAuthProvider: React.FC<AdminAuthProviderProps> = ({ children }
         logout();
       }
     }, 30 * 60 * 1000) as unknown as number; // 30 minutes
-  }, []);
-
-  const logout = useCallback(() => {
-    // Clear tokens
-    localStorage.removeItem(ADMIN_TOKEN_KEY);
-    localStorage.removeItem(`${ADMIN_TOKEN_KEY}_refresh`);
-    
-    // Reset state
-    setAdminUser(null);
-    setSessionTimeRemaining(0);
-    setRequiresMFA(false);
-    setMfaToken(null);
-    
-    // Clear intervals
-    if (sessionCheckInterval.current) {
-      clearInterval(sessionCheckInterval.current);
-      sessionCheckInterval.current = null;
-    }
-    
-    if (sessionRefreshInterval.current) {
-      clearInterval(sessionRefreshInterval.current);
-      sessionRefreshInterval.current = null;
-    }
-  }, []);
-
-  const refreshSession = useCallback(async () => {
-    const token = localStorage.getItem(ADMIN_TOKEN_KEY);
-    if (!token) {
-      logout();
-      return;
-    }
-
-    try {
-      // Extract refresh token from stored token or use the access token for staff refresh
-      const payload = JSON.parse(atob(token.split('.')[1]));
-      const refreshToken = localStorage.getItem(`${ADMIN_TOKEN_KEY}_refresh`) || token;
-      
-      const data = await adminApi.staffRefreshToken(refreshToken);
-      
-      // Store new access token
-      localStorage.setItem(ADMIN_TOKEN_KEY, data.accessToken);
-      if (data.refreshToken) {
-        localStorage.setItem(`${ADMIN_TOKEN_KEY}_refresh`, data.refreshToken);
-      }
-      
-      // Validate and restore session with new token
-      await validateAndRestoreSession(data.accessToken);
-      lastActivityTime.current = Date.now();
-    } catch (error) {
-      console.error('Staff session refresh failed:', error);
-      logout();
-    }
-  }, [logout, validateAndRestoreSession]);
+  }, [logout, refreshSession]);
 
   const hasPermission = useCallback((permission: AdminPermission): boolean => {
     if (!adminUser) return false;

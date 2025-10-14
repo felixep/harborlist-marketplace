@@ -47,10 +47,15 @@ class ApiService {
     });
   }
 
-  async register(name: string, email: string, password: string) {
+  async register(name: string, email: string, password: string, customerType?: string) {
     return this.request(endpoints.auth.register, {
       method: 'POST',
-      body: JSON.stringify({ name, email, password })
+      body: JSON.stringify({ 
+        name, 
+        email, 
+        password, 
+        customerType: customerType || 'individual'
+      })
     });
   }
 

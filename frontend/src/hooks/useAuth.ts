@@ -178,8 +178,8 @@ export const useAuthState = () => {
    * }
    * ```
    */
-  const register = async (name: string, email: string, password: string): Promise<RegistrationResponse> => {
-    const response = await api.register(name, email, password) as RegistrationResponse;
+  const register = async (name: string, email: string, password: string, customerType?: string): Promise<RegistrationResponse> => {
+    const response = await api.register(name, email, password, customerType) as RegistrationResponse;
     
     // Only auto-login if verification is not required (backwards compatibility)
     if (response.token && !response.requiresVerification) {

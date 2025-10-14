@@ -164,7 +164,7 @@ export const EnhancedRegisterForm: React.FC = () => {
   const handleBasicRegistration = async () => {
     setLoading(true);
     try {
-      const response = await api.register(formData.name, formData.email, formData.password) as { 
+      const response = await api.register(formData.name, formData.email, formData.password, userType) as { 
         requiresVerification?: boolean; 
         message: string;
         user: { email: string; name: string } 
@@ -182,7 +182,7 @@ export const EnhancedRegisterForm: React.FC = () => {
           replace: true 
         });
       } else {
-        await register(formData.name, formData.email, formData.password);
+        await register(formData.name, formData.email, formData.password, userType);
         navigate(from, { replace: true });
       }
     } catch (error: any) {
@@ -202,7 +202,7 @@ export const EnhancedRegisterForm: React.FC = () => {
 
     try {
       // First, create the basic user account
-      const registrationResponse = await api.register(formData.name, formData.email, formData.password) as {
+      const registrationResponse = await api.register(formData.name, formData.email, formData.password, userType) as {
         requiresVerification?: boolean;
         message: string;
         user: { email: string; name: string; id: string };
@@ -265,7 +265,7 @@ export const EnhancedRegisterForm: React.FC = () => {
           replace: true 
         });
       } else {
-        await register(formData.name, formData.email, formData.password);
+        await register(formData.name, formData.email, formData.password, userType);
         navigate('/onboarding', { 
           state: { 
             userType,
