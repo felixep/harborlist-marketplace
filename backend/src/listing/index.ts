@@ -31,6 +31,7 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { db } from '../shared/database';
 import { createResponse, createErrorResponse, parseBody, getUserId, generateId, validateRequired, sanitizeString, validatePrice, validateYear } from '../shared/utils';
+import { getUserFromEvent } from '../shared/auth';
 import { Listing, Engine, EnhancedListing } from '@harborlist/shared-types';
 
 /**
@@ -319,17 +320,23 @@ async function getListing(listingId: string, requestId: string, event?: APIGatew
                       listing.moderationWorkflow?.status === 'changes_requested';
     
     if (isPending) {
-      // Get current user ID if authenticated
+      // Get current user and check permissions
       let currentUserId: string | null = null;
+      let isAdmin = false;
       try {
-        currentUserId = event ? getUserId(event) : null;
+        if (event) {
+          const userPayload = await getUserFromEvent(event);
+          currentUserId = userPayload.sub;
+          // Check if user has any admin/moderator role
+          const adminRoles = ['ADMIN', 'SUPER_ADMIN', 'MODERATOR', 'SUPPORT'];
+          isAdmin = userPayload.role ? adminRoles.includes(userPayload.role) : false;
+        }
       } catch (error) {
         // User not authenticated
       }
 
-      // Only allow owner or admin to view pending listings
-      if (!currentUserId || currentUserId !== listing.ownerId) {
-        // Check if user is admin (you can add admin role check here)
+      // Only allow owner or admin/moderator to view pending listings
+      if (!isAdmin && (!currentUserId || currentUserId !== listing.ownerId)) {
         return createErrorResponse(404, 'NOT_FOUND', 'Listing not found', requestId);
       }
     }
@@ -412,16 +419,23 @@ async function getListingBySlug(slug: string, requestId: string, event?: APIGate
                       result.moderationWorkflow?.status === 'changes_requested';
     
     if (isPending) {
-      // Get current user ID if authenticated
+      // Get current user and check permissions
       let currentUserId: string | null = null;
+      let isAdmin = false;
       try {
-        currentUserId = event ? getUserId(event) : null;
+        if (event) {
+          const userPayload = await getUserFromEvent(event);
+          currentUserId = userPayload.sub;
+          // Check if user has any admin/moderator role
+          const adminRoles = ['ADMIN', 'SUPER_ADMIN', 'MODERATOR', 'SUPPORT'];
+          isAdmin = userPayload.role ? adminRoles.includes(userPayload.role) : false;
+        }
       } catch (error) {
         // User not authenticated
       }
 
-      // Only allow owner to view pending listings
-      if (!currentUserId || currentUserId !== result.ownerId) {
+      // Only allow owner or admin/moderator to view pending listings
+      if (!isAdmin && (!currentUserId || currentUserId !== result.ownerId)) {
         return createErrorResponse(404, 'NOT_FOUND', 'Listing not found', requestId);
       }
     }
@@ -492,16 +506,23 @@ async function getListingWithRedirect(listingId: string, requestId: string, even
                       listing.moderationWorkflow?.status === 'changes_requested';
     
     if (isPending) {
-      // Get current user ID if authenticated
+      // Get current user and check permissions
       let currentUserId: string | null = null;
+      let isAdmin = false;
       try {
-        currentUserId = event ? getUserId(event) : null;
+        if (event) {
+          const userPayload = await getUserFromEvent(event);
+          currentUserId = userPayload.sub;
+          // Check if user has any admin/moderator role
+          const adminRoles = ['ADMIN', 'SUPER_ADMIN', 'MODERATOR', 'SUPPORT'];
+          isAdmin = userPayload.role ? adminRoles.includes(userPayload.role) : false;
+        }
       } catch (error) {
         // User not authenticated
       }
 
-      // Only allow owner to view pending listings
-      if (!currentUserId || currentUserId !== listing.ownerId) {
+      // Only allow owner or admin/moderator to view pending listings
+      if (!isAdmin && (!currentUserId || currentUserId !== listing.ownerId)) {
         return createErrorResponse(404, 'NOT_FOUND', 'Listing not found', requestId);
       }
     }
