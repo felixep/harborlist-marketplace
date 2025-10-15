@@ -64,12 +64,14 @@ export async function getListing(
   options?: { bySlug?: boolean }
 ): Promise<{ listing: Listing }> {
   if (options?.bySlug) {
-    return apiRequest(`/listings/by-slug/${identifier}`);
+    return apiRequest(`/listings/slug/${identifier}`);
   }
   return apiRequest(`/listings/${identifier}`);
 }
 
-export async function createListing(listing: Omit<Listing, 'listingId' | 'createdAt' | 'updatedAt'>): Promise<{ listingId: string }> {
+export async function createListing(
+  listing: Omit<Listing, 'listingId' | 'createdAt' | 'updatedAt'>
+): Promise<{ listingId: string; slug?: string; status?: string; message?: string }> {
   return apiRequest('/listings', {
     method: 'POST',
     body: JSON.stringify(listing),

@@ -13,9 +13,14 @@ export default function CreateListing() {
 
   const createMutation = useMutation({
     mutationFn: createListing,
-    onSuccess: (data) => {
-      showSuccess('Listing Created Successfully', 'Your boat listing has been published and is now live!');
-      navigate(`/listing/${data.listingId}`);
+    onSuccess: (data: { listingId: string; slug?: string; status?: string }) => {
+      showSuccess('Listing Created Successfully', 'Your boat listing has been submitted for review!');
+      // Navigate to the slug-based URL if available, otherwise use listing ID
+      if (data.slug) {
+        navigate(`/boat/${data.slug}`);
+      } else {
+        navigate(`/listing/${data.listingId}`);
+      }
     },
     onError: (error: any) => {
       console.error('Failed to create listing:', error);
