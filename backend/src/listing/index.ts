@@ -248,10 +248,10 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     switch (method) {
       case 'GET':
         if (pathParameters.slug && event.path?.includes('/slug/')) {
-          return await getListingBySlug(pathParameters.slug, requestId);
+          return await getListingBySlug(pathParameters.slug, requestId, event);
         } else if (pathParameters.id) {
           // Check if this is a legacy ID-based URL that should redirect to slug
-          return await getListingWithRedirect(pathParameters.id, requestId);
+          return await getListingWithRedirect(pathParameters.id, requestId, event);
         } else {
           return await getListings(event, requestId);
         }
@@ -305,16 +305,39 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
  * 
  * @throws {Error} When database operations fail or listing not found
  */
-async function getListing(listingId: string, requestId: string): Promise<APIGatewayProxyResult> {
+async function getListing(listingId: string, requestId: string, event?: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
   try {
-    const listing = await db.getListing(listingId);
+    const listing = await db.getListing(listingId) as EnhancedListing;
     
     if (!listing) {
       return createErrorResponse(404, 'NOT_FOUND', 'Listing not found', requestId);
     }
 
-    // Increment view count
-    await db.incrementViews(listingId);
+    // Check if listing is pending moderation
+    const isPending = listing.status === 'pending_moderation' || 
+                      listing.moderationWorkflow?.status === 'pending_review' ||
+                      listing.moderationWorkflow?.status === 'changes_requested';
+    
+    if (isPending) {
+      // Get current user ID if authenticated
+      let currentUserId: string | null = null;
+      try {
+        currentUserId = event ? getUserId(event) : null;
+      } catch (error) {
+        // User not authenticated
+      }
+
+      // Only allow owner or admin to view pending listings
+      if (!currentUserId || currentUserId !== listing.ownerId) {
+        // Check if user is admin (you can add admin role check here)
+        return createErrorResponse(404, 'NOT_FOUND', 'Listing not found', requestId);
+      }
+    }
+
+    // Increment view count only for active/approved listings
+    if (!isPending) {
+      await db.incrementViews(listingId);
+    }
 
     // Fetch owner information
     let listingWithOwner = listing;
@@ -344,17 +367,19 @@ async function getListing(listingId: string, requestId: string): Promise<APIGate
  * 
  * Fetches listing details using the SEO-friendly slug instead of internal ID.
  * Provides clean URLs for better user experience and SEO optimization.
+ * Respects moderation workflow - only owners can see pending listings.
  * 
  * @param slug - SEO-friendly URL slug for the listing
  * @param requestId - Request tracking identifier for logging
+ * @param event - API Gateway event for authentication context
  * @returns Promise<APIGatewayProxyResult> - Listing data or error response
  * 
  * @throws {Error} When database operations fail or listing not found
  */
-async function getListingBySlug(slug: string, requestId: string): Promise<APIGatewayProxyResult> {
+async function getListingBySlug(slug: string, requestId: string, event?: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
   try {
     // Query listings by slug using GSI
-    let result = await db.getListingBySlug(slug);
+    let result = await db.getListingBySlug(slug) as EnhancedListing;
     
     if (!result) {
       // Check if this is an old slug that should redirect
@@ -381,8 +406,30 @@ async function getListingBySlug(slug: string, requestId: string): Promise<APIGat
       return createErrorResponse(404, 'NOT_FOUND', 'Listing not found', requestId);
     }
 
-    // Increment view count
-    await db.incrementViews(result.listingId);
+    // Check if listing is pending moderation
+    const isPending = result.status === 'pending_moderation' || 
+                      result.moderationWorkflow?.status === 'pending_review' ||
+                      result.moderationWorkflow?.status === 'changes_requested';
+    
+    if (isPending) {
+      // Get current user ID if authenticated
+      let currentUserId: string | null = null;
+      try {
+        currentUserId = event ? getUserId(event) : null;
+      } catch (error) {
+        // User not authenticated
+      }
+
+      // Only allow owner to view pending listings
+      if (!currentUserId || currentUserId !== result.ownerId) {
+        return createErrorResponse(404, 'NOT_FOUND', 'Listing not found', requestId);
+      }
+    }
+
+    // Increment view count only for active/approved listings
+    if (!isPending) {
+      await db.incrementViews(result.listingId);
+    }
 
     // Fetch owner information
     let listingWithOwner = result;
@@ -431,12 +478,32 @@ async function getListingBySlug(slug: string, requestId: string): Promise<APIGat
  * @param requestId - Request tracking identifier for logging
  * @returns Promise<APIGatewayProxyResult> - Listing data or redirect response
  */
-async function getListingWithRedirect(listingId: string, requestId: string): Promise<APIGatewayProxyResult> {
+async function getListingWithRedirect(listingId: string, requestId: string, event?: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
   try {
-    const listing = await db.getListing(listingId);
+    const listing = await db.getListing(listingId) as EnhancedListing;
     
     if (!listing) {
       return createErrorResponse(404, 'NOT_FOUND', 'Listing not found', requestId);
+    }
+
+    // Check if listing is pending moderation
+    const isPending = listing.status === 'pending_moderation' || 
+                      listing.moderationWorkflow?.status === 'pending_review' ||
+                      listing.moderationWorkflow?.status === 'changes_requested';
+    
+    if (isPending) {
+      // Get current user ID if authenticated
+      let currentUserId: string | null = null;
+      try {
+        currentUserId = event ? getUserId(event) : null;
+      } catch (error) {
+        // User not authenticated
+      }
+
+      // Only allow owner to view pending listings
+      if (!currentUserId || currentUserId !== listing.ownerId) {
+        return createErrorResponse(404, 'NOT_FOUND', 'Listing not found', requestId);
+      }
     }
 
     // Check if listing has a slug and should redirect
@@ -508,12 +575,12 @@ async function getListings(event: APIGatewayProxyEvent, requestId: string): Prom
     );
     
     // Filter to only show approved/active listings for public view
-    // For development: show all listings including pending ones
-    const publicListings = process.env.NODE_ENV === 'development' 
-      ? listingsWithOwners 
-      : listingsWithOwners.filter(listing => 
-          listing.status === 'approved' || listing.status === 'active'
-        );
+    // Pending listings are only visible to their owners (handled in individual getListing calls)
+    const publicListings = listingsWithOwners.filter(listing => {
+      const enhancedListing = listing as EnhancedListing;
+      return listing.status === 'active' || 
+             (enhancedListing.moderationWorkflow?.status === 'approved' && listing.status !== 'pending_moderation');
+    });
     
     const response: any = {
       listings: publicListings,
