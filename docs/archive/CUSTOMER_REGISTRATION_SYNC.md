@@ -70,7 +70,7 @@ Update DynamoDB (emailVerified: true)
 ### Options for Local Testing
 
 #### Option 1: Auto-Verify (Simplest for Development)
-Modify `infrastructure/scripts/setup-local-cognito.sh` to include Lambda trigger that auto-confirms users:
+Modify `tools/development/setup-local-cognito.sh` to include Lambda trigger that auto-confirms users:
 
 ```bash
 --user-pool-add-ons '{

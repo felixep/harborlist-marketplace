@@ -304,8 +304,8 @@ const userStats = await fetch('/api/analytics/stats/users?days=7').then(r => r.j
 
 ```bash
 # Run the setup script
-chmod +x infrastructure/scripts/create-analytics-table.sh
-./infrastructure/scripts/create-analytics-table.sh
+chmod +x tools/development/create-analytics-table.sh
+./tools/development/create-analytics-table.sh
 ```
 
 ### 2. Rebuild Backend
@@ -424,7 +424,7 @@ curl http://localhost:3001/api/analytics/listings/test-listing-123/stats
 ### New Files:
 - `backend/src/analytics-service/index.ts` - Analytics service
 - `frontend/src/hooks/useTracking.ts` - Tracking hook
-- `infrastructure/scripts/create-analytics-table.sh` - Table setup script
+- `tools/development/create-analytics-table.sh` - Table setup script
 - `docs/ANALYTICS_TRACKING_SYSTEM.md` - This documentation
 
 ### Modified Files:

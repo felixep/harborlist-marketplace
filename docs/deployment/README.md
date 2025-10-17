@@ -1429,7 +1429,7 @@ export const environmentConfig = EnvironmentConfig.getInstance();
 
 ```bash
 #!/bin/bash
-# infrastructure/scripts/deploy.sh
+# tools/deployment/deploy.sh
 
 set -e
 

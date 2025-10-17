@@ -216,7 +216,7 @@ check_aws_prerequisites() {
 
 # Function to ensure LocalStack Cognito setup script exists
 ensure_localstack_setup_script() {
-    local setup_script="${PROJECT_ROOT}/infrastructure/scripts/setup-local-cognito.sh"
+    local setup_script="${PROJECT_ROOT}/tools/development/setup-local-cognito.sh"
     local script_dir="$(dirname "${setup_script}")"
     
     # Create directory if it doesn't exist
@@ -314,7 +314,7 @@ setup_localstack_cognito() {
         return 1
     fi
     
-    local setup_script="${PROJECT_ROOT}/infrastructure/scripts/setup-local-cognito.sh"
+    local setup_script="${PROJECT_ROOT}/tools/development/setup-local-cognito.sh"
     
     print_info "Running LocalStack Cognito setup script..."
     
@@ -359,7 +359,8 @@ validate_authentication() {
     
     if [[ "${environment}" == "local" ]]; then
         # Test LocalStack authentication
-        local auth_test_script="${PROJECT_ROOT}/infrastructure/scripts/test-local-auth.sh"
+        # Test authentication flow
+        local auth_test_script="${PROJECT_ROOT}/tools/development/test-dual-auth.sh"
         
         if [[ -f "${auth_test_script}" ]]; then
             print_info "Running authentication validation tests..."

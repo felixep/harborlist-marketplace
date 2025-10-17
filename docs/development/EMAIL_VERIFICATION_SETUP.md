@@ -48,7 +48,7 @@ docker exec harborlist-marketplace-localstack-1 \
 
 ### Method 3: Auto-Verification (Future Enhancement)
 
-Modify `infrastructure/scripts/setup-local-cognito.sh` to auto-verify emails on registration:
+Modify `tools/development/setup-local-cognito.sh` to auto-verify emails on registration:
 
 ```javascript
 // Lambda Pre-SignUp Trigger
@@ -205,6 +205,6 @@ For production deployment, configure AWS SES:
 - `backend/src/auth-service/index.ts` - Auth service with DynamoDB sync
 - `tools/development/verify-customer-email.sh` - Manual verification helper
 - `CUSTOMER_REGISTRATION_SYNC.md` - Detailed technical documentation
-- `infrastructure/scripts/setup-local-cognito.sh` - Cognito setup script
+- `tools/development/setup-local-cognito.sh` - Cognito setup script
 - `docker-compose.local.yml` - SMTP4Dev configuration
 

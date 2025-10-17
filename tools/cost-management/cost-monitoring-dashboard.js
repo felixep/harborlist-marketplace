@@ -438,7 +438,7 @@ aws budgets create-budget --account-id 676032292155 --budget file://budget.json
 aws ce get-cost-and-usage --time-period Start=2025-09-01,End=2025-09-28 --granularity MONTHLY --metrics BLENDED_COST
 
 # Run cost analysis
-node infrastructure/scripts/cost-analysis.js</code></pre>
+node tools/cost-management/cost-analysis.js</code></pre>
         </div>
     </div>
 

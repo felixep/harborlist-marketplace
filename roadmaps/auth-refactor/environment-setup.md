@@ -70,7 +70,7 @@ networks:
 
 ### 2. LocalStack Initialization Script
 
-Create `infrastructure/scripts/setup-local-cognito.sh`:
+Create `tools/development/setup-local-cognito.sh`:
 
 ```bash
 #!/bin/bash
@@ -338,8 +338,8 @@ docker-compose -f docker-compose.local.yml up -d
 sleep 10
 
 # 3. Setup Cognito User Pools
-chmod +x infrastructure/scripts/setup-local-cognito.sh
-./infrastructure/scripts/setup-local-cognito.sh
+chmod +x tools/development/setup-local-cognito.sh
+./tools/development/setup-local-cognito.sh
 
 # 4. Start the auth service
 cd backend
@@ -352,7 +352,7 @@ npm run dev
 
 ### 4. Local Environment Verification
 
-Create `infrastructure/scripts/test-local-auth.sh`:
+Create `tools/development/test-dual-auth.sh`:
 
 ```bash
 #!/bin/bash
@@ -679,7 +679,7 @@ export function getEnvironmentConfig(): EnvironmentConfig {
 
 ### 2. Environment Switching Script
 
-Create `infrastructure/scripts/switch-environment.sh`:
+Create `tools/operations/switch-environment.sh`:
 
 ```bash
 #!/bin/bash

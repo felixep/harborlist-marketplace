@@ -167,28 +167,28 @@ Before using these tools, ensure you have the required dependencies:
 ### Standard Deployment Workflow
 ```bash
 # 1. Deploy infrastructure
-./infrastructure/scripts/deploy.sh dev
+./tools/deployment/deploy.sh dev
 
 # 2. Verify deployment
-./infrastructure/scripts/verify-deployment.sh
+./tools/deployment/verify-deployment.sh
 
 # 3. Set up monitoring  
-./infrastructure/scripts/setup-monitoring.sh
+./tools/monitoring/setup-monitoring.sh
 
 # 4. Run performance tests
-./infrastructure/scripts/run-performance-tests.sh
+./tools/performance/run-performance-tests.sh
 ```
 
 ### Monitoring Workflow
 ```bash
 # 1. Check system health
-./infrastructure/scripts/test-monitoring.sh
+./tools/monitoring/test-monitoring.sh
 
 # 2. Analyze costs
-node ./infrastructure/scripts/cost-analysis.js
+node ./tools/cost-management/cost-analysis.js
 
 # 3. Generate reports
-node ./infrastructure/scripts/dev-environment-status-report.js
+node ./tools/monitoring/dev-environment-status-report.js
 ```
 
 ## 🚨 Important Notes

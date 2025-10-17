@@ -354,7 +354,7 @@ import { useTracking } from '../hooks/useTracking';
 - **Full Documentation**: `docs/ANALYTICS_TRACKING_SYSTEM.md`
 - **Backend Service**: `backend/src/analytics-service/index.ts`
 - **Frontend Hook**: `frontend/src/hooks/useTracking.ts`
-- **Table Setup Script**: `infrastructure/scripts/create-analytics-table.sh`
+- **Table Setup Script**: `tools/development/create-analytics-table.sh`
 
 ---
 

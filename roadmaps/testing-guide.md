@@ -304,7 +304,7 @@ The deployment script includes automated authentication validation:
 
 ```bash
 # Run authentication validation manually
-./infrastructure/scripts/test-local-auth.sh
+./tools/development/test-dual-auth.sh
 ```
 
 **Expected Result**:
@@ -403,7 +403,7 @@ docker-compose -f docker-compose.local.yml restart localstack
 
 # Wait and retry setup
 sleep 10
-./infrastructure/scripts/setup-local-cognito.sh
+./tools/development/setup-local-cognito.sh
 ```
 
 ### Issue 2: Authentication Service Not Responding
@@ -429,7 +429,7 @@ docker-compose -f docker-compose.local.yml exec auth-service env | grep COGNITO
 **Solution**:
 ```bash
 # Manually run Cognito setup
-./infrastructure/scripts/setup-local-cognito.sh
+./tools/development/setup-local-cognito.sh
 
 # Verify users exist in LocalStack
 aws cognito-idp list-users \

@@ -23,6 +23,12 @@ harborlist-marketplace/
 │   │   ├── verify-deployment.sh             # Post-deployment validation
 │   │   └── README.md                        # Deployment tools documentation
 │   ├── development/                          # Local development setup tools
+│   │   ├── setup-local-cognito.sh           # LocalStack Cognito User Pools setup
+│   │   ├── setup-local-dynamodb.sh          # LocalStack DynamoDB tables initialization
+│   │   ├── create-analytics-table.sh        # Analytics events table creation
+│   │   ├── test-customer-auth.sh            # Customer authentication testing
+│   │   ├── test-dual-auth.sh                # Dual auth system testing
+│   │   ├── query-local-users.sh             # Local DynamoDB user query tool
 │   │   ├── setup-s3-buckets.sh              # LocalStack S3 bucket initialization
 │   │   └── README.md                        # Development tools documentation
 │   ├── monitoring/                           # System monitoring tools
@@ -60,7 +66,11 @@ harborlist-marketplace/
 │   │   └── README.md                        # Cloudflare tools documentation
 │   ├── operations/                           # System operations & user management
 │   │   ├── create-admin-user.sh             # Multi-environment admin user creation
+│   │   ├── switch-environment.sh            # Environment switching utility
 │   │   └── README.md                        # Operations tools documentation
+│   ├── media/                                # Media processing tools
+│   │   ├── generate-thumbnails.js           # Image thumbnail generation
+│   │   └── README.md                        # Media tools documentation
 │   ├── ssl/                                  # SSL certificate management
 │   │   ├── generate-ssl-certs.sh            # Local development SSL certificate generation
 │   │   └── README.md                        # SSL tools documentation

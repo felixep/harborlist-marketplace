@@ -345,8 +345,8 @@ echo "LocalStack is ready!"
 
 # Setup Cognito User Pools
 echo "Setting up Cognito User Pools..."
-chmod +x infrastructure/scripts/setup-local-cognito.sh
-./infrastructure/scripts/setup-local-cognito.sh
+chmod +x tools/development/setup-local-cognito.sh
+./tools/development/setup-local-cognito.sh
 
 # Wait for auth service to be ready
 echo "Waiting for auth service to be ready..."
@@ -366,8 +366,8 @@ echo "Auth service is ready!"
 
 # Run initial tests
 echo "Running initial authentication tests..."
-chmod +x infrastructure/scripts/test-local-auth.sh
-./infrastructure/scripts/test-local-auth.sh
+chmod +x tools/development/test-dual-auth.sh
+./tools/development/test-dual-auth.sh
 
 echo ""
 echo "🎉 Local development environment is ready!"

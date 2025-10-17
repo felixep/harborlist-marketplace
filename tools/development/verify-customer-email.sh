@@ -24,14 +24,14 @@ if [ -f ".env.local" ]; then
     export $(cat .env.local | grep -v '^#' | xargs)
 else
     echo "❌ Error: .env.local file not found"
-    echo "Please run infrastructure/scripts/setup-local-cognito.sh first"
+    echo "Please run tools/development/setup-local-cognito.sh first"
     exit 1
 fi
 
 # Check if CUSTOMER_USER_POOL_ID is set
 if [ -z "$CUSTOMER_USER_POOL_ID" ]; then
     echo "❌ Error: CUSTOMER_USER_POOL_ID not found in .env.local"
-    echo "Please run infrastructure/scripts/setup-local-cognito.sh first"
+    echo "Please run tools/development/setup-local-cognito.sh first"
     exit 1
 fi
 

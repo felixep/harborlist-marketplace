@@ -12,6 +12,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Replaced JWT_SECRET-based verification with AWS Cognito JWKS
   - All authentication now consistently uses AWS Cognito dual pools
   - Made token verification functions properly async
+- **Project Structure**: Reorganized operational scripts into `/tools/` directory
+  - Moved 8 scripts from scattered locations (`/scripts/` and `/infrastructure/scripts/`)
+  - Organized into categorical subdirectories: `development/`, `operations/`, `media/`
+  - Updated all documentation references (14+ files)
+  - Removed empty script directories
 
 ### Removed - 2025-10-17
 - Removed legacy JWT-based authentication system (auth-legacy.ts) - **583 lines**
