@@ -28,9 +28,9 @@ graph TB
         end
         
         subgraph "API & Frontend Layer"
-            APIGateway[API Gateway REST API<br/>- Custom Domain (api-dev.harborlist.com)<br/>- CORS Configuration<br/>- Cloudflare IP Restrictions<br/>- Request/Response Transformation]
+            APIGateway["API Gateway REST API<br/>- Custom Domain: api-dev.harborlist.com<br/>- CORS Configuration<br/>- Cloudflare IP Restrictions<br/>- Request/Response Transformation"]
             
-            S3Frontend[S3 Static Website Hosting<br/>- React 18 SPA Build<br/>- Custom Domain (dev.harborlist.com)<br/>- Cloudflare-Only Access<br/>- Edge Secret Protection]
+            S3Frontend["S3 Static Website Hosting<br/>- React 18 SPA Build<br/>- Custom Domain: dev.harborlist.com<br/>- Cloudflare-Only Access<br/>- Edge Secret Protection"]
         end
         
         subgraph "Data & Storage Layer"
@@ -44,7 +44,7 @@ graph TB
         end
         
         subgraph "Event & Scheduling Layer"
-            EventBridge[EventBridge Rules<br/>- Daily IP Sync Schedule (2 AM UTC)<br/>- System Maintenance Tasks<br/>- Cross-Service Events<br/>- Monitoring Triggers]
+            EventBridge["EventBridge Rules<br/>- Daily IP Sync Schedule at 2 AM UTC<br/>- System Maintenance Tasks<br/>- Cross-Service Events<br/>- Monitoring Triggers"]
         end
         
         subgraph "Monitoring & Alerting"
@@ -201,73 +201,73 @@ graph TB
         Users[Global Users]
         CloudflareEdge[Cloudflare Edge Locations<br/>- 300+ Global Data Centers<br/>- Anycast Network<br/>- DDoS Protection<br/>- WAF Rules]
     end
-    
+
     subgraph "Security Layer"
         subgraph "DNS & Routing"
             DNS[Cloudflare DNS<br/>- dev.harborlist.com → S3 Origin<br/>- api-dev.harborlist.com → API Gateway<br/>- SSL/TLS Termination<br/>- CNAME Flattening]
         end
-        
+
         subgraph "Security Rules"
             TransformRules[Transform Rules<br/>- Add Edge Secret Headers<br/>- Frontend: Referer Header<br/>- API: X-Auth-Secret Header<br/>- Request Modification]
-            
+
             FirewallRules[Firewall Rules<br/>- Bot Detection<br/>- Rate Limiting<br/>- Geographic Restrictions<br/>- Custom Security Rules]
-            
-            SSLConfig[SSL/TLS Configuration<br/>- Full (Strict) Mode<br/>- HSTS Enabled<br/>- TLS 1.2+ Only<br/>- Perfect Forward Secrecy]
+
+            SSLConfig["SSL/TLS Configuration<br/>- Full Strict Mode<br/>- HSTS Enabled<br/>- TLS 1.2+ Only<br/>- Perfect Forward Secrecy"]
         end
     end
-    
+
     subgraph "AWS Origin Protection"
         subgraph "S3 Frontend Security"
             S3Policy[S3 Bucket Policy<br/>- Cloudflare IP Restrictions<br/>- Edge Secret in Referer<br/>- HTTPS Only<br/>- Direct Access Blocked]
-            
+
             S3Frontend[S3 Static Website<br/>- React Application<br/>- boat-listing-frontend-676032292155<br/>- Website Hosting Configuration<br/>- Custom Error Pages]
         end
-        
+
         subgraph "API Gateway Security"
             APIPolicy[API Gateway Resource Policy<br/>- Cloudflare IP Restrictions<br/>- Edge Secret in Headers<br/>- CORS Configuration<br/>- Request Size Limits]
-            
+
             APIGateway[API Gateway REST API<br/>- 8ehnomblal.execute-api.us-east-1.amazonaws.com<br/>- Custom Domain: api-dev.harborlist.com<br/>- Lambda Proxy Integration]
         end
-        
+
         subgraph "Automated Security Maintenance"
             IPSyncFunction[Cloudflare IP Sync Lambda<br/>- Function: cloudflare-ip-sync-dev<br/>- Runtime: Node.js 20.x<br/>- AWS SDK v3<br/>- Scheduled Execution]
-            
+
             EventBridgeRule[EventBridge Schedule<br/>- Daily execution at 2 AM UTC<br/>- Cron: 0 2 * * ? *<br/>- Reliable trigger<br/>- Error handling]
-            
+
             SSMParameter[SSM Parameter Store<br/>- Edge Secret Storage<br/>- /harborlist/edge/secret<br/>- Secure string type<br/>- Access control]
         end
     end
-    
+
     subgraph "Security Flow"
         SecurityFlow[Edge Secret: 6147325cc5a6014a5bbf284ac1b5bb15514dc4d3fc5132c6cd62afc4732db5ee<br/>- Generated cryptographically secure<br/>- Stored in SSM Parameter Store<br/>- Applied via Cloudflare Transform Rules<br/>- Validated in AWS resource policies]
     end
-    
+
     %% User flow
     Users --> CloudflareEdge
     CloudflareEdge --> DNS
-    
+
     %% Security processing
     DNS --> TransformRules
     TransformRules --> FirewallRules
     FirewallRules --> SSLConfig
-    
+
     %% Origin protection
     SSLConfig --> S3Policy
     SSLConfig --> APIPolicy
     S3Policy --> S3Frontend
     APIPolicy --> APIGateway
-    
+
     %% Automated maintenance
     EventBridgeRule --> IPSyncFunction
     IPSyncFunction --> SSMParameter
     IPSyncFunction --> S3Policy
     IPSyncFunction --> APIPolicy
-    
+
     %% Security validation
     TransformRules --> SecurityFlow
     S3Policy --> SecurityFlow
     APIPolicy --> SecurityFlow
-    
+
     style Users fill:#e3f2fd
     style CloudflareEdge fill:#ff9800
     style S3Policy fill:#4caf50
@@ -322,25 +322,25 @@ sequenceDiagram
 ```mermaid
 graph TB
     subgraph "S3 Storage Architecture"
-        subgraph "Media Bucket (boat-listing-media-[account])"
-            MediaBucket[Media Bucket<br/>- Original Images<br/>- Processed Images<br/>- Video Files<br/>- Thumbnails]
+        subgraph "Media Bucket"
+            MediaBucket["Media Bucket<br/>- Original Images<br/>- Processed Images<br/>- Video Files<br/>- Thumbnails"]
             
             subgraph "Folder Structure"
-                ListingFolder[/listing-{id}/<br/>- image1.jpg<br/>- image2.jpg<br/>- thumb1.jpg<br/>- video1.mp4]
+                ListingFolder["listing-id folder<br/>- image1.jpg<br/>- image2.jpg<br/>- thumb1.jpg<br/>- video1.mp4"]
                 
-                ProcessedFolder[/processed/<br/>- Optimized Images<br/>- Multiple Sizes<br/>- WebP Format<br/>- Compressed Videos]
+                ProcessedFolder["processed folder<br/>- Optimized Images<br/>- Multiple Sizes<br/>- WebP Format<br/>- Compressed Videos"]
                 
-                TempFolder[/temp/<br/>- Upload Processing<br/>- Temporary Storage<br/>- TTL: 24 hours]
+                TempFolder["temp folder<br/>- Upload Processing<br/>- Temporary Storage<br/>- TTL: 24 hours"]
             end
         end
         
-        subgraph "Frontend Bucket (boat-listing-frontend-[account])"
-            FrontendBucket[Frontend Bucket<br/>- React Build Output<br/>- Static Assets<br/>- Index.html<br/>- Manifest Files]
+        subgraph "Frontend Bucket"
+            FrontendBucket["Frontend Bucket<br/>- React Build Output<br/>- Static Assets<br/>- Index.html<br/>- Manifest Files"]
             
             subgraph "Static Assets Structure"
-                AssetsFolder[/assets/<br/>- CSS Files<br/>- JS Bundles<br/>- Fonts<br/>- Icons]
+                AssetsFolder["assets folder<br/>- CSS Files<br/>- JS Bundles<br/>- Fonts<br/>- Icons"]
                 
-                ImagesFolder[/images/<br/>- UI Images<br/>- Logos<br/>- Backgrounds<br/>- Placeholders]
+                ImagesFolder["images folder<br/>- UI Images<br/>- Logos<br/>- Backgrounds<br/>- Placeholders"]
             end
         end
     end

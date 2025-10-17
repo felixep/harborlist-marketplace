@@ -47,45 +47,45 @@ graph TB
 ```mermaid
 graph TB
     subgraph "API Gateway - REST API"
-        Root[/ Root Resource]
+        Root["Root Resource"]
         
         subgraph "Public Endpoints"
-            Listings[/listings]
-            ListingId[/listings/{id}]
-            Search[/search]
-            Stats[/stats]
-            StatsPlatform[/stats/platform]
+            Listings["/listings"]
+            ListingId["/listings/{id}"]
+            Search["/search"]
+            Stats["/stats"]
+            StatsPlatform["/stats/platform"]
         end
         
         subgraph "Authentication Endpoints"
-            Auth[/auth]
-            Login[/auth/login]
-            Register[/auth/register]
-            AdminAuth[/auth/admin]
-            AdminLogin[/auth/admin/login]
-            Refresh[/auth/refresh]
-            Logout[/auth/logout]
+            Auth["/auth"]
+            Login["/auth/login"]
+            Register["/auth/register"]
+            AdminAuth["/auth/admin"]
+            AdminLogin["/auth/admin/login"]
+            Refresh["/auth/refresh"]
+            Logout["/auth/logout"]
         end
         
         subgraph "Protected User Endpoints"
-            Media[/media]
-            Email[/email]
+            Media["/media"]
+            Email["/email"]
         end
         
         subgraph "Admin Endpoints"
-            Admin[/admin]
-            AdminProxy[/admin/{proxy+}]
+            Admin["/admin"]
+            AdminProxy["/admin/{proxy+}"]
         end
     end
     
     subgraph "Lambda Functions"
-        ListingLambda[Listing Function<br/>listing/index.handler]
-        SearchLambda[Search Function<br/>search/index.handler]
-        StatsLambda[Stats Function<br/>stats-service/index.handler]
-        AuthLambda[Auth Function<br/>auth-service/index.handler]
-        MediaLambda[Media Function<br/>media/index.handler]
-        EmailLambda[Email Function<br/>email/index.handler]
-        AdminLambda[Admin Function<br/>admin-service/index.handler]
+        ListingLambda["Listing Function<br/>listing/index.handler"]
+        SearchLambda["Search Function<br/>search/index.handler"]
+        StatsLambda["Stats Function<br/>stats-service/index.handler"]
+        AuthLambda["Auth Function<br/>auth-service/index.handler"]
+        MediaLambda["Media Function<br/>media/index.handler"]
+        EmailLambda["Email Function<br/>email/index.handler"]
+        AdminLambda["Admin Function<br/>admin-service/index.handler"]
     end
     
     Root --> Listings

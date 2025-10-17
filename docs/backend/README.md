@@ -38,7 +38,7 @@ graph TB
         subgraph "Specialized Services"
             SearchService[search/<br/>🔍 Enhanced Search & Filtering<br/>• Multi-Engine Filtering<br/>• Total Horsepower Search<br/>• Advanced Boat Specifications<br/>• Performance Optimization]
             
-            MediaService[media/<br/>📸 Media Management<br/>• S3 Integration<br/>• Image Processing (Sharp)<br/>• Presigned URLs<br/>• CDN Integration]
+            MediaService["media/<br/>📸 Media Management<br/>• S3 Integration<br/>• Image Processing with Sharp<br/>• Presigned URLs<br/>• CDN Integration"]
             
             EmailService[email/<br/>📧 Enhanced Email Communications<br/>• Moderation Notifications<br/>• Billing Alerts<br/>• User Tier Notifications<br/>• Template Management]
             
