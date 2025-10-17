@@ -7,11 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed - 2025-10-17
+- **BREAKING**: Migrated listing-service authentication to use Cognito token verification
+  - Replaced JWT_SECRET-based verification with AWS Cognito JWKS
+  - All authentication now consistently uses AWS Cognito dual pools
+  - Made token verification functions properly async
+
 ### Removed - 2025-10-17
-- Removed legacy JWT-based authentication system (auth-legacy.ts)
-- Removed unused API versioning system (versioning.ts)  
+- Removed legacy JWT-based authentication system (auth-legacy.ts) - **583 lines**
+- Removed unused API versioning system (versioning.ts) - **351 lines**
 - Removed backup files (.backup extensions)
+- Removed unused bcryptjs dependency (password hashing now via Cognito)
+- Removed JWT_SECRET and JWT_REFRESH_SECRET environment variables
 - Consolidated fix documentation into this CHANGELOG
+
+### Summary
+**Total code reduction:** ~1,200 lines removed
+**Files cleaned:** 11 files deleted/consolidated
+**Commits:** 6 cleanup commits with full traceability
 
 ---
 
