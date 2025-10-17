@@ -1,79 +1,62 @@
 /**
  * @fileoverview Authentication utilities for listing service operations.
  * 
- * Provides JWT token verification and user authentication middleware
+ * Provides AWS Cognito token verification and user authentication middleware
  * specifically for listing-related operations. Handles token extraction,
  * validation, and user context injection for protected endpoints.
  * 
  * Security Features:
- * - JWT token verification with configurable secrets
+ * - AWS Cognito JWT token verification with JWKS
  * - Bearer token extraction from Authorization headers
  * - User context injection for authenticated requests
  * - Comprehensive error handling for authentication failures
  * 
  * @author HarborList Development Team
- * @version 1.0.0
+ * @version 2.0.0
  */
 
-import jwt from 'jsonwebtoken';
+import { verifyToken as verifyCognitoToken, getUserFromEvent as getUserFromCognito } from '../shared/auth';
 import { createErrorResponse } from '../shared/utils';
 
 /**
- * JWT payload structure for authenticated users
+ * Verifies and decodes a Cognito JWT token
  * 
- * Contains essential user information extracted from JWT tokens
- * for authorization and audit purposes.
- */
-interface JWTPayload {
-  /** User unique identifier */
-  sub: string;
-  /** User email address */
-  email: string;
-  /** User display name */
-  name: string;
-  /** Token issued at timestamp */
-  iat: number;
-  /** Token expiration timestamp */
-  exp: number;
-}
-
-/**
- * Verifies and decodes a JWT token
- * 
- * Validates the JWT token signature using the configured secret
+ * Validates the JWT token signature using AWS Cognito JWKS
  * and returns the decoded payload containing user information.
  * Throws an error if the token is invalid, expired, or malformed.
  * 
- * @param token - JWT token string to verify
- * @returns Decoded JWT payload with user information
+ * This is a wrapper around the shared Cognito token verification
+ * for backward compatibility with existing listing service code.
+ * 
+ * @param token - Cognito JWT token string to verify
+ * @returns Promise<Decoded JWT payload with user information>
  * 
  * @throws {Error} When token is invalid, expired, or verification fails
  * 
  * @example
  * ```typescript
  * try {
- *   const payload = verifyToken('eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...');
+ *   const payload = await verifyToken('eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...');
  *   console.log(`User: ${payload.email}`);
  * } catch (error) {
  *   console.error('Token verification failed:', error.message);
  * }
  * ```
  */
-export const verifyToken = (token: string): JWTPayload => {
-  const secret = process.env.JWT_SECRET || 'your-secret-key';
-  return jwt.verify(token, secret) as JWTPayload;
+export const verifyToken = async (token: string) => {
+  return await verifyCognitoToken(token);
 };
 
 /**
  * Extracts and verifies user information from API Gateway event
  * 
  * Parses the Authorization header from the API Gateway event,
- * extracts the Bearer token, verifies it, and returns the user
- * information. Supports both 'Authorization' and 'authorization'
+ * extracts the Bearer token, verifies it via Cognito, and returns
+ * the user information. Supports both 'Authorization' and 'authorization'
  * header variations for compatibility.
  * 
  * @param event - API Gateway proxy event containing headers
- * @returns Decoded user information from JWT token
+ * @returns Promise<Decoded user information from Cognito JWT token>
  * 
  * @throws {Error} When authorization header is missing or invalid
  * @throws {Error} When token verification fails
@@ -82,7 +65,7 @@ export const verifyToken = (token: string): JWTPayload => {
  * ```typescript
  * export const handler = async (event: APIGatewayProxyEvent) => {
  *   try {
- *     const user = extractUserFromEvent(event);
+ *     const user = await extractUserFromEvent(event);
  *     console.log(`Authenticated user: ${user.email}`);
  *     // Process request with user context
  *   } catch (error) {
@@ -91,26 +74,19 @@ export const verifyToken = (token: string): JWTPayload => {
  * };
  * ```
  */
-export const extractUserFromEvent = (event: any) => {
-  const authHeader = event.headers?.Authorization || event.headers?.authorization;
-  
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    throw new Error('No valid authorization header');
-  }
-
-  const token = authHeader.substring(7);
-  return verifyToken(token);
+export const extractUserFromEvent = async (event: any) => {
+  return await getUserFromCognito(event);
 };
 
 /**
  * Higher-order function that adds authentication middleware to Lambda handlers
  * 
- * Wraps Lambda handler functions with authentication logic, automatically
+ * Wraps Lambda handler functions with Cognito authentication logic, automatically
  * verifying JWT tokens and injecting user context into the event object.
  * Returns standardized error responses for authentication failures.
  * 
  * The wrapped handler will receive the original event with an additional
- * 'user' property containing the authenticated user information.
+ * 'user' property containing the authenticated user information from Cognito.
  * 
  * @param handler - Lambda handler function to wrap with authentication
  * @returns Wrapped handler function with authentication middleware
@@ -149,7 +125,7 @@ export const extractUserFromEvent = (event: any) => {
 export const requireAuth = (handler: Function) => {
   return async (event: any, context: any) => {
     try {
-      const user = extractUserFromEvent(event);
+      const user = await extractUserFromEvent(event);
       event.user = user;
       return await handler(event, context);
     } catch (error) {

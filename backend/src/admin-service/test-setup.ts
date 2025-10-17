@@ -9,8 +9,7 @@ process.env.LISTINGS_TABLE = 'test-listings';
 process.env.SESSIONS_TABLE = 'test-sessions';
 process.env.AUDIT_LOGS_TABLE = 'test-audit-logs';
 process.env.LOGIN_ATTEMPTS_TABLE = 'test-login-attempts';
-process.env.JWT_SECRET = 'test-jwt-secret';
-process.env.JWT_REFRESH_SECRET = 'test-jwt-refresh-secret';
+// JWT_SECRET no longer needed - using Cognito token verification
 
 // Global test utilities
 global.console = {

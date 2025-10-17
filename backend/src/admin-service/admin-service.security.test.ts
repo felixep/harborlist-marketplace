@@ -9,7 +9,7 @@ describe('Admin Service Security Tests', () => {
   beforeEach(() => {
     mockContext = createMockContext();
     // Reset environment variables
-    process.env.JWT_SECRET = 'test-secret';
+    // JWT_SECRET no longer needed - using Cognito token verification
     process.env.ADMIN_TABLE = 'test-admin-table';
     process.env.AUDIT_TABLE = 'test-audit-table';
   });
