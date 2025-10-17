@@ -417,7 +417,7 @@ services:
       - "traefik.http.services.finance-service.loadbalancer.server.port=3003"
       - "traefik.http.services.finance-service.loadbalancer.server.scheme=http"
 
-  # SMTP4Dev for local email testing
+  # SMTP4Dev for local email testing (future feature: customer stats emails)
   smtp4dev:
     image: rnwood/smtp4dev:v3
     ports:
