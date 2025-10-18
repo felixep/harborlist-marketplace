@@ -24,12 +24,28 @@ fi
 export USERS_TABLE=${USERS_TABLE:-"harborlist-users"}
 export AWS_REGION=${AWS_REGION:-"us-east-1"}
 export DYNAMODB_ENDPOINT=${DYNAMODB_ENDPOINT:-"http://localhost:8000"}
+export COGNITO_ENDPOINT=${COGNITO_ENDPOINT:-"http://localhost:4566"}
+export IS_LOCALSTACK=${IS_LOCALSTACK:-"true"}
 export AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-"test"}
 export AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-"test"}
+
+# Get Cognito Pool IDs from .env.local if available
+if [ -f "../../.env.local" ]; then
+    export STAFF_USER_POOL_ID=$(grep STAFF_USER_POOL_ID ../../.env.local | cut -d'=' -f2)
+elif [ -f "../.env.local" ]; then
+    export STAFF_USER_POOL_ID=$(grep STAFF_USER_POOL_ID ../.env.local | cut -d'=' -f2)
+fi
+
+if [ -z "$STAFF_USER_POOL_ID" ]; then
+    echo "❌ Error: STAFF_USER_POOL_ID not found in .env.local"
+    echo "   Please run the Cognito setup script first"
+    exit 1
+fi
 
 echo "📋 Configuration:"
 echo "   Users Table: $USERS_TABLE"
 echo "   AWS Region: $AWS_REGION"
+echo "   Staff Pool ID: $STAFF_USER_POOL_ID"
 echo ""
 
 # Default admin details for local development

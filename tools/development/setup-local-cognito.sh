@@ -28,6 +28,41 @@ check_localstack() {
     echo "✅ LocalStack is running"
 }
 
+# Function to check if a User Pool exists in LocalStack
+check_user_pool_exists() {
+    local pool_id=$1
+    local pool_name=$2
+    
+    if [[ -z "$pool_id" ]]; then
+        echo "ℹ️  No $pool_name ID found in .env.local"
+        return 1
+    fi
+    
+    # Try to describe the user pool
+    if aws cognito-idp describe-user-pool \
+        --endpoint-url="$LOCALSTACK_ENDPOINT" \
+        --user-pool-id "$pool_id" \
+        --region "$AWS_REGION" &>/dev/null; then
+        echo "✅ Found existing $pool_name: $pool_id"
+        return 0
+    else
+        echo "⚠️  $pool_name ID found in .env.local ($pool_id) but pool doesn't exist in LocalStack"
+        echo "   This can happen after cleanup or LocalStack restart. Will create new pool."
+        return 1
+    fi
+}
+
+# Function to load existing User Pool IDs from .env.local
+load_existing_pools() {
+    if [[ -f ".env.local" ]]; then
+        echo "🔍 Checking for existing User Pools in .env.local..."
+        EXISTING_CUSTOMER_POOL_ID=$(grep "^CUSTOMER_USER_POOL_ID=" .env.local 2>/dev/null | cut -d'=' -f2 || echo "")
+        EXISTING_CUSTOMER_CLIENT_ID=$(grep "^CUSTOMER_USER_POOL_CLIENT_ID=" .env.local 2>/dev/null | cut -d'=' -f2 || echo "")
+        EXISTING_STAFF_POOL_ID=$(grep "^STAFF_USER_POOL_ID=" .env.local 2>/dev/null | cut -d'=' -f2 || echo "")
+        EXISTING_STAFF_CLIENT_ID=$(grep "^STAFF_USER_POOL_CLIENT_ID=" .env.local 2>/dev/null | cut -d'=' -f2 || echo "")
+    fi
+}
+
 # Function to create Customer User Pool
 create_customer_pool() {
     echo "👥 Creating Customer User Pool..."
@@ -272,7 +307,7 @@ create_staff_pool() {
     
     aws cognito-idp create-group \
         --endpoint-url="$LOCALSTACK_ENDPOINT" \
-        --group-name "super-admin" \
+        --group-name "super_admin" \
         --user-pool-id "$STAFF_POOL_ID" \
         --description "Super administrators with full system access" \
         --precedence 1
@@ -293,7 +328,7 @@ create_staff_pool() {
     
     aws cognito-idp create-group \
         --endpoint-url="$LOCALSTACK_ENDPOINT" \
-        --group-name "team-member" \
+        --group-name "team_member" \
         --user-pool-id "$STAFF_POOL_ID" \
         --description "Team members with basic staff operations access" \
         --precedence 4
@@ -417,102 +452,92 @@ create_test_users() {
     echo "⚠️  Remember to change passwords on first login!"
 }
 
-# Function to save environment configuration
-save_env_config() {
-    echo "💾 Saving environment configuration..."
+# Function to display pool configuration
+# Update both .env and .env.local with Cognito Pool IDs
+# This is called ONLY when creating NEW pools (not when reusing existing ones)
+update_env_local() {
+    echo "🔧 Updating environment files with new Cognito Pool IDs..."
     
-    CUSTOMER_POOL_ID=$(cat /tmp/customer-pool-config.json | grep -o '"userPoolId": "[^"]*' | cut -d'"' -f4)
-    CUSTOMER_CLIENT_ID=$(cat /tmp/customer-pool-config.json | grep -o '"clientId": "[^"]*' | cut -d'"' -f4)
-    STAFF_POOL_ID=$(cat /tmp/staff-pool-config.json | grep -o '"userPoolId": "[^"]*' | cut -d'"' -f4)
-    STAFF_CLIENT_ID=$(cat /tmp/staff-pool-config.json | grep -o '"clientId": "[^"]*' | cut -d'"' -f4)
-    
-    # Use secure environment manager to preserve LocalStack token
-    SECURE_ENV_MANAGER="../../tools/development/secure-env-manager.sh"
-    
-    if [[ -f "$SECURE_ENV_MANAGER" ]]; then
-        echo "🔒 Using secure environment manager to preserve LocalStack token..."
-        chmod +x "$SECURE_ENV_MANAGER"
+    # Docker-volume-friendly update function (avoids sed -i which can't rename mounted files)
+    update_or_append() {
+        local key=$1
+        local value=$2
+        local file=$3
+        local temp_file="/tmp/$(basename $file).tmp"
         
-        if "$SECURE_ENV_MANAGER" update "$CUSTOMER_POOL_ID" "$CUSTOMER_CLIENT_ID" "$STAFF_POOL_ID" "$STAFF_CLIENT_ID"; then
-            echo "✅ Environment configuration updated with preserved LocalStack token"
+        if grep -q "^${key}=" "$file" 2>/dev/null; then
+            # Update existing line using awk (no file renaming needed)
+            awk -v key="$key" -v value="$value" \
+                'BEGIN {found=0} 
+                 $0 ~ "^"key"=" {print key"="value; found=1; next} 
+                 {print} 
+                 END {if(!found) print key"="value}' "$file" > "$temp_file"
+            cat "$temp_file" > "$file"
+            rm -f "$temp_file"
         else
-            echo "⚠️  Secure environment manager failed, falling back to basic update..."
-            # Fallback: preserve existing token if it exists
-            EXISTING_TOKEN=""
-            if [[ -f ".env.local" ]]; then
-                EXISTING_TOKEN=$(grep "^LOCALSTACK_AUTH_TOKEN=" .env.local 2>/dev/null | cut -d'=' -f2 || echo "")
-            fi
-            
-            # Create environment configuration file with preserved token
-            cat > .env.local << EOF
-# LocalStack Cognito Configuration
-# Generated by setup-local-cognito.sh
-
-# Customer User Pool
-CUSTOMER_USER_POOL_ID=$CUSTOMER_POOL_ID
-CUSTOMER_USER_POOL_CLIENT_ID=$CUSTOMER_CLIENT_ID
-
-# Staff User Pool
-STAFF_USER_POOL_ID=$STAFF_POOL_ID
-STAFF_USER_POOL_CLIENT_ID=$STAFF_CLIENT_ID
-
-# LocalStack Configuration
-AWS_REGION=us-east-1
-COGNITO_ENDPOINT=http://localhost:4566
-IS_LOCALSTACK=true
-
-# LocalStack Pro Auth Token - PRESERVED FROM EXISTING CONFIGURATION
-LOCALSTACK_AUTH_TOKEN=${EXISTING_TOKEN:-your-localstack-pro-auth-token-here}
-
-# AWS Test Credentials for LocalStack
-AWS_ACCESS_KEY_ID=test
-AWS_SECRET_ACCESS_KEY=test
-
-# Development Settings
-NODE_ENV=development
-LOG_LEVEL=debug
-EOF
+            # Append new line
+            echo "${key}=${value}" >> "$file"
         fi
-    else
-        echo "⚠️  Secure environment manager not found, using basic configuration..."
-        # Preserve existing token if it exists
-        EXISTING_TOKEN=""
-        if [[ -f ".env.local" ]]; then
-            EXISTING_TOKEN=$(grep "^LOCALSTACK_AUTH_TOKEN=" .env.local 2>/dev/null | cut -d'=' -f2 || echo "")
-        fi
-        
-        # Create environment configuration file with preserved token
-        cat > .env.local << EOF
-# LocalStack Cognito Configuration
-# Generated by setup-local-cognito.sh
-
-# Customer User Pool
-CUSTOMER_USER_POOL_ID=$CUSTOMER_POOL_ID
-CUSTOMER_USER_POOL_CLIENT_ID=$CUSTOMER_CLIENT_ID
-
-# Staff User Pool
-STAFF_USER_POOL_ID=$STAFF_POOL_ID
-STAFF_USER_POOL_CLIENT_ID=$STAFF_CLIENT_ID
-
-# LocalStack Configuration
-AWS_REGION=us-east-1
-COGNITO_ENDPOINT=http://localhost:4566
-IS_LOCALSTACK=true
-
-# LocalStack Pro Auth Token - PRESERVED FROM EXISTING CONFIGURATION
-LOCALSTACK_AUTH_TOKEN=${EXISTING_TOKEN:-your-localstack-pro-auth-token-here}
-
-# AWS Test Credentials for LocalStack
-AWS_ACCESS_KEY_ID=test
-AWS_SECRET_ACCESS_KEY=test
-
-# Development Settings
-NODE_ENV=development
-LOG_LEVEL=debug
-EOF
+    }
+    
+    # Update .env.local
+    if [[ ! -f ".env.local" ]]; then
+        echo "⚠️  .env.local not found, creating it..."
+        touch ".env.local"
     fi
     
-    echo "✅ Environment configuration saved to .env.local"
+    update_or_append "CUSTOMER_USER_POOL_ID" "$CUSTOMER_POOL_ID" ".env.local"
+    update_or_append "CUSTOMER_USER_POOL_CLIENT_ID" "$CUSTOMER_CLIENT_ID" ".env.local"
+    update_or_append "STAFF_USER_POOL_ID" "$STAFF_POOL_ID" ".env.local"
+    update_or_append "STAFF_USER_POOL_CLIENT_ID" "$STAFF_CLIENT_ID" ".env.local"
+    
+    echo "  ✅ Updated .env.local"
+    
+    # Update .env (if it exists)
+    if [[ -f ".env" ]]; then
+        update_or_append "CUSTOMER_USER_POOL_ID" "$CUSTOMER_POOL_ID" ".env"
+        update_or_append "CUSTOMER_USER_POOL_CLIENT_ID" "$CUSTOMER_CLIENT_ID" ".env"
+        update_or_append "STAFF_USER_POOL_ID" "$STAFF_POOL_ID" ".env"
+        update_or_append "STAFF_USER_POOL_CLIENT_ID" "$STAFF_CLIENT_ID" ".env"
+        
+        echo "  ✅ Updated .env"
+    else
+        echo "  ℹ️  .env not found, skipping (only .env.local updated)"
+    fi
+    
+    echo "✅ Environment files updated with new Cognito Pool IDs"
+}
+
+display_pool_config() {
+    echo ""
+    echo "📋 Cognito Pool Configuration:"
+    echo "================================"
+    echo ""
+    echo "Customer Pool:"
+    echo "  Pool ID:   $CUSTOMER_POOL_ID"
+    echo "  Client ID: $CUSTOMER_CLIENT_ID"
+    echo ""
+    echo "Staff Pool:"
+    echo "  Pool ID:   $STAFF_POOL_ID"
+    echo "  Client ID: $STAFF_CLIENT_ID"
+    echo ""
+    
+    # Verify configuration matches .env.local
+    if [[ -f ".env.local" ]]; then
+        LOCAL_CUSTOMER_POOL=$(grep "^CUSTOMER_USER_POOL_ID=" .env.local 2>/dev/null | cut -d'=' -f2)
+        LOCAL_STAFF_POOL=$(grep "^STAFF_USER_POOL_ID=" .env.local 2>/dev/null | cut -d'=' -f2)
+        
+        if [[ "$CUSTOMER_POOL_ID" == "$LOCAL_CUSTOMER_POOL" ]] && [[ "$STAFF_POOL_ID" == "$LOCAL_STAFF_POOL" ]]; then
+            echo "✅ Configuration synchronized with .env.local"
+        else
+            echo "⚠️  WARNING: Pool IDs don't match .env.local!"
+            echo "   This shouldn't happen if setup completed successfully."
+            echo "   Current pools: Customer=$CUSTOMER_POOL_ID, Staff=$STAFF_POOL_ID"
+            echo "   .env.local has: Customer=$LOCAL_CUSTOMER_POOL, Staff=$LOCAL_STAFF_POOL"
+        fi
+    else
+        echo "⚠️  WARNING: .env.local file not found - configuration may not persist!"
+    fi
 }
 
 # Main execution
@@ -521,18 +546,66 @@ main() {
     echo "======================================"
     
     check_localstack
-    create_customer_pool
-    create_staff_pool
+    load_existing_pools
+    
+    # Track whether we created new pools
+    POOLS_CREATED=false
+    
+    # Check if Customer Pool exists, create if not
+    if check_user_pool_exists "$EXISTING_CUSTOMER_POOL_ID" "Customer User Pool"; then
+        CUSTOMER_POOL_ID=$EXISTING_CUSTOMER_POOL_ID
+        CUSTOMER_CLIENT_ID=$EXISTING_CUSTOMER_CLIENT_ID
+        echo "♻️  Reusing existing Customer User Pool"
+        
+        # Save to temp config for consistency
+        cat > /tmp/customer-pool-config.json << EOF
+{
+    "userPoolId": "$CUSTOMER_POOL_ID",
+    "clientId": "$CUSTOMER_CLIENT_ID",
+    "region": "$AWS_REGION",
+    "endpoint": "$LOCALSTACK_ENDPOINT"
+}
+EOF
+    else
+        create_customer_pool
+        POOLS_CREATED=true
+    fi
+    
+    # Check if Staff Pool exists, create if not
+    if check_user_pool_exists "$EXISTING_STAFF_POOL_ID" "Staff User Pool"; then
+        STAFF_POOL_ID=$EXISTING_STAFF_POOL_ID
+        STAFF_CLIENT_ID=$EXISTING_STAFF_CLIENT_ID
+        echo "♻️  Reusing existing Staff User Pool"
+        
+        # Save to temp config for consistency
+        cat > /tmp/staff-pool-config.json << EOF
+{
+    "userPoolId": "$STAFF_POOL_ID",
+    "clientId": "$STAFF_CLIENT_ID",
+    "region": "$AWS_REGION",
+    "endpoint": "$LOCALSTACK_ENDPOINT"
+}
+EOF
+    else
+        create_staff_pool
+        POOLS_CREATED=true
+    fi
+    
+    # Auto-update .env.local ONLY if we created new pools
+    if [[ "$POOLS_CREATED" == "true" ]]; then
+        echo ""
+        echo "📝 New Cognito Pools were created, updating .env.local..."
+        update_env_local
+    else
+        echo ""
+        echo "✅ Reusing existing Cognito Pools, no .env.local update needed"
+    fi
+    
     # create_test_users  # Commented out - no test users during deployment
-    save_env_config
+    display_pool_config
     
     echo ""
     echo "🎉 LocalStack Cognito setup completed successfully!"
-    echo ""
-    echo "📋 Summary:"
-    echo "  ✅ Customer User Pool created with 3 groups"
-    echo "  ✅ Staff User Pool created with 4 groups"
-    echo "  ✅ Environment configuration saved"
     echo ""
     echo "🚀 Next steps:"
     echo "  1. Start your backend services"

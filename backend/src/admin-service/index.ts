@@ -34,6 +34,20 @@ import {
 } from '../shared/middleware';
 import { AdminPermission } from '../types/common';
 
+// Phase 3: Import team management handler and functions
+import { handler as teamsHandler } from './teams-handler';
+import { 
+  assignUserToTeam,
+  bulkAssignUsersToTeam 
+} from './teams';
+import { 
+  TeamId, 
+  TeamRole,
+  TeamAssignment,
+  isValidTeamAssignment 
+} from '../types/teams';
+import { calculateEffectivePermissions } from '../shared/team-permissions';
+
 // Use the proper AuthenticatedEvent type from middleware
 type AuthenticatedEvent = MiddlewareAuthenticatedEvent;
 
@@ -343,6 +357,13 @@ export const handler = async (event: APIGatewayProxyEvent, context: any): Promis
         withAdminAuth([AdminPermission.CONTENT_MODERATION]),
         withAuditLog('VIEW_MODERATION_STATS', 'moderation')
       )(handleGetModerationStats)(event as AuthenticatedEvent, {});
+    }
+
+    // Phase 3: Team Management Routes
+    // Delegate all team management requests to the teams handler
+    if (path.includes('/teams')) {
+      console.log(`[${requestId}] Routing to team management handler`);
+      return await teamsHandler(event);
     }
 
     // Default response for unhandled routes
@@ -869,7 +890,17 @@ async function handleListStaff(event: AuthenticatedEvent): Promise<APIGatewayPro
 async function handleCreateStaff(event: AuthenticatedEvent): Promise<APIGatewayProxyResult> {
   try {
     const body = JSON.parse(event.body || '{}');
-    const { email, name, role, password, sendWelcomeEmail = true, groupId } = body;
+    const { 
+      email, 
+      name, 
+      role, 
+      password, 
+      sendWelcomeEmail = true, 
+      groupId,
+      // Phase 3: Team assignment fields
+      teams,  // Array of { teamId, role } objects
+      permissions = [] // Optional base permissions
+    } = body;
 
     // Validate required fields
     if (!email || !name || !role) {
@@ -880,6 +911,20 @@ async function handleCreateStaff(event: AuthenticatedEvent): Promise<APIGatewayP
     const validRoles = ['super_admin', 'admin', 'moderator', 'support'];
     if (!validRoles.includes(role)) {
       return createErrorResponse(400, 'INVALID_ROLE', `Invalid role. Must be one of: ${validRoles.join(', ')}`, event.requestContext.requestId);
+    }
+
+    // Phase 3: Validate team assignments if provided
+    if (teams && Array.isArray(teams)) {
+      for (const teamAssignment of teams) {
+        // Validate team ID
+        if (!Object.values(TeamId).includes(teamAssignment.teamId)) {
+          return createErrorResponse(400, 'INVALID_TEAM', `Invalid team ID: ${teamAssignment.teamId}`, event.requestContext.requestId);
+        }
+        // Validate role
+        if (!Object.values(TeamRole).includes(teamAssignment.role)) {
+          return createErrorResponse(400, 'INVALID_TEAM_ROLE', `Invalid team role: ${teamAssignment.role}. Must be "manager" or "member"`, event.requestContext.requestId);
+        }
+      }
     }
 
     // Validate email format
@@ -954,6 +999,22 @@ async function handleCreateStaff(event: AuthenticatedEvent): Promise<APIGatewayP
     const userId = cognitoResponse.User?.Attributes?.find(attr => attr.Name === 'sub')?.Value || crypto.randomUUID();
     const now = new Date().toISOString();
 
+    // Phase 3: Prepare team assignments if provided
+    const teamAssignments: TeamAssignment[] = [];
+    if (teams && Array.isArray(teams)) {
+      for (const team of teams) {
+        teamAssignments.push({
+          teamId: team.teamId,
+          role: team.role,
+          assignedAt: now,
+          assignedBy: event.user.sub
+        });
+      }
+    }
+
+    // Phase 3: Calculate effective permissions from base permissions and team assignments
+    const effectivePermissions = calculateEffectivePermissions(teamAssignments, permissions);
+
     const userRecord = {
       id: userId,
       email: email,
@@ -968,7 +1029,10 @@ async function handleCreateStaff(event: AuthenticatedEvent): Promise<APIGatewayP
       emailVerified: true,
       cognitoUsername: cognitoUserId,
       groupId: groupId || null,
-      permissions: [],
+      permissions: permissions, // Base permissions
+      // Phase 3: Team-based fields
+      teams: teamAssignments,
+      effectivePermissions: effectivePermissions,
       metadata: {
         createdBy: event.user.sub,
         createdByEmail: event.user.email,
@@ -981,6 +1045,17 @@ async function handleCreateStaff(event: AuthenticatedEvent): Promise<APIGatewayP
       Item: userRecord
     }));
 
+    // Phase 3: Log team assignments for audit
+    if (teamAssignments.length > 0) {
+      console.log('Staff member created with team assignments', {
+        userId,
+        email,
+        teams: teamAssignments.map(t => ({ teamId: t.teamId, role: t.role })),
+        effectivePermissionCount: effectivePermissions.length,
+        createdBy: event.user.email
+      });
+    }
+
     // Return success response
     return createResponse(201, {
       success: true,
@@ -992,7 +1067,15 @@ async function handleCreateStaff(event: AuthenticatedEvent): Promise<APIGatewayP
         role: role,
         status: 'active',
         cognitoUsername: cognitoUserId,
-        temporaryPassword: !password ? 'Sent via email' : undefined
+        temporaryPassword: !password ? 'Sent via email' : undefined,
+        // Phase 3: Include team information in response
+        teams: teamAssignments.map(t => ({
+          teamId: t.teamId,
+          role: t.role,
+          assignedAt: t.assignedAt
+        })),
+        effectivePermissions: effectivePermissions,
+        permissionCount: effectivePermissions.length
       }
     });
 

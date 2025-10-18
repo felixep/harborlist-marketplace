@@ -21,17 +21,22 @@ import {
   AdminCreateUserCommand,
   AdminSetUserPasswordCommand,
   AdminAddUserToGroupCommand,
+  AdminListGroupsForUserCommand,
   AdminGetUserCommand,
   AdminDeleteUserCommand,
   AdminUpdateUserAttributesCommand,
   ListUsersCommand
 } from '@aws-sdk/client-cognito-identity-provider';
+import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
+import { DynamoDBDocumentClient, PutCommand, GetCommand } from '@aws-sdk/lib-dynamodb';
 
 // Configuration from environment
 const STAFF_USER_POOL_ID = process.env.STAFF_USER_POOL_ID;
 const AWS_REGION = process.env.AWS_REGION || 'us-east-1';
 const IS_LOCALSTACK = process.env.IS_LOCALSTACK === 'true';
 const COGNITO_ENDPOINT = process.env.COGNITO_ENDPOINT;
+const DYNAMODB_ENDPOINT = process.env.DYNAMODB_ENDPOINT;
+const USERS_TABLE = process.env.USERS_TABLE || 'harborlist-users';
 
 // Initialize Cognito client
 const cognitoConfig: any = {
@@ -49,8 +54,24 @@ if (IS_LOCALSTACK && COGNITO_ENDPOINT) {
 
 const cognitoClient = new CognitoIdentityProviderClient(cognitoConfig);
 
+// Initialize DynamoDB client
+const dynamoConfig: any = {
+  region: AWS_REGION,
+};
+
+if (IS_LOCALSTACK && DYNAMODB_ENDPOINT) {
+  dynamoConfig.endpoint = DYNAMODB_ENDPOINT;
+  dynamoConfig.credentials = {
+    accessKeyId: 'test',
+    secretAccessKey: 'test',
+  };
+}
+
+const dynamoClient = new DynamoDBClient(dynamoConfig);
+const docClient = DynamoDBDocumentClient.from(dynamoClient);
+
 // Valid admin roles for Cognito groups
-type AdminRole = 'super-admin' | 'admin' | 'manager' | 'team-member';
+type AdminRole = 'super_admin' | 'admin' | 'manager' | 'team_member';
 
 interface CreateAdminOptions {
   email: string;
@@ -74,6 +95,92 @@ async function checkUserExists(email: string): Promise<boolean> {
       return false;
     }
     console.error('Error checking if user exists:', error);
+    throw error;
+  }
+}
+
+// Add user to group with retry logic and verification
+async function addUserToGroupWithRetry(email: string, groupName: string, maxRetries = 3): Promise<void> {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      // Add user to group
+      await cognitoClient.send(new AdminAddUserToGroupCommand({
+        UserPoolId: STAFF_USER_POOL_ID,
+        Username: email,
+        GroupName: groupName
+      }));
+
+      // Verify the user was added by listing their groups
+      const groupsResponse = await cognitoClient.send(new AdminListGroupsForUserCommand({
+        UserPoolId: STAFF_USER_POOL_ID,
+        Username: email
+      }));
+
+      const userGroups = groupsResponse.Groups?.map(g => g.GroupName) || [];
+      if (userGroups.includes(groupName)) {
+        console.log(`   ✅ User successfully added to group '${groupName}' (verified)`);
+        return;
+      } else {
+        console.log(`   ⚠️  Attempt ${attempt}: User not in group after addition, retrying...`);
+        // Wait a bit before retrying (LocalStack timing issue)
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+    } catch (error: any) {
+      if (attempt === maxRetries) {
+        console.error(`   ❌ Failed to add user to group '${groupName}' after ${maxRetries} attempts:`, error.message);
+        throw error;
+      }
+      console.log(`   ⚠️  Attempt ${attempt} failed, retrying... (${error.message})`);
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+  }
+  
+  throw new Error(`Failed to add user to group '${groupName}' after ${maxRetries} attempts`);
+}
+
+// Create or update user record in DynamoDB
+async function syncUserToDynamoDB(cognitoUserId: string, email: string, name: string, role: AdminRole): Promise<void> {
+  try {
+    const now = new Date().toISOString();
+    
+    // Check if user already exists in DynamoDB
+    const existingUser = await docClient.send(new GetCommand({
+      TableName: USERS_TABLE,
+      Key: { id: cognitoUserId }
+    }));
+
+    if (existingUser.Item) {
+      console.log(`   ℹ️  User record already exists in DynamoDB, skipping creation`);
+      return;
+    }
+
+    // Create new user record for STAFF user
+    const userRecord = {
+      id: cognitoUserId,
+      email: email,
+      name: name,
+      userType: 'staff', // CRITICAL: Mark as staff user to differentiate from customers
+      role: role, // Store the role (super_admin, admin, manager, team_member)
+      status: 'active',
+      emailVerified: true,
+      phoneVerified: false,
+      mfaEnabled: false,
+      loginAttempts: 0,
+      createdAt: now,
+      updatedAt: now,
+      // Admin-specific fields
+      permissions: role === 'super_admin' ? ['all'] : [],
+      sessionTimeout: 480 // 8 hours in minutes
+    };
+
+    await docClient.send(new PutCommand({
+      TableName: USERS_TABLE,
+      Item: userRecord
+    }));
+
+    console.log(`   ✅ User record synced to DynamoDB (${USERS_TABLE}) with userType='staff'`);
+  } catch (error: any) {
+    console.error('   ❌ Error syncing user to DynamoDB:', error.message);
     throw error;
   }
 }
@@ -161,12 +268,9 @@ async function createAdminUserInCognito(options: CreateAdminOptions): Promise<vo
         Permanent: true
       }));
 
-      // Add user to appropriate group
-      await cognitoClient.send(new AdminAddUserToGroupCommand({
-        UserPoolId: STAFF_USER_POOL_ID,
-        Username: email,
-        GroupName: role
-      }));
+      // Add user to appropriate group with retry and verification
+      console.log(`🔐 Adding user to '${role}' group...`);
+      await addUserToGroupWithRetry(email, role);
 
       console.log(`✅ Admin user created successfully in Cognito Staff User Pool!`);
       console.log(`📧 Email: ${email}`);
@@ -174,6 +278,20 @@ async function createAdminUserInCognito(options: CreateAdminOptions): Promise<vo
       console.log(`🔑 Role: ${role}`);
       console.log(`🔐 Password: ${userPassword}`);
       console.log(`⚠️  IMPORTANT: Save this password securely!`);
+      
+      // Get the Cognito user ID (sub) and sync to DynamoDB
+      console.log(`\n📊 Syncing user to DynamoDB...`);
+      const cognitoUser = await cognitoClient.send(new AdminGetUserCommand({
+        UserPoolId: STAFF_USER_POOL_ID,
+        Username: email
+      }));
+      
+      const cognitoUserId = cognitoUser.UserAttributes?.find(attr => attr.Name === 'sub')?.Value;
+      if (cognitoUserId) {
+        await syncUserToDynamoDB(cognitoUserId, email, name, role);
+      } else {
+        console.log(`   ⚠️  Could not retrieve Cognito user ID, skipping DynamoDB sync`);
+      }
     }
 
     console.log(`\n📋 Next Steps:`);
@@ -229,7 +347,7 @@ function parseArguments(): CreateAdminOptions {
         options.name = value;
         break;
       case '--role':
-        const validRoles: AdminRole[] = ['super-admin', 'admin', 'manager', 'team-member'];
+        const validRoles: AdminRole[] = ['super_admin', 'admin', 'manager', 'team_member'];
         if (!validRoles.includes(value as AdminRole)) {
           throw new Error(`Invalid role: ${value}. Valid roles: ${validRoles.join(', ')}`);
         }
@@ -263,8 +381,8 @@ function parseArguments(): CreateAdminOptions {
     console.log('👤 Using default name: HarborList Admin');
   }
   if (!options.role) {
-    options.role = 'super-admin';
-    console.log('🔑 Using default role: super-admin');
+    options.role = 'super_admin';
+    console.log('🔑 Using default role: super_admin');
   }
 
   // Validate email format
@@ -287,19 +405,19 @@ Usage:
 Optional Arguments:
   --email <email>     Admin user email address (default: admin@harborlist.local)
   --name <name>       Admin user full name (default: HarborList Admin)
-  --role <role>       Admin role (default: super-admin)
+  --role <role>       Admin role (default: super_admin)
   --password <pass>   Custom password (if not provided, one will be generated)
   --reset-password    Reset password if user already exists
   --update-role       Update role for existing user
 
 Available Roles:
-  - super-admin: Full system access
+  - super_admin: Full system access
   - admin: Management access
   - manager: Team oversight
-  - team-member: Basic staff access
+  - team_member: Basic staff access
 
 Examples:
-  # Create default admin (admin@harborlist.local, super-admin role)
+  # Create default admin (admin@harborlist.local, super_admin role)
   npm run create-admin
 
   # Create admin with custom email

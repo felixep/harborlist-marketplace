@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../components/auth/AuthProvider';
 import { getListings } from '../services/listings';
-import ListingCard from '../components/listing/ListingCard';
+import OwnerListingCard from '../components/listing/OwnerListingCard';
 
 export default function Profile() {
   const { user, logout } = useAuth();
@@ -11,7 +11,7 @@ export default function Profile() {
 
   const { data: userListings, isLoading } = useQuery({
     queryKey: ['customer-listings', user?.userId],
-    queryFn: () => getListings({ limit: 50 }),
+    queryFn: () => getListings({ limit: 50, ownerId: user?.userId }),
     enabled: !!user?.userId,
   });
 
@@ -122,27 +122,7 @@ export default function Profile() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {userListings?.listings.map((listing) => (
-                <div key={listing.listingId} className="relative">
-                  <ListingCard listing={listing} />
-                  <div className="absolute top-2 left-2 flex space-x-1">
-                    <span className={`px-2 py-1 text-xs font-medium rounded ${
-                      listing.status === 'active' 
-                        ? 'bg-green-100 text-green-800'
-                        : listing.status === 'sold'
-                        ? 'bg-gray-100 text-gray-800'
-                        : 'bg-yellow-100 text-yellow-800'
-                    }`}>
-                      {listing.status.charAt(0).toUpperCase() + listing.status.slice(1)}
-                    </span>
-                  </div>
-                  <div className="absolute top-2 right-2">
-                    <button className="bg-white bg-opacity-90 p-1 rounded-full hover:bg-opacity-100">
-                      <svg className="h-4 w-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
-                      </svg>
-                    </button>
-                  </div>
-                </div>
+                <OwnerListingCard key={listing.listingId} listing={listing} />
               ))}
             </div>
           )}

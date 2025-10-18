@@ -1,0 +1,211 @@
+# ⚓ HarborList Roles & Permissions Model
+
+## 🧭 Overview
+HarborList has **two primary user domains**:
+
+1. **Customer Users** — Individuals or Dealers using the marketplace.  
+2. **Staff Users** — Internal team members operating the platform.
+
+Each role defines *access scope*, *actions permitted*, and *data visibility*.
+
+---
+
+## 🧍‍♂️ Customer Roles
+
+### Individual
+**Description:**  
+Standard user account for buyers/sellers.  
+
+**Permissions:**  
+- Create and manage personal listings  
+- Save searches & favorites  
+- Send/receive messages  
+- View public dealer profiles  
+- Basic analytics on their own listings  
+
+---
+
+### Premium Individual
+**Description:**  
+Paid tier for individuals seeking priority exposure.  
+
+**Permissions:**  
+- All Individual permissions  
+- Priority listing placement  
+- Access to premium analytics (views, engagement metrics)  
+- Highlighted profile  
+- Optional ad-free browsing  
+
+---
+
+### Dealer
+**Description:**  
+Business account for marine dealers, with multi-user management capability.  
+
+**Permissions:**  
+- Create and manage listings under dealer brand  
+- Assign sub-accounts (staff)  
+- Access dealer analytics dashboard  
+- Manage leads and communications  
+- Upload inventory in bulk  
+- Dealer branding on listings  
+
+---
+
+### Premium Dealer
+**Description:**  
+High-tier dealer account for large inventory and custom integrations.  
+
+**Permissions:**  
+- All Dealer permissions  
+- Featured placement on homepage  
+- API/data feed access for automated uploads  
+- Advanced analytics and CRM export  
+- Dedicated support channel  
+- Custom dealership landing page  
+
+---
+
+### Dealer Sub-Account *(linked to Dealer)*
+**Description:**  
+Managed under a dealer’s primary account.  
+
+**Permissions:**  
+- Permissions delegated by Dealer admin (e.g., manage listings, respond to leads, update inventory)  
+
+---
+
+## 🧑‍💼 Staff Roles
+
+### Super Admin
+**Description:**  
+Full platform control including infrastructure and settings.  
+
+**Permissions:**  
+- All admin permissions  
+- Platform configuration (e.g., payment gateways, APIs, integrations)  
+- Manage staff roles  
+- Security & compliance settings  
+- View audit logs  
+- Approve or suspend admins  
+
+---
+
+### Admin
+**Description:**  
+Operational admin with full user/content access, but cannot change system settings.  
+
+**Permissions:**  
+- Manage users and listings  
+- Manage dealer accounts  
+- Approve premium memberships  
+- Moderate content  
+- Access analytics dashboards  
+- Cannot alter global platform configurations  
+
+---
+
+### Manager (by Team)
+**Description:**  
+Specialized role based on domain responsibilities.  
+
+**Permissions:**  
+See breakdown below by team.
+
+---
+
+### Team Member
+**Description:**  
+Executes operational tasks within assigned teams.  
+
+**Permissions:**  
+- Limited access to assigned modules  
+- Read/write permissions tied to assigned tasks  
+- Cannot alter roles or settings  
+
+---
+
+## 🧩 Manager Teams and Permissions Breakdown
+
+### Use Management Team
+**Access Scope:** Customer account and membership oversight.  
+**Permissions:**  
+- View/edit customer profiles  
+- Approve/upgrade/downgrade tiers  
+- Manage dealer sub-accounts  
+- Suspend/restore users  
+
+---
+
+### Content Moderation Team
+**Access Scope:** User-generated listings, reviews, and comments.  
+**Permissions:**  
+- Approve/reject listings  
+- Moderate reviews, photos, and comments  
+- Flag and remove inappropriate content  
+
+---
+
+### Analytics Team
+**Access Scope:** Metrics and business intelligence.  
+**Permissions:**  
+- Read-only access to analytics dashboards  
+- Export reports  
+- Cannot edit data or configurations  
+
+---
+
+### Security Team
+**Access Scope:** Security and compliance.  
+**Permissions:**  
+- View audit logs  
+- Monitor login anomalies  
+- Review role access changes  
+- Report incidents to Super Admin  
+
+---
+
+### Tier Management Team
+**Access Scope:** Membership and subscription tiers.  
+**Permissions:**  
+- Manage pricing tiers  
+- Update tier features and pricing  
+- Handle promotional codes or campaigns  
+
+---
+
+### Sales Management Team
+**Access Scope:** Lead and dealer sales data.  
+**Permissions:**  
+- Access CRM and sales reports  
+- View customer interactions  
+- Export sales data  
+- Manage dealer onboarding pipeline  
+
+---
+
+### Billing Management Team
+**Access Scope:** Payments, refunds, and disputes.  
+**Permissions:**  
+- Manage billing records  
+- Resolve payment disputes  
+- Issue refunds or credits  
+- Access payment gateways (read-only for non-admins)  
+
+---
+
+### Support Team
+**Access Scope:** Customer service and issue resolution.  
+**Permissions:**  
+- Access support tickets  
+- Respond to users  
+- View user accounts (read-only)  
+- Escalate issues to managers  
+
+---
+
+### Notes
+- A **Manager** can be assigned to one or multiple teams.  
+- A **Team Member** can also belong to multiple teams, with cumulative permissions.  
+- **Super Admin** and **Admin** automatically inherit access to all teams.
+

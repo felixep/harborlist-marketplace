@@ -199,13 +199,13 @@ describe('Authentication Error Handling', () => {
 
         const error = createRoleAuthorizationError(
           'staff',
-          'team-member',
+          'team_member',
           'admin',
           context
         );
 
         expect(error.code).toBe(AuthErrorCodes.ROLE_NOT_AUTHORIZED);
-        expect(error.context?.userRole).toBe('team-member');
+        expect(error.context?.userRole).toBe('team_member');
         expect(error.context?.requiredRole).toBe('admin');
       });
     });

@@ -140,9 +140,31 @@ export class HarborListStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
+    // Email lookup index
     usersTable.addGlobalSecondaryIndex({
       indexName: 'email-index',
       partitionKey: { name: 'email', type: dynamodb.AttributeType.STRING },
+    });
+
+    // User type index for filtering customer vs staff users with sort by creation date
+    usersTable.addGlobalSecondaryIndex({
+      indexName: 'UserTypeIndex',
+      partitionKey: { name: 'userType', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'createdAt', type: dynamodb.AttributeType.STRING },
+    });
+
+    // Parent dealer index for dealer sub-account queries
+    usersTable.addGlobalSecondaryIndex({
+      indexName: 'ParentDealerIndex',
+      partitionKey: { name: 'parentDealerId', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'createdAt', type: dynamodb.AttributeType.STRING },
+    });
+
+    // Premium expiration index for managing premium account expirations
+    usersTable.addGlobalSecondaryIndex({
+      indexName: 'PremiumExpirationIndex',
+      partitionKey: { name: 'premiumActive', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'premiumExpiresAt', type: dynamodb.AttributeType.NUMBER },
     });
 
     // Audit Logs Table

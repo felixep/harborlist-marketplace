@@ -280,21 +280,69 @@ create_default_admin_user() {
     # Make sure it's executable
     chmod +x "${admin_script}"
     
-    # Create default admin user
-    print_info "Creating admin user: admin@harborlist.local with super-admin role"
+    # Make sure secrets directory exists
+    mkdir -p "${PROJECT_ROOT}/secrets"
     
-    if "${admin_script}" \
+    # Create default admin user and capture output
+    print_info "Creating admin user: admin@harborlist.local with super_admin role"
+    
+    local output
+    output=$("${admin_script}" \
         --environment local \
         --email "admin@harborlist.local" \
         --name "HarborList Administrator" \
-        --role "super-admin" \
-        --force; then
+        --role "super_admin" \
+        --force 2>&1)
+    
+    local exit_code=$?
+    
+    # Display the output
+    echo "${output}"
+    
+    if [ $exit_code -eq 0 ]; then
+        # Extract password from output (macOS-compatible grep)
+        # Look for either "🔐 Password: " or "🔐 New Password: "
+        local password=$(echo "${output}" | grep "🔐 Password:" | sed -E 's/.*🔐 Password: (.*)/\1/' | head -1)
+        if [[ -z "${password}" ]]; then
+            password=$(echo "${output}" | grep "🔐 New Password:" | sed -E 's/.*🔐 New Password: (.*)/\1/' | head -1)
+        fi
         
-        print_success "Default admin user created successfully"
-        print_info "Admin credentials:"
-        print_info "  Email: admin@harborlist.local"
-        print_info "  Role: super-admin"
-        print_info "  Password: Check the output above for the generated password"
+        if [[ -n "${password}" ]]; then
+            # Write credentials to secrets file
+            local secrets_file="${PROJECT_ROOT}/secrets/admin.txt"
+            cat > "${secrets_file}" << EOF
+HarborList Local Admin Credentials
+===================================
+Generated: $(date)
+Environment: local
+
+Email: admin@harborlist.local
+Password: ${password}
+Role: super_admin
+Pool: Staff User Pool
+
+Login URL: https://local-api.harborlist.com/auth/staff/login
+
+⚠️  IMPORTANT: Keep this file secure!
+⚠️  Change password after first login (recommended)
+EOF
+            
+            chmod 600 "${secrets_file}"
+            
+            print_success "Default admin user created successfully"
+            print_success "Credentials saved to: ${secrets_file}"
+            print_info "Admin credentials:"
+            print_info "  Email: admin@harborlist.local"
+            print_info "  Password: ${password}"
+            print_info "  Role: super_admin"
+        else
+            print_success "Default admin user created successfully"
+            print_warning "Could not extract password from output"
+            print_info "Admin credentials:"
+            print_info "  Email: admin@harborlist.local"
+            print_info "  Role: super_admin"
+            print_info "  Password: Check the output above for the generated password"
+        fi
         return 0
     else
         print_error "Failed to create default admin user"
@@ -341,7 +389,7 @@ setup_localstack_cognito() {
         echo ""
         print_info "LocalStack Cognito Configuration Complete:"
         echo "  Customer User Pool: Configured with groups (individual-customers, dealer-customers, premium-customers)"
-        echo "  Staff User Pool: Configured with groups (super-admin, admin, manager, team-member)"
+        echo "  Staff User Pool: Configured with groups (super_admin, admin, manager, team_member)"
         echo "  No test users created - use create-admin-user script to create admin users as needed"
         
         return 0
@@ -388,6 +436,183 @@ validate_authentication() {
         print_info "User Pools will be validated after CDK deployment"
         return 0
     fi
+}
+
+# Function to wait for container to complete
+wait_for_container() {
+    local container_name=$1
+    local timeout=${2:-120}
+    local counter=0
+    
+    print_info "Waiting for container '${container_name}' to complete..."
+    
+    while [ $counter -lt $timeout ]; do
+        # Check if container exists
+        if ! docker ps -a --format '{{.Names}}' | grep -q "^${container_name}$"; then
+            print_warning "Container '${container_name}' not found"
+            return 1
+        fi
+        
+        # Check container status
+        local status=$(docker inspect --format='{{.State.Status}}' "${container_name}" 2>/dev/null || echo "unknown")
+        
+        if [ "${status}" == "exited" ]; then
+            # Check exit code
+            local exit_code=$(docker inspect --format='{{.State.ExitCode}}' "${container_name}" 2>/dev/null || echo "1")
+            if [ "${exit_code}" == "0" ]; then
+                print_success "Container '${container_name}' completed successfully"
+                return 0
+            else
+                print_error "Container '${container_name}' exited with code ${exit_code}"
+                print_info "Container logs:"
+                docker logs "${container_name}" | tail -n 20
+                return 1
+            fi
+        fi
+        
+        sleep 1
+        counter=$((counter + 1))
+    done
+    
+    print_error "Timeout waiting for container '${container_name}'"
+    return 1
+}
+
+# Function to wait for backend health
+wait_for_backend_health() {
+    local max_attempts=60
+    local attempt=0
+    
+    print_step "Waiting for backend API health check..."
+    
+    while [ $attempt -lt $max_attempts ]; do
+        if curl -f -k -s https://local-api.harborlist.com/health >/dev/null 2>&1; then
+            print_success "Backend API is healthy"
+            return 0
+        fi
+        
+        attempt=$((attempt + 1))
+        sleep 2
+    done
+    
+    print_error "Backend API health check failed after ${max_attempts} attempts"
+    return 1
+}
+
+# Function to deploy local environment with two-file compose architecture
+deploy_local() {
+    print_step "Starting local deployment with two-file Docker Compose architecture..."
+    
+    cd "${PROJECT_ROOT}"
+    
+    # Check Docker prerequisites
+    check_docker_prerequisites
+    
+    # Load environment variables
+    load_env_local
+    
+    # Step 1: Start infrastructure services
+    print_step "Step 1: Starting infrastructure services (databases, LocalStack, init containers)..."
+    
+    if ! docker-compose -f docker-compose.infrastructure.yml up -d; then
+        print_error "Failed to start infrastructure services"
+        return 1
+    fi
+    
+    print_success "Infrastructure services started"
+    
+    # Step 2: Wait for init containers to complete
+    print_step "Step 2: Waiting for initialization containers to complete..."
+    
+    # Wait for localstack-init
+    if ! wait_for_container "harborlist-infrastructure-init" 120; then
+        print_error "LocalStack initialization failed"
+        print_info "Check logs: docker logs harborlist-infrastructure-init"
+        return 1
+    fi
+    
+    # Wait for init-cognito
+    if ! wait_for_container "harborlist-infrastructure-cognito" 120; then
+        print_error "Cognito initialization failed"
+        print_info "Check logs: docker logs harborlist-infrastructure-cognito"
+        return 1
+    fi
+    
+    print_success "All initialization containers completed successfully"
+    
+    # Step 3: Verify .env.local was updated with Pool IDs
+    print_step "Step 3: Verifying Cognito Pool IDs in .env.local..."
+    
+    load_env_local  # Reload to get updated values
+    
+    if [[ -z "${CUSTOMER_USER_POOL_ID:-}" ]] || [[ -z "${STAFF_USER_POOL_ID:-}" ]]; then
+        print_error "Cognito Pool IDs not found in .env.local after initialization"
+        print_info "CUSTOMER_USER_POOL_ID: ${CUSTOMER_USER_POOL_ID:-'NOT SET'}"
+        print_info "STAFF_USER_POOL_ID: ${STAFF_USER_POOL_ID:-'NOT SET'}"
+        return 1
+    fi
+    
+    print_success "Cognito Pool IDs verified in .env.local:"
+    print_info "  CUSTOMER_USER_POOL_ID: ${CUSTOMER_USER_POOL_ID}"
+    print_info "  STAFF_USER_POOL_ID: ${STAFF_USER_POOL_ID}"
+    
+    # Step 4: Start application services
+    print_step "Step 4: Starting application services (backend, frontend, billing, finance)..."
+    
+    if ! docker-compose -f docker-compose.application.yml up -d; then
+        print_error "Failed to start application services"
+        return 1
+    fi
+    
+    print_success "Application services started"
+    
+    # Step 5: Wait for backend to be healthy
+    print_step "Step 5: Waiting for backend API to be healthy..."
+    
+    if ! wait_for_backend_health; then
+        print_warning "Backend health check failed, but deployment will continue"
+        print_info "You can check backend logs: docker logs harborlist-app-backend"
+    fi
+    
+    # Step 6: Create default admin user
+    print_step "Step 6: Creating default admin user..."
+    
+    if ! create_default_admin_user; then
+        print_warning "Failed to create default admin user, but deployment completed"
+        print_info "You can create admin users manually later"
+    fi
+    
+    # Deployment complete
+    print_success "Local deployment completed successfully!"
+    
+    echo ""
+    echo "=== Access Information ==="
+    echo "Frontend (Custom Domain):     https://local.harborlist.com"
+    echo "Backend API (Custom Domain):  https://local-api.harborlist.com"
+    echo "Traefik Dashboard:            http://traefik.local.harborlist.com:8088"
+    echo "LocalStack (Cognito):         http://localhost:4566"
+    echo "DynamoDB Admin:               http://localhost:8001"
+    echo "SMTP4Dev (Email Testing):     http://mail.local.harborlist.com"
+    echo ""
+    echo "=== Admin Credentials ==="
+    echo "Saved to: ${PROJECT_ROOT}/secrets/admin.txt"
+    echo "Email: admin@harborlist.local"
+    echo "Role: super_admin"
+    echo ""
+    echo "To view credentials:"
+    echo "  cat ${PROJECT_ROOT}/secrets/admin.txt"
+    echo ""
+    echo "=== Useful Commands ==="
+    echo "View all logs:                docker-compose -f docker-compose.infrastructure.yml -f docker-compose.application.yml logs -f"
+    echo "View backend logs:            docker logs -f harborlist-app-backend"
+    echo "View infrastructure logs:     docker-compose -f docker-compose.infrastructure.yml logs -f"
+    echo "View application logs:        docker-compose -f docker-compose.application.yml logs -f"
+    echo "Stop infrastructure:          docker-compose -f docker-compose.infrastructure.yml down"
+    echo "Stop application:             docker-compose -f docker-compose.application.yml down"
+    echo "Stop all:                     docker-compose -f docker-compose.infrastructure.yml -f docker-compose.application.yml down"
+    echo ""
+    
+    return 0
 }
 
 # Function to deploy to AWS
@@ -532,172 +757,6 @@ deploy_aws() {
     echo "  View main stack outputs: aws cloudformation describe-stacks --stack-name HarborListStack-${environment}"
     echo "  View Cognito User Pools: aws cognito-idp list-user-pools --max-results 20"
     echo "  View logs: aws logs describe-log-groups --log-group-name-prefix /aws/lambda/HarborListStack"
-}
-
-# Function to deploy with Docker Compose
-deploy_local() {
-    print_step "Starting local Docker Compose deployment..."
-    
-    cd "${PROJECT_ROOT}"
-    
-    # Load environment variables from .env.local
-    load_env_local
-    
-    # Check for Docker Compose file
-    if [[ ! -f "docker-compose.local.yml" ]]; then
-        print_error "docker-compose.local.yml not found in project root"
-        exit 1
-    fi
-    
-    # Check for .env.local file
-    if [[ ! -f ".env.local" ]]; then
-        print_error ".env.local file not found in project root"
-        print_info "Please create .env.local file with required environment variables"
-        exit 1
-    fi
-    
-    print_step "Setting up SSL certificates for local development..."
-    
-    # Check if SSL certificates exist, generate if needed
-    if [[ ! -f "${PROJECT_ROOT}/certs/local/server-cert.pem" ]] || [[ ! -f "${PROJECT_ROOT}/certs/local/server-key.pem" ]]; then
-        print_info "SSL certificates not found, generating new ones..."
-        if [[ -f "${PROJECT_ROOT}/tools/ssl/generate-ssl-certs.sh" ]]; then
-            "${PROJECT_ROOT}/tools/ssl/generate-ssl-certs.sh"
-        else
-            print_warning "SSL certificate generation script not found"
-            print_info "Please run: ./tools/ssl/generate-ssl-certs.sh"
-        fi
-    else
-        print_success "SSL certificates already exist"
-    fi
-    
-    print_step "Building and starting Docker services..."
-    
-    print_info "Deploying full stack with Traefik routing and custom domains"
-    
-    # Stop any existing services
-    print_step "Stopping existing services..."
-    docker-compose -f docker-compose.local.yml --env-file .env.local down --remove-orphans || true
-    
-    # Pull latest images and build
-    print_step "Building services..."
-    docker-compose -f docker-compose.local.yml --env-file .env.local build --no-cache
-    
-    # Start services
-    print_step "Starting services..."
-    docker-compose -f docker-compose.local.yml --env-file .env.local up -d
-    
-    # Wait for services to be ready
-    print_step "Waiting for services to start..."
-    sleep 15
-    
-    # Setup LocalStack Cognito User Pools
-    if setup_localstack_cognito; then
-        print_success "LocalStack Cognito setup completed"
-    else
-        print_warning "LocalStack Cognito setup failed, but deployment will continue"
-        print_info "You may need to run the setup manually later"
-    fi
-    
-    # Show service status
-    print_step "Checking service status..."
-    docker-compose -f docker-compose.local.yml --env-file .env.local ps
-    
-    # Set up database tables
-    print_step "Setting up database tables..."
-    if [[ -f "${PROJECT_ROOT}/backend/scripts/setup-local-db.sh" ]]; then
-        # Pass environment variables to the database setup script
-        env $(cat "${PROJECT_ROOT}/.env.local" | grep -v '^#' | xargs) "${PROJECT_ROOT}/backend/scripts/setup-local-db.sh"
-    else
-        print_warning "Database setup script not found. You may need to run it manually."
-        print_info "Run: ./backend/scripts/setup-local-db.sh"
-    fi
-    
-    # Set up S3 buckets for media storage
-    print_step "Setting up S3 buckets for media storage..."
-    if [[ -f "${PROJECT_ROOT}/tools/development/setup-s3-buckets.sh" ]]; then
-        # Pass environment variables to the S3 setup script
-        env $(cat "${PROJECT_ROOT}/.env.local" | grep -v '^#' | xargs) "${PROJECT_ROOT}/tools/development/setup-s3-buckets.sh"
-        if [[ $? -eq 0 ]]; then
-            print_success "S3 buckets configured successfully"
-        else
-            print_warning "S3 bucket setup encountered issues, but deployment will continue"
-            print_info "You can run it manually: ./tools/development/setup-s3-buckets.sh"
-        fi
-    else
-        print_warning "S3 bucket setup script not found. Media uploads may not work."
-        print_info "Run: ./tools/development/setup-s3-buckets.sh"
-    fi
-    
-    # Validate authentication setup
-    if validate_authentication "local"; then
-        print_success "Authentication validation completed"
-    else
-        print_warning "Authentication validation had issues, but deployment will continue"
-    fi
-    
-    # LocalStack Cognito User Pools are configured and ready for user creation
-    print_success "LocalStack Cognito User Pools configured and ready"
-    
-    # Create default admin user
-    print_step "Creating default admin user..."
-    if create_default_admin_user; then
-        print_success "Default admin user created successfully"
-    else
-        print_warning "Failed to create default admin user, but deployment will continue"
-        print_info "You can create admin users manually using: tools/operations/create-admin-user.sh"
-    fi
-    
-    print_success "Local deployment completed!"
-    
-    # Display access information
-    echo ""
-    print_info "Local Environment Access Information:"
-    echo "  Frontend (Custom Domain): https://local.harborlist.com"
-    echo "  Backend API (Custom Domain): https://local-api.harborlist.com"
-    echo "  Auth Service (Custom Domain): https://local-api.harborlist.com/auth"
-    echo "  Billing Service (Custom Domain): https://billing.local.harborlist.com"
-    echo "  Finance Service (Custom Domain): https://finance.local.harborlist.com"
-    echo "  Frontend (Direct): http://localhost:3000"
-    echo "  Backend API (Direct): http://localhost:3001"
-    echo "  Auth Service (Direct): http://localhost:3001/auth"
-    echo "  Billing Service (Direct): http://localhost:3002"
-    echo "  Finance Service (Direct): http://localhost:3003"
-    echo "  Traefik Dashboard: http://localhost:8088"
-    echo "  LocalStack (Cognito): http://localhost:4566"
-    echo "  DynamoDB Local: http://localhost:8000"
-    echo "  DynamoDB Admin: http://localhost:8001"
-    echo "  LocalStack (S3): http://localhost:4566"
-    echo "  SMTP4Dev (Email Testing): http://localhost:5001"
-    
-    echo ""
-    print_info "User Management:"
-    echo "  Customer registration: Available via auth service endpoints"
-    echo "  Admin user creation: Use tools/operations/create-admin-user.sh script"
-    echo "  User management: Available via admin interface after creating admin users"
-    echo "  No test users created automatically - create users as needed"
-    echo ""
-    print_info "Authentication Endpoints:"
-    echo "  Customer Login: POST http://localhost:3001/auth/customer/login"
-    echo "  Staff Login: POST http://localhost:3001/auth/staff/login"
-    echo "  Customer Register: POST http://localhost:3001/auth/customer/register"
-    echo "  Token Refresh: POST http://localhost:3001/auth/{customer|staff}/refresh"
-    
-    echo ""
-    print_info "Useful Docker Compose commands:"
-    echo "  View logs: docker-compose -f docker-compose.local.yml --env-file .env.local logs -f"
-    echo "  Stop services: docker-compose -f docker-compose.local.yml --env-file .env.local down"
-    echo "  Rebuild: docker-compose -f docker-compose.local.yml --env-file .env.local up --build -d"
-    
-    echo ""
-    print_warning "Note: For custom domains to work, add these entries to your /etc/hosts file:"
-    echo "  127.0.0.1 local.harborlist.com"
-    echo "  127.0.0.1 local-api.harborlist.com"
-    echo "  127.0.0.1 billing.local.harborlist.com"
-    echo "  127.0.0.1 finance.local.harborlist.com"
-    echo "  127.0.0.1 mail.local.harborlist.com"
-    echo "  127.0.0.1 s3.local.harborlist.com"
-    echo "  127.0.0.1 traefik.local.harborlist.com"
 }
 
 # Main execution logic

@@ -4,6 +4,9 @@
 // Common domain types
 export * from './common';
 
+// Team-based staff roles
+export * from './teams';
+
 // Re-export types and enums
 export type {
   // Core entities

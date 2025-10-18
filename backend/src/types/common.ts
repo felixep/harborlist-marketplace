@@ -102,12 +102,45 @@ export enum AdminPermission {
   SUPPORT_ACCESS = 'support_access'
 }
 
+// Dealer Sub-Account Types
+export enum DealerSubAccountRole {
+  ADMIN = 'admin',
+  MANAGER = 'manager',
+  STAFF = 'staff'
+}
+
+export interface DealerAccessScope {
+  listings: string[] | 'all';
+  leads: boolean;
+  analytics: boolean;
+  inventory: boolean;
+  pricing: boolean;
+  financial: boolean;
+}
+
+export interface DealerSubAccount {
+  id: string;
+  email: string;
+  name: string;
+  parentDealerId: string;
+  parentDealerName?: string;
+  dealerAccountRole: DealerSubAccountRole;
+  delegatedPermissions: string[];
+  accessScope: DealerAccessScope;
+  status: UserStatus;
+  createdAt: string;
+  createdBy: string;
+  lastLogin?: string;
+  emailVerified: boolean;
+}
+
 export interface User {
   id: string;
   email: string;
   name: string;
   phone?: string;
   location?: string;
+  userType?: 'customer' | 'staff';
   role: UserRole;
   status: UserStatus;
   permissions?: AdminPermission[];
@@ -125,6 +158,13 @@ export interface User {
   emailVerificationExpires?: string;
   createdAt: string;
   updatedAt: string;
+  
+  // Dealer Sub-Account fields
+  isDealerSubAccount?: boolean;
+  parentDealerId?: string;
+  dealerAccountRole?: DealerSubAccountRole;
+  delegatedPermissions?: string[];
+  accessScope?: DealerAccessScope;
 }
 
 export interface AdminUser extends User {
@@ -184,3 +224,6 @@ export interface ErrorResponse {
     requestId: string;
   };
 }
+
+// Export Phase 3 types from shared-types
+export type { StaffUserRecord, TeamAssignment } from '@harborlist/shared-types';

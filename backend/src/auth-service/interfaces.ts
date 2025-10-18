@@ -88,10 +88,10 @@ export enum CustomerTier {
  * Maps to Cognito Groups in Staff User Pool
  */
 export enum StaffRole {
-  SUPER_ADMIN = 'super-admin',
+  SUPER_ADMIN = 'super_admin',
   ADMIN = 'admin',
   MANAGER = 'manager',
-  TEAM_MEMBER = 'team-member'
+  TEAM_MEMBER = 'team_member'
 }
 
 /**
@@ -324,7 +324,8 @@ export const STAFF_PERMISSIONS = {
     AdminPermission.ANALYTICS_VIEW,
     AdminPermission.AUDIT_LOG_VIEW,
     AdminPermission.TIER_MANAGEMENT,
-    AdminPermission.BILLING_MANAGEMENT
+    AdminPermission.BILLING_MANAGEMENT,
+    AdminPermission.PLATFORM_SETTINGS
   ],
   [StaffRole.MANAGER]: [
     AdminPermission.USER_MANAGEMENT,
@@ -335,7 +336,8 @@ export const STAFF_PERMISSIONS = {
   ],
   [StaffRole.TEAM_MEMBER]: [
     AdminPermission.CONTENT_MODERATION,
-    AdminPermission.ANALYTICS_VIEW
+    AdminPermission.ANALYTICS_VIEW,
+    AdminPermission.SUPPORT_ACCESS
   ]
 } as const;
 

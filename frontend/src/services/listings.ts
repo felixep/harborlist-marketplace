@@ -51,10 +51,12 @@ async function apiRequest<T>(endpoint: string, options: RequestInit = {}): Promi
 export async function getListings(params?: {
   limit?: number;
   nextToken?: string;
+  ownerId?: string;
 }): Promise<{ listings: Listing[]; nextToken?: string; total: number }> {
   const searchParams = new URLSearchParams();
   if (params?.limit) searchParams.set('limit', params.limit.toString());
   if (params?.nextToken) searchParams.set('nextToken', params.nextToken);
+  if (params?.ownerId) searchParams.set('ownerId', params.ownerId);
 
   return apiRequest(`/listings?${searchParams.toString()}`);
 }

@@ -1,0 +1,161 @@
+# HarborList Local Infrastructure
+# This file contains all infrastructure services that need to start first
+# and complete initialization before application services start
+# Usage: docker-compose -f docker-compose.infrastructure.yml up -d
+
+services:
+  # Local DynamoDB
+  dynamodb-local:
+    image: amazon/dynamodb-local:latest
+    container_name: harborlist-infrastructure-dynamodb
+    ports:
+      - "8000:8000"
+    volumes:
+      - dynamodb_data:/home/dynamodblocal/data
+    working_dir: /home/dynamodblocal
+    user: root
+    command: [ "-jar", "DynamoDBLocal.jar", "-sharedDb", "-dbPath", "./data" ]
+    networks:
+      - harborlist-local
+
+  # LocalStack Pro for S3, SES, CloudWatch, Cognito etc.
+  localstack:
+    image: localstack/localstack-pro:4.9.2
+    container_name: harborlist-infrastructure-localstack
+    ports:
+      - "4566:4566"
+      - "4510-4559:4510-4559"
+    environment:
+      - SERVICES=s3,ses,cloudwatch,logs,cognito-idp,cognito-identity,lambda,iam,apigateway
+      - DEBUG=1
+      - DATA_DIR=/var/lib/localstack
+      - LAMBDA_EXECUTOR=local
+      - DOCKER_HOST=unix:///var/run/docker.sock
+      - PERSISTENCE=1
+      - SKIP_INFRA_DOWNLOADS=1
+      # LocalStack Pro License
+      - LOCALSTACK_AUTH_TOKEN=${LOCALSTACK_AUTH_TOKEN:-}
+      # Cognito-specific configuration for dual auth pools
+      - COGNITO_PROVIDER_DEVELOPER_USER_IDENTITY_POOL_ID=us-east-1:00000000-0000-0000-0000-000000000000
+      - COGNITO_PROVIDER_DEVELOPER_USER_IDENTITY_POOL_NAME=harborlist_local_identity_pool
+      - COGNITO_PROVIDER_DEVELOPER_USER_IDENTITY_POOL_REGION=us-east-1
+      # Enhanced Cognito configuration
+      - COGNITO_REMOVE_EXPIRED_TOKENS_SCHEDULE=0
+      - COGNITO_JWT_SECRET=local-dev-cognito-secret-harborlist-2025
+      # Lambda configuration for Cognito triggers and authorizers
+      - LAMBDA_REMOTE_DOCKER=0
+      - LAMBDA_DOCKER_NETWORK=harborlist-local
+      - LAMBDA_RUNTIME_ENVIRONMENT_TIMEOUT=30
+      # API Gateway configuration for authorizers
+      - APIGATEWAY_ENFORCE_SECURE_CONNECTIONS=0
+    volumes:
+      - localstack_data:/var/lib/localstack
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./infrastructure/scripts:/opt/code/localstack/scripts:ro
+    networks:
+      - harborlist-local
+
+  # LocalStack initialization service (basic infrastructure setup)
+  localstack-init:
+    image: alpine:latest
+    container_name: harborlist-infrastructure-init
+    depends_on:
+      - localstack
+      - dynamodb-local
+    volumes:
+      - ./tools:/tools
+    environment:
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_DEFAULT_REGION=us-east-1
+      - DYNAMODB_ENDPOINT=http://dynamodb-local:8000
+      - LOCALSTACK_ENDPOINT=http://localstack:4566
+    networks:
+      - harborlist-local
+    command: >
+      sh -c "
+        apk add --no-cache curl aws-cli bash &&
+        echo 'Waiting for LocalStack to be ready...' &&
+        until curl -s http://localstack:4566/_localstack/health | grep -q '\"s3\": \"available\"'; do
+          echo 'Waiting for LocalStack S3 service...'
+          sleep 2
+        done &&
+        echo 'Waiting for Lambda service...' &&
+        until curl -s http://localstack:4566/_localstack/health | grep -q '\"lambda\": \"available\"'; do
+          echo 'Waiting for LocalStack Lambda service...'
+          sleep 2
+        done &&
+        echo 'Waiting for DynamoDB Local...' &&
+        until curl -s http://dynamodb-local:8000 > /dev/null 2>&1; do
+          echo 'Waiting for DynamoDB Local service...'
+          sleep 2
+        done &&
+        echo 'LocalStack and DynamoDB are ready. Running basic setup scripts...' &&
+        chmod +x /tools/development/setup-s3-buckets.sh &&
+        chmod +x /tools/development/setup-local-dynamodb.sh &&
+        echo 'Setting up S3 buckets...' &&
+        LOCALSTACK_ENDPOINT=http://localstack:4566 bash /tools/development/setup-s3-buckets.sh &&
+        echo 'Setting up DynamoDB tables...' &&
+        DYNAMODB_ENDPOINT=http://dynamodb-local:8000 LOCALSTACK_ENDPOINT=http://localstack:4566 bash /tools/development/setup-local-dynamodb.sh &&
+        echo 'LocalStack initialization completed successfully!'
+      "
+
+  # Cognito initialization service (runs after localstack-init)
+  # This ensures Cognito pools are created/validated and .env.local is updated BEFORE application services start
+  init-cognito:
+    image: alpine:latest
+    container_name: harborlist-infrastructure-cognito
+    depends_on:
+      localstack-init:
+        condition: service_completed_successfully
+    volumes:
+      - ./tools/development:/tools
+      - ./.env.local:/workspace/.env.local
+    environment:
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_DEFAULT_REGION=us-east-1
+      - LOCALSTACK_ENDPOINT=http://localstack:4566
+    networks:
+      - harborlist-local
+    working_dir: /workspace
+    command: >
+      sh -c "
+        apk add --no-cache curl aws-cli bash sed grep &&
+        echo 'Waiting for Cognito service...' &&
+        until curl -s http://localstack:4566/_localstack/health | grep -q '\"cognito-idp\": \"available\"'; do
+          echo 'Waiting for LocalStack Cognito service...'
+          sleep 2
+        done &&
+        echo 'Setting up Cognito User Pools and updating .env.local...' &&
+        chmod +x /tools/setup-local-cognito.sh &&
+        /tools/setup-local-cognito.sh &&
+        echo 'Cognito initialization completed - .env.local updated with Pool IDs'
+      "
+
+  # DynamoDB Admin UI (optional, for debugging)
+  dynamodb-admin:
+    image: aaronshaf/dynamodb-admin:latest
+    container_name: harborlist-infrastructure-dynamodb-admin
+    ports:
+      - "8001:8001"
+    environment:
+      - DYNAMO_ENDPOINT=http://dynamodb-local:8000
+      - AWS_REGION=us-east-1
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+    depends_on:
+      - dynamodb-local
+    networks:
+      - harborlist-local
+
+volumes:
+  dynamodb_data:
+    name: harborlist-dynamodb-data
+  localstack_data:
+    name: harborlist-localstack-data
+
+networks:
+  harborlist-local:
+    name: harborlist-local-network
+    driver: bridge

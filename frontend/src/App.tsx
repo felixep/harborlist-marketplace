@@ -28,6 +28,7 @@ import Home from './pages/Home';
 import ListingDetail from './pages/ListingDetail';
 import Search from './pages/Search';
 import CreateListing from './pages/CreateListing';
+import EditListing from './pages/EditListing';
 import Profile from './pages/Profile';
 import { Login } from './pages/Login';
 import { Register } from './pages/Register';
@@ -224,6 +225,14 @@ function App() {
                             element={
                               <ProtectedRoute>
                                 <CreateListing />
+                              </ProtectedRoute>
+                            }
+                          />
+                          <Route
+                            path="/edit/:id"
+                            element={
+                              <ProtectedRoute>
+                                <EditListing />
                               </ProtectedRoute>
                             }
                           />

@@ -220,6 +220,46 @@ check_prerequisites() {
     log_success "Prerequisites check passed"
 }
 
+# Clear Cognito Pool IDs from both .env and .env.local
+# This is called after destroying LocalStack volumes to ensure stale Pool IDs are removed
+clear_cognito_pool_ids() {
+    log_info "Clearing Cognito Pool IDs from environment files..."
+    
+    # Clear .env.local
+    local env_local="${PROJECT_ROOT}/.env.local"
+    if [[ -f "$env_local" ]]; then
+        log_info "  Clearing Pool IDs from .env.local..."
+        sed -i.bak \
+            -e 's/^CUSTOMER_USER_POOL_ID=.*/CUSTOMER_USER_POOL_ID=/' \
+            -e 's/^STAFF_USER_POOL_ID=.*/STAFF_USER_POOL_ID=/' \
+            -e 's/^CUSTOMER_USER_POOL_CLIENT_ID=.*/CUSTOMER_USER_POOL_CLIENT_ID=/' \
+            -e 's/^STAFF_USER_POOL_CLIENT_ID=.*/STAFF_USER_POOL_CLIENT_ID=/' \
+            "$env_local"
+        rm -f "${env_local}.bak"
+        log_success "  ✓ Cleared .env.local"
+    else
+        log_warning "  .env.local not found, skipping"
+    fi
+    
+    # Clear .env
+    local env_file="${PROJECT_ROOT}/.env"
+    if [[ -f "$env_file" ]]; then
+        log_info "  Clearing Pool IDs from .env..."
+        sed -i.bak \
+            -e 's/^CUSTOMER_USER_POOL_ID=.*/CUSTOMER_USER_POOL_ID=/' \
+            -e 's/^STAFF_USER_POOL_ID=.*/STAFF_USER_POOL_ID=/' \
+            -e 's/^CUSTOMER_USER_POOL_CLIENT_ID=.*/CUSTOMER_USER_POOL_CLIENT_ID=/' \
+            -e 's/^STAFF_USER_POOL_CLIENT_ID=.*/STAFF_USER_POOL_CLIENT_ID=/' \
+            "$env_file"
+        rm -f "${env_file}.bak"
+        log_success "  ✓ Cleared .env"
+    else
+        log_info "  .env not found, skipping"
+    fi
+    
+    log_success "Cleared Cognito Pool IDs from environment files (setup script will populate on next deployment)"
+}
+
 # Clean up LocalStack S3 buckets
 cleanup_local_s3_buckets() {
     log_step "Cleaning up LocalStack S3 buckets..."
@@ -269,18 +309,27 @@ cleanup_local() {
     
     confirm_action "This will destroy all local Docker containers, volumes, and development data" "local"
     
-    # Stop all running containers
+    # Stop all running containers - both infrastructure and application
     log_step "Stopping all HarborList containers..."
+    
+    # Stop application services first
     if command -v docker-compose &> /dev/null; then
+        docker-compose -f "${PROJECT_ROOT}/docker-compose.application.yml" down --remove-orphans || true
+        docker-compose -f "${PROJECT_ROOT}/docker-compose.infrastructure.yml" down --remove-orphans || true
+        # Also try the old file for backward compatibility
         docker-compose -f "${PROJECT_ROOT}/docker-compose.local.yml" --profile enhanced down --remove-orphans || true
         docker-compose -f "${PROJECT_ROOT}/docker-compose.local.yml" --profile basic down --remove-orphans || true
     else
+        docker compose -f "${PROJECT_ROOT}/docker-compose.application.yml" down --remove-orphans || true
+        docker compose -f "${PROJECT_ROOT}/docker-compose.infrastructure.yml" down --remove-orphans || true
+        # Also try the old file for backward compatibility
         docker compose -f "${PROJECT_ROOT}/docker-compose.local.yml" --profile enhanced down --remove-orphans || true
         docker compose -f "${PROJECT_ROOT}/docker-compose.local.yml" --profile basic down --remove-orphans || true
     fi
     
     # Remove all containers (including stopped ones)
     log_step "Removing all HarborList containers..."
+    docker ps -a --filter "name=harborlist-" -q | xargs -r docker rm -f || true
     docker ps -a --filter "label=com.docker.compose.project=harborlist-marketplace" -q | xargs -r docker rm -f || true
     
     # Remove all volumes
@@ -305,15 +354,13 @@ cleanup_local() {
         rm -rf "${PROJECT_ROOT}/.data"
     fi
     
-    # Clean up logs
-    if [[ -d "${PROJECT_ROOT}/logs" ]]; then
-        log_destruction "Removing log files..."
-        rm -rf "${PROJECT_ROOT}/logs"
-    fi
-    
     # Clean up LocalStack S3 buckets
     log_step "Cleaning up LocalStack S3 buckets..."
     cleanup_local_s3_buckets
+    
+    # Clear Cognito Pool IDs from .env.local since LocalStack volumes are destroyed
+    log_step "Clearing Cognito Pool IDs from .env.local..."
+    clear_cognito_pool_ids
     
     # Docker system prune (remove unused images, containers, networks)
     log_step "Performing Docker system cleanup..."

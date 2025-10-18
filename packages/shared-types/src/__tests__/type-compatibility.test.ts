@@ -31,7 +31,8 @@ describe('Type Compatibility Tests', () => {
       // Should be able to extend base user to enhanced user
       const enhancedUser: EnhancedUser = {
         ...baseUser,
-        userType: 'individual',
+        userType: 'customer',
+        customerTier: 'individual',
         membershipDetails: {
           features: [],
           limits: {
@@ -52,7 +53,7 @@ describe('Type Compatibility Tests', () => {
 
       expect(enhancedUser.id).toBe(baseUser.id);
       expect(enhancedUser.email).toBe(baseUser.email);
-      expect(enhancedUser.userType).toBe('individual');
+      expect(enhancedUser.userType).toBe('customer');
     });
 
     it('should maintain compatibility between Listing and EnhancedListing', () => {
@@ -289,7 +290,8 @@ describe('Type Compatibility Tests', () => {
         createdAt: '2023-01-01T00:00:00Z',
         updatedAt: '2023-01-01T00:00:00Z',
         // Enhanced properties
-        userType: 'individual',
+        userType: 'customer',
+        customerTier: 'individual',
         membershipDetails: {
           features: [],
           limits: {
@@ -408,7 +410,8 @@ describe('Type Compatibility Tests', () => {
         loginAttempts: 0,
         createdAt: '2023-01-01T00:00:00Z',
         updatedAt: '2023-01-01T00:00:00Z',
-        userType: 'premium_individual',
+        userType: 'customer',
+        customerTier: 'premium_individual',
         membershipDetails: {
           features: [],
           limits: {

@@ -1,0 +1,2159 @@
+# 🎯 Roles & Permissions Implementation Plan
+## HarborList Marketplace - Complete Refactor
+
+**Version:** 2.0
+**Date:** October 18, 2025
+**Approach:** Clean refactor (no backward compatibility required)
+
+---
+
+## 📋 Table of Contents
+
+1. [Executive Summary](#executive-summary)
+2. [Current State Analysis](#current-state-analysis)
+3. [Target Architecture](#target-architecture)
+4. [Phase 1: Foundation & Fixes](#phase-1-foundation-fixes)
+5. [Phase 2: Dealer Sub-Accounts](#phase-2-dealer-sub-accounts)
+6. [Phase 3: Team-Based Staff Roles](#phase-3-team-based-staff-roles)
+7. [Phase 4: Testing & Validation](#phase-4-testing-validation)
+8. [Database Schema Changes](#database-schema-changes)
+9. [API Changes](#api-changes)
+10. [UI Changes](#ui-changes)
+11. [Implementation Timeline](#implementation-timeline)
+
+---
+
+## 🎯 Executive Summary
+
+### Goal
+Transform HarborList's role and permission system from a basic role-based model to a 
+sophisticated team-based architecture supporting:
+- Dealer sub-accounts with delegated permissions
+- Team-based staff roles with multi-team membership
+- Granular permission control per team
+- Clear separation between customer and staff domains
+
+### Approach
+Complete refactor without backward compatibility constraints. This allows us to:
+- Fix existing naming inconsistencies at the foundation
+- Redesign database schema optimally
+- Implement clean, maintainable architecture
+- Avoid technical debt from legacy support
+
+### Success Criteria
+- ✅ All staff members can be assigned to multiple teams
+- ✅ Dealers can create and manage sub-accounts with custom permissions
+- ✅ Permission calculation is consistent and auditable
+- ✅ Admin user appears in Staff tab (current bug fixed)
+- ✅ No role naming conflicts (hyphen vs underscore)
+
+---
+
+## 🔍 Current State Analysis
+
+### ✅ What's Working
+
+**Customer Tier System:**
+- Individual, Dealer, Premium Individual, Premium Dealer tiers exist
+- Cognito groups properly configured
+- Permission mappings functional
+- Feature flags work as expected
+
+**Staff Basic Roles:**
+- Super Admin, Admin, Manager, Team Member exist
+- Cognito Staff Pool separated from Customer Pool
+- Permission enum defined
+
+### ❌ What's Broken
+
+**Critical Issues:**
+1. **Role Naming Inconsistency**
+   - StaffRole enum: `'super-admin'` (hyphen)
+   - UserRole enum: `'super_admin'` (underscore)
+   - Backend filters: `'super_admin'` (underscore)
+   - Result: Admin users don't match filters → appear in wrong tab
+
+2. **Missing Permissions**
+   - PLATFORM_SETTINGS exists in middleware but not in enum
+   - SUPPORT_ACCESS exists in middleware but not in enum
+
+3. **Incomplete userType Implementation**
+   - Field added to create-admin-user script
+   - Not consistently set across all user creation paths
+   - No DynamoDB GSI for efficient filtering
+
+4. **Generic Manager Role**
+   - No team differentiation
+   - Cannot assign managers to specific domains
+   - All managers have same permissions
+
+### 🚫 What's Missing
+
+**Major Gaps:**
+1. **Dealer Sub-Accounts** - Dealers cannot create sub-users
+2. **Team-Based Roles** - No team concept for staff specialization
+3. **Permission Delegation** - No way to grant custom permissions
+4. **Multi-Team Assignment** - Users can't belong to multiple teams
+
+---
+
+## 🏗️ Target Architecture
+
+### Conceptual Model
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     HARBORLIST USERS                             │
+├──────────────────────────────┬──────────────────────────────────┤
+│     CUSTOMER DOMAIN          │       STAFF DOMAIN               │
+│   (Marketplace Users)        │   (Platform Operators)           │
+└──────────────────────────────┴──────────────────────────────────┘
+
+CUSTOMER HIERARCHY:              STAFF HIERARCHY:
+├─ Individual                    ├─ Super Admin (all permissions)
+├─ Premium Individual            ├─ Admin (cross-team access)
+├─ Dealer                        └─ Manager/Team Member (team-based)
+│  └─ Dealer Sub-Accounts ⭐         ├─ User Management Team
+└─ Premium Dealer                    ├─ Content Moderation Team
+   └─ Dealer Sub-Accounts ⭐         ├─ Analytics Team
+                                     ├─ Security Team
+                                     ├─ Tier Management Team
+                                     ├─ Sales Management Team
+                                     ├─ Billing Management Team
+                                     └─ Support Team
+
+⭐ = New feature
+```
+
+### Data Flow
+
+```
+User Authentication (Cognito)
+        ↓
+JWT Token with Claims
+        ↓
+getUserFromEvent() → Extract user info
+        ↓
+Load from DynamoDB → Get full user record
+        ↓
+calculateEffectivePermissions()
+        ├─ Super Admin → All permissions
+        ├─ Admin → Predefined permission set
+        └─ Manager/Team Member → Union of team permissions
+        ↓
+hasPermission() / requirePermission()
+        ↓
+Grant/Deny Access
+```
+
+---
+
+## 🔧 Phase 1: Foundation & Fixes
+
+**Duration:** 3-5 days
+**Priority:** CRITICAL (Prerequisite for all other phases)
+
+### 1.1 Standardize Role Naming Convention
+
+**Decision:** Use **underscores** throughout (matches UserRole enum canonical source)
+
+**Files to Update:**
+
+#### A. Shared Types (Source of Truth)
+```typescript
+// packages/shared-types/src/common.ts
+
+export enum UserRole {
+  USER = 'user',
+  ADMIN = 'admin',
+  SUPER_ADMIN = 'super_admin',      // ✓ Already correct
+  MODERATOR = 'moderator',
+  SUPPORT = 'support',
+  SALES = 'sales'
+}
+
+export enum StaffRole {
+  SUPER_ADMIN = 'super_admin',      // ✓ Changed from 'super-admin'
+  ADMIN = 'admin',
+  MANAGER = 'manager',
+  TEAM_MEMBER = 'team_member'       // ✓ Changed from 'team-member'
+}
+```
+
+#### B. Auth Service Interfaces
+```typescript
+// backend/src/auth-service/interfaces.ts
+
+export enum StaffRole {
+  SUPER_ADMIN = 'super_admin',      // Changed
+  ADMIN = 'admin',
+  MANAGER = 'manager',
+  TEAM_MEMBER = 'team_member'       // Changed
+}
+```
+
+#### C. Admin User Creation Script
+```typescript
+// backend/scripts/create-admin-user.ts
+
+type AdminRole = 'super_admin' | 'admin' | 'manager' | 'team_member';
+// Changed from: 'super-admin' | 'admin' | 'manager' | 'team-member'
+```
+
+#### D. Infrastructure (Cognito Groups)
+```typescript
+// infrastructure/lib/staff-auth-stack.ts
+
+this.staffGroups = {
+  superAdmin: new cognito.CfnUserPoolGroup(this, 'SuperAdminGroup', {
+    userPoolId: this.userPool.userPoolId,
+    groupName: 'super_admin',        // Changed from 'super-admin'
+    description: 'Super administrators with full system access',
+    precedence: 1,
+  }),
+  
+  teamMember: new cognito.CfnUserPoolGroup(this, 'TeamMemberGroup', {
+    userPoolId: this.userPool.userPoolId,
+    groupName: 'team_member',        // Changed from 'team-member'
+    description: 'Team members with basic operations access',
+    precedence: 4,
+  }),
+}
+```
+
+#### E. Backend Admin Service
+```typescript
+// backend/src/admin-service/index.ts
+
+// Staff role filter - already using underscores ✓
+const staffRoles = ['admin', 'super_admin', 'moderator', 'support'];
+
+// Cognito group mapping
+const cognitoGroupMap: Record<string, string> = {
+  'super_admin': 'SuperAdmins',     // Group name in Cognito
+  'admin': 'Admins',
+  'manager': 'Managers',
+  'team_member': 'TeamMembers',     // Changed from inconsistent naming
+  'moderator': 'Moderators',
+  'support': 'Support'
+};
+```
+
+### 1.2 Complete AdminPermission Enum
+
+Add missing permissions to make enum comprehensive:
+
+```typescript
+// packages/shared-types/src/common.ts
+
+export enum AdminPermission {
+  // Existing permissions
+  USER_MANAGEMENT = 'user_management',
+  CONTENT_MODERATION = 'content_moderation',
+  FINANCIAL_ACCESS = 'financial_access',
+  SYSTEM_CONFIG = 'system_config',
+  ANALYTICS_VIEW = 'analytics_view',
+  AUDIT_LOG_VIEW = 'audit_log_view',
+  TIER_MANAGEMENT = 'tier_management',
+  CAPABILITY_ASSIGNMENT = 'capability_assignment',
+  BILLING_MANAGEMENT = 'billing_management',
+  SALES_MANAGEMENT = 'sales_management',
+  
+  // NEW: Add missing permissions
+  PLATFORM_SETTINGS = 'platform_settings',
+  SUPPORT_ACCESS = 'support_access'
+}
+```
+
+### 1.3 Implement userType Field Consistently
+
+**Update all user creation paths:**
+
+```typescript
+// backend/src/auth-service/index.ts - Customer registration
+const userRecord = {
+  id: cognitoSub,
+  email: email,
+  role: 'user',
+  userType: 'customer',  // ✓ Add consistently
+  customerType: customerType,
+  // ... rest of fields
+};
+
+// backend/src/admin-service/index.ts - Staff creation
+const userRecord = {
+  id: userId,
+  email: email,
+  role: role,
+  userType: 'staff',     // ✓ Add consistently
+  // ... rest of fields
+};
+
+// backend/scripts/create-admin-user.ts - Admin creation
+const userRecord = {
+  id: cognitoUserId,
+  email: email,
+  role: role,
+  userType: 'staff',     // ✓ Already added
+  // ... rest of fields
+};
+```
+
+### 1.4 Add DynamoDB GSI for userType
+
+**Update Local Development Script:**
+
+```bash
+# tools/development/setup-local-dynamodb.sh
+# Update create_users_table() function
+
+# Current GSI configuration (lines ~210-245):
+# - email-index (existing)
+# - UserTypeIndex (existing ✓)
+# - PremiumExpirationIndex (existing)
+
+# MODIFY: Update UserTypeIndex to include sort key for better querying
+# Change from:
+{
+    "IndexName": "UserTypeIndex",
+    "KeySchema": [{"AttributeName": "userType", "KeyType": "HASH"}],
+    ...
+}
+
+# To:
+{
+    "IndexName": "UserTypeIndex",
+    "KeySchema": [
+        {"AttributeName": "userType", "KeyType": "HASH"},
+        {"AttributeName": "createdAt", "KeyType": "RANGE"}
+    ],
+    ...
+}
+
+# Note: Add 'createdAt' to attribute-definitions:
+AttributeName=createdAt,AttributeType=S
+```
+
+**Update CDK Infrastructure:**
+
+```typescript
+// infrastructure/lib/harborlist-stack.ts
+
+const usersTable = new dynamodb.Table(this, 'UsersTable', {
+  tableName: 'harborlist-users',
+  partitionKey: { name: 'id', type: dynamodb.AttributeType.STRING },
+  billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+  removalPolicy: cdk.RemovalPolicy.DESTROY,
+});
+
+// Existing email index
+usersTable.addGlobalSecondaryIndex({
+  indexName: 'email-index',
+  partitionKey: { name: 'email', type: dynamodb.AttributeType.STRING },
+});
+
+// UPDATED: UserTypeIndex with sort key for efficient filtering
+usersTable.addGlobalSecondaryIndex({
+  indexName: 'UserTypeIndex',
+  partitionKey: { name: 'userType', type: dynamodb.AttributeType.STRING },
+  sortKey: { name: 'createdAt', type: dynamodb.AttributeType.STRING },
+});
+
+// Existing premium expiration index
+usersTable.addGlobalSecondaryIndex({
+  indexName: 'PremiumExpirationIndex',
+  partitionKey: { name: 'premiumActive', type: dynamodb.AttributeType.STRING },
+  sortKey: { name: 'premiumExpiresAt', type: dynamodb.AttributeType.NUMBER },
+});
+```
+
+### 1.5 Fix Admin User Filtering
+
+Update backend to use standardized role names:
+
+```typescript
+// backend/src/admin-service/index.ts
+
+async function handleListUsers(event: AuthenticatedEvent) {
+  const userType = event.queryStringParameters?.type || 'all';
+  
+  // Updated staff roles list
+  const staffRoles = [
+    'admin',
+    'super_admin',
+    'manager',
+    'team_member',
+    'moderator',
+    'support'
+  ];
+  
+  if (userType === 'staff') {
+    // Option 1: Filter by role
+    users = users.filter(user => staffRoles.includes(user.role));
+    
+    // Option 2: Filter by userType (more efficient with GSI)
+    users = users.filter(user => user.userType === 'staff');
+  } else if (userType === 'customer') {
+    users = users.filter(user => user.userType === 'customer');
+  }
+  
+  return users;
+}
+```
+
+---
+
+## 🏢 Phase 2: Dealer Sub-Accounts
+
+**Duration:** 1-2 weeks
+**Priority:** HIGH (New feature, customer-facing)
+
+### 2.1 Database Schema Design
+
+#### New Fields in User Record
+
+```typescript
+// DynamoDB: harborlist-users table
+
+interface CustomerUserRecord {
+  // Existing fields
+  id: string;
+  email: string;
+  name: string;
+  role: 'user';
+  userType: 'customer';
+  customerType: 'individual' | 'dealer' | 'premium';
+  
+  // NEW: Dealer sub-account fields
+  isDealerSubAccount: boolean;           // Quick flag for filtering
+  parentDealerId?: string;               // Link to parent dealer user
+  dealerAccountRole?: DealerRole;        // Role within dealer organization
+  delegatedPermissions?: string[];       // Custom permissions granted by dealer
+  
+  // NEW: Access scope restrictions
+  accessScope?: {
+    listings: string[] | 'all';          // Which listings can access
+    leads: boolean;                       // Can view/respond to leads
+    analytics: boolean;                   // Can view analytics
+    inventory: boolean;                   // Can manage inventory
+    pricing: boolean;                     // Can edit prices
+    communications: boolean;              // Can message customers
+  };
+  
+  // Metadata
+  createdBy?: string;                    // Who created this sub-account
+  invitedAt?: string;
+  activatedAt?: string;
+  lastLoginAt?: string;
+  status: 'active' | 'suspended' | 'pending_invite';
+}
+
+enum DealerRole {
+  ADMIN = 'admin',       // Full dealer account access
+  MANAGER = 'manager',   // Can manage listings and staff
+  STAFF = 'staff'        // Limited to assigned tasks
+}
+```
+
+**Update DynamoDB Setup Script:**
+
+```bash
+# tools/development/setup-local-dynamodb.sh
+# Add new GSI: ParentDealerIndex
+
+# Modify create_users_table() function (around line 210)
+# Add to attribute-definitions:
+AttributeName=parentDealerId,AttributeType=S
+
+# Add to global-secondary-indexes array:
+{
+    "IndexName": "ParentDealerIndex",
+    "KeySchema": [
+        {"AttributeName": "parentDealerId", "KeyType": "HASH"},
+        {"AttributeName": "createdAt", "KeyType": "RANGE"}
+    ],
+    "Projection": {"ProjectionType": "ALL"},
+    "ProvisionedThroughput": {"ReadCapacityUnits": 5, "WriteCapacityUnits": 5}
+}
+
+# This allows efficient queries like:
+# "Get all sub-accounts for dealer X, sorted by creation date"
+```
+
+**Update CDK Infrastructure:**
+
+```typescript
+// infrastructure/lib/harborlist-stack.ts
+
+// Add ParentDealerIndex for dealer sub-account queries
+usersTable.addGlobalSecondaryIndex({
+  indexName: 'ParentDealerIndex',
+  partitionKey: { name: 'parentDealerId', type: dynamodb.AttributeType.STRING },
+  sortKey: { name: 'createdAt', type: dynamodb.AttributeType.STRING },
+});
+```
+
+#### New Table: Dealer Organizations (Optional, for better structure)
+
+```typescript
+// DynamoDB: harborlist-dealer-orgs (optional enhancement)
+
+interface DealerOrganization {
+  orgId: string;                         // Primary key
+  ownerId: string;                       // Primary dealer user ID
+  name: string;                          // Business name
+  status: 'active' | 'suspended';
+  
+  // Sub-accounts
+  subAccounts: Array<{
+    userId: string;
+    role: DealerRole;
+    permissions: string[];
+    addedAt: string;
+    addedBy: string;
+  }>;
+  
+  // Organization settings
+  settings: {
+    maxSubAccounts: number;              // Based on subscription tier
+    requireApproval: boolean;            // Sub-account actions need approval
+    sharedAccessToAllListings: boolean;
+  };
+  
+  createdAt: string;
+  updatedAt: string;
+}
+```
+
+### 2.2 Permission Delegation System
+
+Define delegatable permissions for dealers:
+
+```typescript
+// packages/shared-types/src/common.ts
+
+export enum DealerDelegatedPermission {
+  MANAGE_LISTINGS = 'manage_listings',
+  CREATE_LISTINGS = 'create_listings',
+  EDIT_LISTINGS = 'edit_listings',
+  DELETE_LISTINGS = 'delete_listings',
+  VIEW_ANALYTICS = 'view_analytics',
+  RESPOND_TO_LEADS = 'respond_to_leads',
+  MANAGE_INVENTORY = 'manage_inventory',
+  UPDATE_PRICING = 'update_pricing',
+  MANAGE_COMMUNICATIONS = 'manage_communications',
+  MANAGE_SUB_ACCOUNTS = 'manage_sub_accounts',  // Only for dealer admin role
+}
+
+// Default permission sets by role
+export const DEALER_ROLE_PERMISSIONS = {
+  [DealerRole.ADMIN]: Object.values(DealerDelegatedPermission),
+  
+  [DealerRole.MANAGER]: [
+    DealerDelegatedPermission.MANAGE_LISTINGS,
+    DealerDelegatedPermission.CREATE_LISTINGS,
+    DealerDelegatedPermission.EDIT_LISTINGS,
+    DealerDelegatedPermission.VIEW_ANALYTICS,
+    DealerDelegatedPermission.RESPOND_TO_LEADS,
+    DealerDelegatedPermission.MANAGE_INVENTORY,
+    DealerDelegatedPermission.UPDATE_PRICING,
+    DealerDelegatedPermission.MANAGE_COMMUNICATIONS,
+  ],
+  
+  [DealerRole.STAFF]: [
+    DealerDelegatedPermission.EDIT_LISTINGS,
+    DealerDelegatedPermission.RESPOND_TO_LEADS,
+    DealerDelegatedPermission.MANAGE_COMMUNICATIONS,
+  ],
+};
+```
+
+### 2.3 API Endpoints
+
+Create new endpoints for dealer sub-account management:
+
+```typescript
+// backend/src/dealer-service/sub-accounts.ts
+
+/**
+ * Dealer Sub-Account Management Endpoints
+ */
+
+// Create sub-account
+POST /api/dealer/sub-accounts
+Body: {
+  email: string;
+  name: string;
+  role: 'admin' | 'manager' | 'staff';
+  permissions?: DealerDelegatedPermission[];  // Optional custom
+  accessScope?: {
+    listings: string[] | 'all';
+    leads: boolean;
+    analytics: boolean;
+  };
+}
+Response: {
+  success: boolean;
+  subAccount: DealerSubAccount;
+  inviteLink: string;
+}
+
+// List sub-accounts
+GET /api/dealer/sub-accounts
+Query: ?status=active&role=manager
+Response: {
+  subAccounts: DealerSubAccount[];
+  total: number;
+}
+
+// Get sub-account details
+GET /api/dealer/sub-accounts/:id
+Response: {
+  subAccount: DealerSubAccount;
+  activity: UserActivity[];
+}
+
+// Update sub-account permissions
+PUT /api/dealer/sub-accounts/:id/permissions
+Body: {
+  role?: DealerRole;
+  permissions?: DealerDelegatedPermission[];
+  accessScope?: AccessScope;
+}
+
+// Suspend/restore sub-account
+PUT /api/dealer/sub-accounts/:id/status
+Body: {
+  status: 'active' | 'suspended';
+  reason?: string;
+}
+
+// Delete sub-account
+DELETE /api/dealer/sub-accounts/:id
+
+// Resend invite
+POST /api/dealer/sub-accounts/:id/resend-invite
+
+// Sub-account accepts invite (special endpoint)
+POST /api/dealer/sub-accounts/accept-invite/:token
+Body: {
+  password: string;
+  acceptTerms: boolean;
+}
+```
+
+### 2.4 Authorization Middleware
+
+Add permission checking for dealer sub-accounts:
+
+```typescript
+// backend/src/shared/dealer-auth.ts
+
+export function requireDealerPermission(
+  user: User,
+  permission: DealerDelegatedPermission
+): void {
+  // Parent dealer has all permissions
+  if (!user.isDealerSubAccount) {
+    return;
+  }
+  
+  // Check if sub-account has permission
+  if (!user.delegatedPermissions?.includes(permission)) {
+    throw new AuthorizationError(
+      `Access denied: Missing permission ${permission}`
+    );
+  }
+}
+
+export function requireListingAccess(
+  user: User,
+  listingId: string
+): void {
+  if (!user.isDealerSubAccount) {
+    return; // Parent dealer has access to all
+  }
+  
+  const scope = user.accessScope;
+  
+  // Check if has access to this specific listing
+  if (scope?.listings === 'all') {
+    return;
+  }
+  
+  if (!scope?.listings?.includes(listingId)) {
+    throw new AuthorizationError(
+      `Access denied: No access to listing ${listingId}`
+    );
+  }
+}
+
+// Example usage in listing endpoint
+async function handleUpdateListing(event: APIGatewayEvent) {
+  const user = await getUserFromEvent(event);
+  const listingId = event.pathParameters?.id;
+  
+  // Check dealer permission
+  requireDealerPermission(user, DealerDelegatedPermission.EDIT_LISTINGS);
+  
+  // Check access to this specific listing
+  requireListingAccess(user, listingId);
+  
+  // Proceed with update
+  await updateListing(listingId, data);
+}
+```
+
+### 2.5 UI Components
+
+Create new frontend components for dealer sub-account management:
+
+```typescript
+// frontend/src/pages/dealer/SubAccounts.tsx
+
+interface SubAccountsPage {
+  components: [
+    'SubAccountsList',           // Table of all sub-accounts
+    'CreateSubAccountModal',     // Form to create new sub-account
+    'EditPermissionsModal',      // Customize permissions
+    'SubAccountActivityLog',     // View what sub-account did
+    'InviteManagement',          // Resend/cancel invites
+  ];
+}
+
+// frontend/src/components/dealer/CreateSubAccountForm.tsx
+
+<CreateSubAccountForm>
+  <Input label="Email" name="email" />
+  <Input label="Name" name="name" />
+  
+  <Select label="Role" name="role">
+    <Option value="admin">Admin - Full Access</Option>
+    <Option value="manager">Manager - Can manage listings</Option>
+    <Option value="staff">Staff - Limited access</Option>
+  </Select>
+  
+  <PermissionCheckboxes>
+    <Checkbox value="manage_listings">Manage Listings</Checkbox>
+    <Checkbox value="respond_to_leads">Respond to Leads</Checkbox>
+    <Checkbox value="view_analytics">View Analytics</Checkbox>
+    {/* ... more permissions */}
+  </PermissionCheckboxes>
+  
+  <AccessScopeSelector>
+    <RadioGroup label="Listing Access">
+      <Radio value="all">All Listings</Radio>
+      <Radio value="specific">Specific Listings</Radio>
+    </RadioGroup>
+    
+    {accessScope === 'specific' && (
+      <ListingSelector multiple />
+    )}
+  </AccessScopeSelector>
+  
+  <Button type="submit">Create & Send Invite</Button>
+</CreateSubAccountForm>
+```
+
+---
+
+## 👥 Phase 3: Team-Based Staff Roles
+
+**Duration:** 2-3 weeks
+**Priority:** HIGH (Core refactor)
+
+### 3.1 Team Definition System
+
+Create comprehensive team structure:
+
+```typescript
+// packages/shared-types/src/teams.ts
+
+export enum TeamId {
+  USER_MANAGEMENT = 'user_management',
+  CONTENT_MODERATION = 'content_moderation',
+  ANALYTICS = 'analytics',
+  SECURITY = 'security',
+  TIER_MANAGEMENT = 'tier_management',
+  SALES_MANAGEMENT = 'sales_management',
+  BILLING_MANAGEMENT = 'billing_management',
+  SUPPORT = 'support'
+}
+
+export enum TeamRole {
+  MANAGER = 'manager',      // Team lead
+  MEMBER = 'member'         // Team member
+}
+
+export interface TeamDefinition {
+  id: TeamId;
+  name: string;
+  description: string;
+  permissions: AdminPermission[];
+  accessScope: string;
+  capabilities: string[];
+}
+
+export const TEAM_DEFINITIONS: Record<TeamId, TeamDefinition> = {
+  [TeamId.USER_MANAGEMENT]: {
+    id: TeamId.USER_MANAGEMENT,
+    name: 'User Management Team',
+    description: 'Customer account and membership oversight',
+    permissions: [
+      AdminPermission.USER_MANAGEMENT,
+      AdminPermission.TIER_MANAGEMENT,
+    ],
+    accessScope: 'Full access to customer accounts, profiles, and tier management',
+    capabilities: [
+      'View/edit customer profiles',
+      'Approve/upgrade/downgrade customer tiers',
+      'Manage dealer sub-accounts',
+      'Suspend/restore user accounts',
+      'Reset user passwords',
+      'Verify email addresses',
+    ]
+  },
+  
+  [TeamId.CONTENT_MODERATION]: {
+    id: TeamId.CONTENT_MODERATION,
+    name: 'Content Moderation Team',
+    description: 'User-generated listings, reviews, and content oversight',
+    permissions: [
+      AdminPermission.CONTENT_MODERATION,
+    ],
+    accessScope: 'Access to all user-generated content for review and moderation',
+    capabilities: [
+      'Approve/reject listings',
+      'Moderate listing photos and descriptions',
+      'Review and moderate user comments',
+      'Flag inappropriate content',
+      'Handle content violation reports',
+      'Manage moderation queue',
+    ]
+  },
+  
+  [TeamId.ANALYTICS]: {
+    id: TeamId.ANALYTICS,
+    name: 'Analytics Team',
+    description: 'Platform metrics and business intelligence',
+    permissions: [
+      AdminPermission.ANALYTICS_VIEW,
+    ],
+    accessScope: 'Read-only access to all platform analytics and reports',
+    capabilities: [
+      'View dashboard analytics',
+      'Access user behavior metrics',
+      'Generate custom reports',
+      'Export analytics data',
+      'View conversion metrics',
+      'Analyze listing performance',
+    ]
+  },
+  
+  [TeamId.SECURITY]: {
+    id: TeamId.SECURITY,
+    name: 'Security Team',
+    description: 'Security monitoring and compliance oversight',
+    permissions: [
+      AdminPermission.AUDIT_LOG_VIEW,
+    ],
+    accessScope: 'Access to security logs, audit trails, and compliance reports',
+    capabilities: [
+      'View audit logs',
+      'Monitor login anomalies',
+      'Review security events',
+      'Track admin actions',
+      'Investigate suspicious activity',
+      'Generate compliance reports',
+    ]
+  },
+  
+  [TeamId.TIER_MANAGEMENT]: {
+    id: TeamId.TIER_MANAGEMENT,
+    name: 'Tier Management Team',
+    description: 'Membership tier configuration and pricing',
+    permissions: [
+      AdminPermission.TIER_MANAGEMENT,
+    ],
+    accessScope: 'Manage tier definitions, features, and pricing',
+    capabilities: [
+      'Configure tier features',
+      'Update tier pricing',
+      'Create promotional campaigns',
+      'Manage discount codes',
+      'Set tier limits and quotas',
+    ]
+  },
+  
+  [TeamId.SALES_MANAGEMENT]: {
+    id: TeamId.SALES_MANAGEMENT,
+    name: 'Sales Management Team',
+    description: 'Lead management and dealer sales pipeline',
+    permissions: [
+      AdminPermission.SALES_MANAGEMENT,
+    ],
+    accessScope: 'Access to CRM, lead data, and dealer onboarding',
+    capabilities: [
+      'View sales pipeline',
+      'Manage dealer leads',
+      'Access CRM data',
+      'Export sales reports',
+      'Track conversion metrics',
+      'Manage dealer onboarding',
+    ]
+  },
+  
+  [TeamId.BILLING_MANAGEMENT]: {
+    id: TeamId.BILLING_MANAGEMENT,
+    name: 'Billing Management Team',
+    description: 'Payment processing, refunds, and billing disputes',
+    permissions: [
+      AdminPermission.BILLING_MANAGEMENT,
+    ],
+    accessScope: 'Access to billing records, payment history, and refund processing',
+    capabilities: [
+      'View billing records',
+      'Process refunds',
+      'Resolve payment disputes',
+      'Issue credits',
+      'Manage payment methods',
+      'Generate billing reports',
+    ]
+  },
+  
+  [TeamId.SUPPORT]: {
+    id: TeamId.SUPPORT,
+    name: 'Support Team',
+    description: 'Customer service and ticket resolution',
+    permissions: [
+      AdminPermission.SUPPORT_ACCESS,
+    ],
+    accessScope: 'Access to support tickets and customer service tools',
+    capabilities: [
+      'View support tickets',
+      'Respond to customer inquiries',
+      'View user accounts (read-only)',
+      'Escalate issues to managers',
+      'Access knowledge base',
+      'Create support documentation',
+    ]
+  },
+};
+```
+
+### 3.2 Database Schema for Teams
+
+Update staff user records to support team membership:
+
+```typescript
+// DynamoDB: harborlist-users table (staff users)
+
+interface StaffUserRecord {
+  // Existing fields
+  id: string;
+  email: string;
+  name: string;
+  role: 'super_admin' | 'admin' | 'manager' | 'team_member';
+  userType: 'staff';
+  status: 'active' | 'suspended';
+  
+  // NEW: Team membership
+  teams: TeamAssignment[];           // Array of team assignments
+  
+  // COMPUTED: Effective permissions (calculated from teams)
+  effectivePermissions: AdminPermission[];
+  
+  // Metadata
+  createdAt: string;
+  updatedAt: string;
+  lastLoginAt: string;
+  sessionTimeout: number;
+}
+
+interface TeamAssignment {
+  teamId: TeamId;
+  teamName: string;                  // Denormalized for quick display
+  role: TeamRole;                    // 'manager' or 'member'
+  permissions: AdminPermission[];    // From team definition
+  assignedAt: string;
+  assignedBy: string;                // Who added them to the team
+}
+
+// Example staff user with teams
+{
+  id: "staff-123",
+  email: "sarah@harborlist.com",
+  name: "Sarah Johnson",
+  role: "manager",
+  userType: "staff",
+  
+  teams: [
+    {
+      teamId: "user_management",
+      teamName: "User Management Team",
+      role: "manager",
+      permissions: ["USER_MANAGEMENT", "TIER_MANAGEMENT"],
+      assignedAt: "2025-10-01T10:00:00Z",
+      assignedBy: "admin@harborlist.com"
+    },
+    {
+      teamId: "billing_management",
+      teamName: "Billing Management Team",
+      role: "member",
+      permissions: ["BILLING_MANAGEMENT"],
+      assignedAt: "2025-10-05T14:30:00Z",
+      assignedBy: "admin@harborlist.com"
+    }
+  ],
+  
+  effectivePermissions: [
+    "USER_MANAGEMENT",
+    "TIER_MANAGEMENT",
+    "BILLING_MANAGEMENT"
+  ]
+}
+```
+
+### 3.3 Permission Calculation Logic
+
+Implement clean permission resolution:
+
+```typescript
+// backend/src/shared/team-permissions.ts
+
+/**
+ * Calculate effective permissions for a staff user
+ */
+export function calculateEffectivePermissions(user: StaffUserRecord): AdminPermission[] {
+  // Super Admin: All permissions
+  if (user.role === 'super_admin') {
+    return Object.values(AdminPermission);
+  }
+  
+  // Admin: Predefined permission set (cross-team access)
+  if (user.role === 'admin') {
+    return [
+      AdminPermission.USER_MANAGEMENT,
+      AdminPermission.CONTENT_MODERATION,
+      AdminPermission.SYSTEM_CONFIG,
+      AdminPermission.ANALYTICS_VIEW,
+      AdminPermission.AUDIT_LOG_VIEW,
+      AdminPermission.TIER_MANAGEMENT,
+      AdminPermission.BILLING_MANAGEMENT,
+    ];
+  }
+  
+  // Manager/Team Member: Union of all team permissions
+  const permissionSet = new Set<AdminPermission>();
+  
+  user.teams?.forEach(teamAssignment => {
+    teamAssignment.permissions.forEach(permission => {
+      permissionSet.add(permission);
+    });
+  });
+  
+  return Array.from(permissionSet);
+}
+
+/**
+ * Check if user has specific permission
+ */
+export function hasPermission(
+  user: StaffUserRecord,
+  permission: AdminPermission
+): boolean {
+  const effective = calculateEffectivePermissions(user);
+  return effective.includes(permission);
+}
+
+/**
+ * Check if user has access to a team
+ */
+export function hasTeamAccess(
+  user: StaffUserRecord,
+  teamId: TeamId
+): boolean {
+  // Super Admin and Admin have access to all teams
+  if (user.role === 'super_admin' || user.role === 'admin') {
+    return true;
+  }
+  
+  // Check if user is member of the team
+  return user.teams?.some(t => t.teamId === teamId) || false;
+}
+
+/**
+ * Check if user is manager of a specific team
+ */
+export function isTeamManager(
+  user: StaffUserRecord,
+  teamId: TeamId
+): boolean {
+  if (user.role === 'super_admin' || user.role === 'admin') {
+    return true; // Admins are effectively managers of all teams
+  }
+  
+  const teamAssignment = user.teams?.find(t => t.teamId === teamId);
+  return teamAssignment?.role === 'manager';
+}
+
+/**
+ * Get user's role in a specific team
+ */
+export function getTeamRole(
+  user: StaffUserRecord,
+  teamId: TeamId
+): TeamRole | null {
+  if (user.role === 'super_admin' || user.role === 'admin') {
+    return TeamRole.MANAGER;
+  }
+  
+  const teamAssignment = user.teams?.find(t => t.teamId === teamId);
+  return teamAssignment?.role || null;
+}
+```
+
+### 3.4 Authorization Middleware
+
+Update middleware to support team-based access:
+
+```typescript
+// backend/src/shared/middleware.ts
+
+/**
+ * Require permission (works with team-based permissions)
+ */
+export function requirePermission(permission: AdminPermission) {
+  return async (event: APIGatewayEvent) => {
+    const user = await getUserFromEvent(event);
+    
+    if (!hasPermission(user, permission)) {
+      throw new AuthorizationError(
+        `Access denied: Missing permission ${permission}`,
+        { requiredPermission: permission, userPermissions: user.effectivePermissions }
+      );
+    }
+  };
+}
+
+/**
+ * Require team access (new)
+ */
+export function requireTeamAccess(teamId: TeamId, minRole?: TeamRole) {
+  return async (event: APIGatewayEvent) => {
+    const user = await getUserFromEvent(event);
+    
+    if (!hasTeamAccess(user, teamId)) {
+      throw new AuthorizationError(
+        `Access denied: Not a member of ${teamId} team`
+      );
+    }
+    
+    if (minRole === TeamRole.MANAGER && !isTeamManager(user, teamId)) {
+      throw new AuthorizationError(
+        `Access denied: Requires manager role in ${teamId} team`
+      );
+    }
+  };
+}
+
+/**
+ * Require any of multiple permissions (OR logic)
+ */
+export function requireAnyPermission(permissions: AdminPermission[]) {
+  return async (event: APIGatewayEvent) => {
+    const user = await getUserFromEvent(event);
+    
+    const hasAny = permissions.some(perm => hasPermission(user, perm));
+    
+    if (!hasAny) {
+      throw new AuthorizationError(
+        `Access denied: Requires at least one of: ${permissions.join(', ')}`,
+        { requiredPermissions: permissions }
+      );
+    }
+  };
+}
+
+/**
+ * Require all permissions (AND logic)
+ */
+export function requireAllPermissions(permissions: AdminPermission[]) {
+  return async (event: APIGatewayEvent) => {
+    const user = await getUserFromEvent(event);
+    
+    const missingPermissions = permissions.filter(
+      perm => !hasPermission(user, perm)
+    );
+    
+    if (missingPermissions.length > 0) {
+      throw new AuthorizationError(
+        `Access denied: Missing permissions: ${missingPermissions.join(', ')}`,
+        { requiredPermissions: permissions, missingPermissions }
+      );
+    }
+  };
+}
+```
+
+### 3.5 API Endpoints for Team Management
+
+```typescript
+// backend/src/admin-service/teams.ts
+
+/**
+ * Team Management Endpoints
+ */
+
+// List all teams
+GET /api/admin/teams
+Response: {
+  teams: TeamDefinition[];
+}
+
+// Get team details
+GET /api/admin/teams/:teamId
+Response: {
+  team: TeamDefinition;
+  members: StaffUserSummary[];
+  statistics: {
+    totalMembers: number;
+    managers: number;
+    members: number;
+  };
+}
+
+// List team members
+GET /api/admin/teams/:teamId/members
+Query: ?role=manager
+Response: {
+  members: Array<{
+    userId: string;
+    email: string;
+    name: string;
+    role: TeamRole;
+    assignedAt: string;
+    assignedBy: string;
+  }>;
+}
+
+// Assign user to team
+POST /api/admin/staff/:userId/teams
+Body: {
+  teamId: TeamId;
+  role: TeamRole;
+}
+Response: {
+  success: boolean;
+  teamAssignment: TeamAssignment;
+}
+
+// Update user's role in team
+PUT /api/admin/staff/:userId/teams/:teamId
+Body: {
+  role: TeamRole;
+}
+
+// Remove user from team
+DELETE /api/admin/staff/:userId/teams/:teamId
+
+// Bulk assign users to team
+POST /api/admin/teams/:teamId/members/bulk
+Body: {
+  userIds: string[];
+  role: TeamRole;
+}
+
+// Get user's teams
+GET /api/admin/staff/:userId/teams
+Response: {
+  teams: TeamAssignment[];
+  effectivePermissions: AdminPermission[];
+}
+```
+
+### 3.6 Update Staff Creation Flow
+
+Modify staff user creation to include team assignment:
+
+```typescript
+// backend/src/admin-service/staff.ts
+
+async function handleCreateStaff(event: APIGatewayEvent) {
+  const { email, name, baseRole, teams } = JSON.parse(event.body);
+  
+  // 1. Create user in Cognito Staff Pool
+  const cognitoUser = await createCognitoUser(email, name, baseRole);
+  
+  // 2. Create user record in DynamoDB
+  const userRecord = {
+    id: cognitoUser.sub,
+    email,
+    name,
+    role: baseRole,
+    userType: 'staff',
+    teams: [],  // Initialize empty
+    effectivePermissions: [],
+    status: 'active',
+    createdAt: new Date().toISOString(),
+  };
+  
+  await docClient.send(new PutCommand({
+    TableName: USERS_TABLE,
+    Item: userRecord
+  }));
+  
+  // 3. Assign to teams
+  for (const teamAssignment of teams) {
+    await assignUserToTeam(cognitoUser.sub, teamAssignment.teamId, teamAssignment.role);
+  }
+  
+  // 4. Recalculate effective permissions
+  const updatedUser = await getUserById(cognitoUser.sub);
+  const effectivePermissions = calculateEffectivePermissions(updatedUser);
+  
+  await updateUser(cognitoUser.sub, { effectivePermissions });
+  
+  return {
+    statusCode: 201,
+    body: JSON.stringify({
+      success: true,
+      staff: updatedUser
+    })
+  };
+}
+```
+
+### 3.7 UI Components
+
+Create frontend components for team management:
+
+```typescript
+// frontend/src/pages/admin/TeamManagement.tsx
+
+interface TeamManagementPage {
+  sections: [
+    'TeamsList',           // Overview of all teams
+    'TeamDetails',         // Members and permissions per team
+    'StaffAssignment',     // Assign staff to teams
+    'PermissionMatrix',    // Visual permission overview
+  ];
+}
+
+// frontend/src/components/admin/CreateStaffForm.tsx
+
+<CreateStaffForm>
+  <Input label="Email" name="email" required />
+  <Input label="Name" name="name" required />
+  
+  <Select label="Base Role" name="baseRole">
+    <Option value="manager">Manager</Option>
+    <Option value="team_member">Team Member</Option>
+  </Select>
+  
+  <TeamAssignmentSection>
+    <h3>Team Assignments</h3>
+    <p>Select which teams this user will belong to:</p>
+    
+    {Object.values(TEAM_DEFINITIONS).map(team => (
+      <TeamCard key={team.id}>
+        <Checkbox 
+          value={team.id}
+          label={team.name}
+        />
+        
+        {selectedTeams.includes(team.id) && (
+          <Select label="Role in Team">
+            <Option value="manager">Manager</Option>
+            <Option value="member">Member</Option>
+          </Select>
+        )}
+        
+        <div className="team-info">
+          <p>{team.description}</p>
+          <PermissionBadges permissions={team.permissions} />
+        </div>
+      </TeamCard>
+    ))}
+  </TeamAssignmentSection>
+  
+  <EffectivePermissionsPreview>
+    <h4>Effective Permissions</h4>
+    <p>This user will have the following permissions:</p>
+    <PermissionList permissions={calculatePreviewPermissions()} />
+  </EffectivePermissionsPreview>
+  
+  <Button type="submit">Create Staff Member</Button>
+</CreateStaffForm>
+
+// frontend/src/pages/admin/TeamDetails.tsx
+
+<TeamDetailsPage>
+  <TeamHeader>
+    <h1>{team.name}</h1>
+    <p>{team.description}</p>
+    <PermissionBadges permissions={team.permissions} />
+  </TeamHeader>
+  
+  <TeamStats>
+    <Stat label="Total Members" value={stats.totalMembers} />
+    <Stat label="Managers" value={stats.managers} />
+    <Stat label="Members" value={stats.members} />
+  </TeamStats>
+  
+  <TeamMembersTable>
+    <TableHeader>
+      <th>Name</th>
+      <th>Email</th>
+      <th>Role in Team</th>
+      <th>Assigned Date</th>
+      <th>Actions</th>
+    </TableHeader>
+    <TableBody>
+      {members.map(member => (
+        <TableRow key={member.userId}>
+          <td>{member.name}</td>
+          <td>{member.email}</td>
+          <td><Badge>{member.role}</Badge></td>
+          <td>{formatDate(member.assignedAt)}</td>
+          <td>
+            <Button onClick={() => changeRole(member)}>Change Role</Button>
+            <Button onClick={() => removeMember(member)}>Remove</Button>
+          </td>
+        </TableRow>
+      ))}
+    </TableBody>
+  </TeamMembersTable>
+  
+  <AddMemberButton onClick={openAddMemberModal}>
+    Add Team Member
+  </AddMemberButton>
+</TeamDetailsPage>
+```
+
+---
+
+## 🧪 Phase 4: Testing & Validation
+
+**Duration:** 1 week
+**Priority:** CRITICAL
+
+### 4.1 Unit Tests
+
+```typescript
+// backend/src/shared/__tests__/team-permissions.test.ts
+
+describe('Team Permission System', () => {
+  describe('calculateEffectivePermissions', () => {
+    it('should return all permissions for super_admin', () => {
+      const user = { role: 'super_admin', teams: [] };
+      const perms = calculateEffectivePermissions(user);
+      expect(perms).toHaveLength(Object.keys(AdminPermission).length);
+    });
+    
+    it('should return union of team permissions for manager', () => {
+      const user = {
+        role: 'manager',
+        teams: [
+          { teamId: 'user_management', permissions: ['USER_MANAGEMENT'] },
+          { teamId: 'billing_management', permissions: ['BILLING_MANAGEMENT'] }
+        ]
+      };
+      const perms = calculateEffectivePermissions(user);
+      expect(perms).toContain('USER_MANAGEMENT');
+      expect(perms).toContain('BILLING_MANAGEMENT');
+      expect(perms).toHaveLength(2);
+    });
+    
+    it('should handle team member with single team', () => {
+      const user = {
+        role: 'team_member',
+        teams: [
+          { teamId: 'support', permissions: ['SUPPORT_ACCESS'] }
+        ]
+      };
+      const perms = calculateEffectivePermissions(user);
+      expect(perms).toEqual(['SUPPORT_ACCESS']);
+    });
+  });
+  
+  describe('hasTeamAccess', () => {
+    it('should return true for admin on any team', () => {
+      const user = { role: 'admin', teams: [] };
+      expect(hasTeamAccess(user, 'user_management')).toBe(true);
+    });
+    
+    it('should return true if user is member of team', () => {
+      const user = {
+        role: 'manager',
+        teams: [{ teamId: 'analytics', role: 'member' }]
+      };
+      expect(hasTeamAccess(user, 'analytics')).toBe(true);
+    });
+    
+    it('should return false if user not in team', () => {
+      const user = {
+        role: 'team_member',
+        teams: [{ teamId: 'support', role: 'member' }]
+      };
+      expect(hasTeamAccess(user, 'billing_management')).toBe(false);
+    });
+  });
+});
+
+// backend/src/dealer-service/__tests__/sub-accounts.test.ts
+
+describe('Dealer Sub-Account System', () => {
+  describe('Permission Delegation', () => {
+    it('should allow dealer to create sub-account', async () => {
+      const dealer = createMockDealer();
+      const subAccount = await createSubAccount(dealer, {
+        email: 'staff@dealer.com',
+        role: 'staff',
+        permissions: ['EDIT_LISTINGS']
+      });
+      
+      expect(subAccount.parentDealerId).toBe(dealer.id);
+      expect(subAccount.isDealerSubAccount).toBe(true);
+    });
+    
+    it('should enforce permission checks for sub-accounts', () => {
+      const subAccount = {
+        isDealerSubAccount: true,
+        delegatedPermissions: ['EDIT_LISTINGS']
+      };
+      
+      expect(() => {
+        requireDealerPermission(subAccount, 'DELETE_LISTINGS');
+      }).toThrow('Missing permission DELETE_LISTINGS');
+    });
+    
+    it('should enforce listing access scope', () => {
+      const subAccount = {
+        isDealerSubAccount: true,
+        accessScope: { listings: ['listing-1', 'listing-2'] }
+      };
+      
+      expect(() => {
+        requireListingAccess(subAccount, 'listing-3');
+      }).toThrow('No access to listing listing-3');
+    });
+  });
+});
+```
+
+### 4.2 Integration Tests
+
+```typescript
+// backend/src/__tests__/integration/staff-workflow.test.ts
+
+describe('Staff Workflow Integration', () => {
+  it('should complete full staff creation and team assignment', async () => {
+    // 1. Create staff user
+    const response = await request(app)
+      .post('/api/admin/staff')
+      .send({
+        email: 'manager@test.com',
+        name: 'Test Manager',
+        baseRole: 'manager',
+        teams: [
+          { teamId: 'user_management', role: 'manager' },
+          { teamId: 'support', role: 'member' }
+        ]
+      });
+    
+    expect(response.status).toBe(201);
+    const { staff } = response.body;
+    
+    // 2. Verify team assignments
+    const teamResponse = await request(app)
+      .get(`/api/admin/staff/${staff.id}/teams`);
+    
+    expect(teamResponse.body.teams).toHaveLength(2);
+    
+    // 3. Verify effective permissions
+    expect(teamResponse.body.effectivePermissions).toContain('USER_MANAGEMENT');
+    expect(teamResponse.body.effectivePermissions).toContain('SUPPORT_ACCESS');
+    
+    // 4. Test permission-gated endpoint
+    const userListResponse = await request(app)
+      .get('/api/admin/users')
+      .set('Authorization', `Bearer ${staff.token}`);
+    
+    expect(userListResponse.status).toBe(200);
+  });
+});
+```
+
+### 4.3 End-to-End Tests
+
+```typescript
+// frontend/cypress/e2e/staff-management.cy.ts
+
+describe('Staff Management E2E', () => {
+  beforeEach(() => {
+    cy.loginAsAdmin();
+  });
+  
+  it('should create staff member with team assignments', () => {
+    cy.visit('/admin/staff');
+    cy.get('[data-testid="create-staff-btn"]').click();
+    
+    // Fill form
+    cy.get('input[name="email"]').type('newstaff@test.com');
+    cy.get('input[name="name"]').type('New Staff Member');
+    cy.get('select[name="baseRole"]').select('manager');
+    
+    // Assign to teams
+    cy.get('[data-testid="team-checkbox-user_management"]').check();
+    cy.get('[data-testid="team-role-user_management"]').select('manager');
+    
+    cy.get('[data-testid="team-checkbox-analytics"]').check();
+    cy.get('[data-testid="team-role-analytics"]').select('member');
+    
+    // Verify preview
+    cy.get('[data-testid="effective-permissions"]')
+      .should('contain', 'USER_MANAGEMENT')
+      .and('contain', 'ANALYTICS_VIEW');
+    
+    // Submit
+    cy.get('button[type="submit"]').click();
+    
+    // Verify success
+    cy.get('[data-testid="success-message"]')
+      .should('be.visible')
+      .and('contain', 'Staff member created');
+  });
+});
+```
+
+---
+
+## 💾 Database Schema Changes
+
+### Complete Schema Updates
+
+```sql
+-- DynamoDB Table: harborlist-users
+-- Updated schema with new fields
+
+{
+  // Core fields (unchanged)
+  "id": "string (PK)",
+  "email": "string",
+  "name": "string",
+  "status": "active|suspended|pending",
+  "createdAt": "ISO8601 string",
+  "updatedAt": "ISO8601 string",
+  
+  // Role and type (UPDATED)
+  "role": "user|admin|super_admin|manager|team_member",
+  "userType": "customer|staff",  // NEW: For filtering
+  
+  // Customer-specific fields
+  "customerType": "individual|dealer|premium",
+  "tier": "string",
+  "premiumActive": "boolean",
+  "premiumExpiresAt": "number",
+  
+  // NEW: Dealer sub-account fields
+  "isDealerSubAccount": "boolean",
+  "parentDealerId": "string",
+  "dealerAccountRole": "admin|manager|staff",
+  "delegatedPermissions": ["string"],
+  "accessScope": {
+    "listings": ["string"] | "all",
+    "leads": "boolean",
+    "analytics": "boolean",
+    "inventory": "boolean",
+    "pricing": "boolean"
+  },
+  
+  // NEW: Staff team fields
+  "teams": [
+    {
+      "teamId": "string",
+      "teamName": "string",
+      "role": "manager|member",
+      "permissions": ["string"],
+      "assignedAt": "ISO8601 string",
+      "assignedBy": "string"
+    }
+  ],
+  "effectivePermissions": ["string"],  // Computed field
+  
+  // Security fields
+  "emailVerified": "boolean",
+  "mfaEnabled": "boolean",
+  "lastLoginAt": "ISO8601 string",
+  "loginAttempts": "number"
+}
+
+-- Global Secondary Indexes (GSI)
+
+1. UserTypeIndex (UPDATED)
+   - PK: userType (customer|staff)
+   - SK: createdAt (NEW - added sort key)
+   - Purpose: Efficient filtering in UI tabs
+
+2. email-index (existing)
+   - PK: email
+   - Purpose: Lookup by email
+
+3. ParentDealerIndex (NEW)
+   - PK: parentDealerId
+   - SK: createdAt
+   - Purpose: List dealer's sub-accounts
+
+4. PremiumExpirationIndex (existing)
+   - PK: premiumActive
+   - SK: premiumExpiresAt
+   - Purpose: Find expiring premium accounts
+```
+
+### DynamoDB Setup Script Updates
+
+**File:** `tools/development/setup-local-dynamodb.sh`
+
+**Updates Required in `create_users_table()` function (lines ~210-250):**
+
+```bash
+# BEFORE (Current Implementation):
+aws dynamodb create-table \
+    --table-name "$table_name" \
+    --key-schema AttributeName=id,KeyType=HASH \
+    --attribute-definitions \
+        AttributeName=id,AttributeType=S \
+        AttributeName=email,AttributeType=S \
+        AttributeName=userType,AttributeType=S \
+        AttributeName=premiumActive,AttributeType=S \
+        AttributeName=premiumExpiresAt,AttributeType=N \
+    --provisioned-throughput ReadCapacityUnits=5,WriteCapacityUnits=5 \
+    --global-secondary-indexes \
+    '[{
+        "IndexName": "email-index",
+        "KeySchema": [{"AttributeName": "email", "KeyType": "HASH"}],
+        "Projection": {"ProjectionType": "ALL"},
+        "ProvisionedThroughput": {"ReadCapacityUnits": 5, "WriteCapacityUnits": 5}
+    },
+    {
+        "IndexName": "UserTypeIndex",
+        "KeySchema": [{"AttributeName": "userType", "KeyType": "HASH"}],
+        "Projection": {"ProjectionType": "ALL"},
+        "ProvisionedThroughput": {"ReadCapacityUnits": 5, "WriteCapacityUnits": 5}
+    },
+    {
+        "IndexName": "PremiumExpirationIndex",
+        "KeySchema": [
+            {"AttributeName": "premiumActive", "KeyType": "HASH"},
+            {"AttributeName": "premiumExpiresAt", "KeyType": "RANGE"}
+        ],
+        "Projection": {"ProjectionType": "ALL"},
+        "ProvisionedThroughput": {"ReadCapacityUnits": 5, "WriteCapacityUnits": 5}
+    }]'
+
+# AFTER (Updated Implementation):
+aws dynamodb create-table \
+    --table-name "$table_name" \
+    --key-schema AttributeName=id,KeyType=HASH \
+    --attribute-definitions \
+        AttributeName=id,AttributeType=S \
+        AttributeName=email,AttributeType=S \
+        AttributeName=userType,AttributeType=S \
+        AttributeName=createdAt,AttributeType=S \
+        AttributeName=parentDealerId,AttributeType=S \
+        AttributeName=premiumActive,AttributeType=S \
+        AttributeName=premiumExpiresAt,AttributeType=N \
+    --provisioned-throughput ReadCapacityUnits=5,WriteCapacityUnits=5 \
+    --global-secondary-indexes \
+    '[{
+        "IndexName": "email-index",
+        "KeySchema": [{"AttributeName": "email", "KeyType": "HASH"}],
+        "Projection": {"ProjectionType": "ALL"},
+        "ProvisionedThroughput": {"ReadCapacityUnits": 5, "WriteCapacityUnits": 5}
+    },
+    {
+        "IndexName": "UserTypeIndex",
+        "KeySchema": [
+            {"AttributeName": "userType", "KeyType": "HASH"},
+            {"AttributeName": "createdAt", "KeyType": "RANGE"}
+        ],
+        "Projection": {"ProjectionType": "ALL"},
+        "ProvisionedThroughput": {"ReadCapacityUnits": 5, "WriteCapacityUnits": 5}
+    },
+    {
+        "IndexName": "ParentDealerIndex",
+        "KeySchema": [
+            {"AttributeName": "parentDealerId", "KeyType": "HASH"},
+            {"AttributeName": "createdAt", "KeyType": "RANGE"}
+        ],
+        "Projection": {"ProjectionType": "ALL"},
+        "ProvisionedThroughput": {"ReadCapacityUnits": 5, "WriteCapacityUnits": 5}
+    },
+    {
+        "IndexName": "PremiumExpirationIndex",
+        "KeySchema": [
+            {"AttributeName": "premiumActive", "KeyType": "HASH"},
+            {"AttributeName": "premiumExpiresAt", "KeyType": "RANGE"}
+        ],
+        "Projection": {"ProjectionType": "ALL"},
+        "ProvisionedThroughput": {"ReadCapacityUnits": 5, "WriteCapacityUnits": 5}
+    }]'
+```
+
+**Summary of Changes:**
+
+1. ✅ **Added `createdAt` attribute** - For sort keys in GSIs
+2. ✅ **Added `parentDealerId` attribute** - For dealer sub-account queries
+3. ✅ **Updated UserTypeIndex** - Now includes createdAt as sort key for better querying
+4. ✅ **Added ParentDealerIndex** - New GSI for efficient dealer sub-account lookups
+
+**Success Message Update:**
+
+```bash
+if [ $? -eq 0 ]; then
+    echo "   ✅ Users table $table_name created successfully with:"
+    echo "      - email-index GSI"
+    echo "      - UserTypeIndex GSI (with createdAt sort key)"
+    echo "      - ParentDealerIndex GSI (NEW)"
+    echo "      - PremiumExpirationIndex GSI"
+else
+    echo "   ❌ Failed to create users table $table_name"
+    return 1
+fi
+```
+
+### CDK Infrastructure Updates
+
+**File:** `infrastructure/lib/harborlist-stack.ts`
+
+```typescript
+// Update UsersTable definition (around lines 136-180)
+
+const usersTable = new dynamodb.Table(this, 'UsersTable', {
+  tableName: 'harborlist-users',
+  partitionKey: { name: 'id', type: dynamodb.AttributeType.STRING },
+  billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+  removalPolicy: cdk.RemovalPolicy.DESTROY,
+});
+
+// Existing email index
+usersTable.addGlobalSecondaryIndex({
+  indexName: 'email-index',
+  partitionKey: { name: 'email', type: dynamodb.AttributeType.STRING },
+});
+
+// UPDATED: UserTypeIndex with sort key
+usersTable.addGlobalSecondaryIndex({
+  indexName: 'UserTypeIndex',
+  partitionKey: { name: 'userType', type: dynamodb.AttributeType.STRING },
+  sortKey: { name: 'createdAt', type: dynamodb.AttributeType.STRING },
+});
+
+// NEW: ParentDealerIndex for sub-accounts
+usersTable.addGlobalSecondaryIndex({
+  indexName: 'ParentDealerIndex',
+  partitionKey: { name: 'parentDealerId', type: dynamodb.AttributeType.STRING },
+  sortKey: { name: 'createdAt', type: dynamodb.AttributeType.STRING },
+});
+
+// Existing premium expiration index
+usersTable.addGlobalSecondaryIndex({
+  indexName: 'PremiumExpirationIndex',
+  partitionKey: { name: 'premiumActive', type: dynamodb.AttributeType.STRING },
+  sortKey: { name: 'premiumExpiresAt', type: dynamodb.AttributeType.NUMBER },
+});
+```
+
+### Testing the Schema Changes
+
+```bash
+# After updating setup-local-dynamodb.sh
+
+# 1. Stop and remove existing containers
+./tools/deployment/cleanup.sh local --force
+
+# 2. Start fresh environment
+./tools/deployment/deploy.sh local
+
+# 3. Verify table structure
+aws dynamodb describe-table \
+    --table-name harborlist-users \
+    --endpoint-url http://localhost:8000 \
+    --region us-east-1 \
+    --query 'Table.GlobalSecondaryIndexes[*].[IndexName,KeySchema]' \
+    --output table
+
+# Expected output should show:
+# - email-index
+# - UserTypeIndex (with userType and createdAt)
+# - ParentDealerIndex (with parentDealerId and createdAt)
+# - PremiumExpirationIndex
+```
+
+---
+
+## 🔌 API Changes
+
+### New Endpoints Summary
+
+```
+DEALER SUB-ACCOUNTS:
+POST   /api/dealer/sub-accounts
+GET    /api/dealer/sub-accounts
+GET    /api/dealer/sub-accounts/:id
+PUT    /api/dealer/sub-accounts/:id/permissions
+PUT    /api/dealer/sub-accounts/:id/status
+DELETE /api/dealer/sub-accounts/:id
+POST   /api/dealer/sub-accounts/:id/resend-invite
+POST   /api/dealer/sub-accounts/accept-invite/:token
+
+TEAM MANAGEMENT:
+GET    /api/admin/teams
+GET    /api/admin/teams/:teamId
+GET    /api/admin/teams/:teamId/members
+POST   /api/admin/staff/:userId/teams
+PUT    /api/admin/staff/:userId/teams/:teamId
+DELETE /api/admin/staff/:userId/teams/:teamId
+POST   /api/admin/teams/:teamId/members/bulk
+GET    /api/admin/staff/:userId/teams
+
+UPDATED ENDPOINTS:
+POST   /api/admin/staff  (now includes team assignments)
+GET    /api/admin/users  (now properly filters by userType)
+```
+
+---
+
+## 🎨 UI Changes
+
+### New Pages/Components
+
+```
+DEALER DASHBOARD:
+- /dealer/sub-accounts (new)
+  - SubAccountsList
+  - CreateSubAccountModal
+  - EditPermissionsModal
+  - SubAccountActivityLog
+
+ADMIN DASHBOARD:
+- /admin/teams (new)
+  - TeamsList
+  - TeamDetails
+  - TeamMemberManagement
+  - PermissionMatrix
+
+UPDATED PAGES:
+- /admin/users (UserManagement.tsx)
+  - Now properly shows staff in Staff tab
+  - Enhanced filtering by userType
+  
+- /admin/staff/create (CreateStaffForm.tsx)
+  - Team assignment checkboxes
+  - Role selection per team
+  - Effective permissions preview
+```
+
+---
+
+## ⏱️ Implementation Timeline
+
+### Detailed Schedule
+
+```
+WEEK 1: Phase 1 - Foundation & Fixes
+├─ Day 1-2: Standardize role naming
+│  └─ Update all enums, types, and infrastructure
+├─ Day 3: Complete AdminPermission enum
+│  └─ Add missing permissions
+├─ Day 4: Implement userType field
+│  └─ Update all user creation paths
+└─ Day 5: Add GSI and fix filtering
+   └─ Test admin tab displays correctly
+
+WEEK 2-3: Phase 2 - Dealer Sub-Accounts
+├─ Day 1-2: Database schema design
+├─ Day 3-4: Backend API implementation
+├─ Day 5-6: Permission delegation system
+├─ Day 7-8: Frontend UI components
+└─ Day 9-10: Testing and bug fixes
+
+WEEK 4-5: Phase 3 - Team-Based Roles (Part 1)
+├─ Day 1-2: Team definition system
+├─ Day 3-4: Database schema updates
+├─ Day 5-6: Permission calculation logic
+├─ Day 7-8: Authorization middleware
+└─ Day 9-10: Backend API endpoints
+
+WEEK 6-7: Phase 3 - Team-Based Roles (Part 2)
+├─ Day 1-3: Frontend UI components
+├─ Day 4-5: Staff creation flow updates
+├─ Day 6-7: Team management pages
+└─ Day 8-10: Integration testing
+
+WEEK 8: Phase 4 - Testing & Validation
+├─ Day 1-2: Unit tests
+├─ Day 3-4: Integration tests
+├─ Day 5: End-to-end tests
+└─ Day 6-7: Bug fixes and refinements
+
+TOTAL: 8 weeks (full-time development)
+```
+
+---
+
+## 🚀 Deployment Strategy
+
+### Rollout Plan
+
+```
+STAGE 1: Development Environment
+- Deploy Phase 1 fixes
+- Verify admin tab works correctly
+- Test with existing users
+
+STAGE 2: Phase 2 Testing (Dealer Sub-Accounts)
+- Deploy to staging
+- Create test dealer accounts
+- Test sub-account creation and permissions
+- Verify access scope restrictions work
+
+STAGE 3: Phase 3 Testing (Team-Based Roles)
+- Deploy team system to staging
+- Migrate existing staff to teams
+- Test permission calculations
+- Verify all team workflows
+
+STAGE 4: Production Deployment
+- Deploy in phases:
+  1. Phase 1 (fixes) - low risk
+  2. Phase 2 (dealer features) - moderate risk
+  3. Phase 3 (team system) - higher risk, requires coordination
+  
+- Monitor error rates
+- Gradual rollout to users
+- Support staff training
+```
+
+---
+
+## 📝 Migration Notes
+
+### Data Migration (if needed)
+
+Even though this is a refactor, existing users may need updates:
+
+```typescript
+// One-time migration script
+// tools/migration/update-existing-users.ts
+
+async function migrateExistingUsers() {
+  // 1. Add userType to all users
+  const allUsers = await scanAllUsers();
+  
+  for (const user of allUsers) {
+    const userType = ['admin', 'super_admin', 'manager', 'team_member'].includes(user.role)
+      ? 'staff'
+      : 'customer';
+    
+    await updateUser(user.id, { userType });
+  }
+  
+  // 2. Fix role naming (super-admin → super_admin)
+  const admins = allUsers.filter(u => u.role === 'super-admin');
+  for (const admin of admins) {
+    await updateUser(admin.id, { role: 'super_admin' });
+  }
+  
+  // 3. Assign default teams to existing managers
+  const managers = allUsers.filter(u => u.role === 'manager');
+  for (const manager of managers) {
+    // Give existing managers access to all teams
+    await assignToAllTeams(manager.id, 'manager');
+  }
+}
+```
+
+---
+
+## ✅ Success Metrics
+
+### Key Performance Indicators
+
+```
+FUNCTIONALITY:
+✓ Admin users appear in correct tab (Staff, not Customers)
+✓ Dealers can create and manage sub-accounts
+✓ Staff members can be assigned to multiple teams
+✓ Permission calculations are accurate
+✓ All authorization checks work correctly
+
+PERFORMANCE:
+✓ User lookup time < 100ms
+✓ Permission calculation < 50ms
+✓ Team assignment operations < 200ms
+
+QUALITY:
+✓ Test coverage > 80%
+✓ Zero critical security vulnerabilities
+✓ All existing features still work
+✓ Documentation complete
+```
+
+---
+
+## 📚 Documentation Requirements
+
+### Documents to Create/Update
+
+```
+1. API Documentation
+   - All new endpoints
+   - Request/response examples
+   - Error codes
+
+2. Database Schema Documentation
+   - Updated table structure
+   - New GSI definitions
+   - Migration notes
+
+3. Permission Guide
+   - All permissions explained
+   - Team definitions
+   - Use cases and examples
+
+4. Developer Guide
+   - How to add new teams
+   - How to add new permissions
+   - Testing guidelines
+
+5. Admin User Guide
+   - How to manage teams
+   - How to assign staff
+   - Dealer sub-account management
+
+6. Security Documentation
+   - Authorization flow
+   - Permission escalation prevention
+   - Audit logging
+```
+
+---
+
+## 🎯 Next Steps
+
+### Immediate Actions
+
+1. ✅ Review and approve this implementation plan
+2. ⏳ Set up development branch: `feature/roles-permissions-refactor`
+3. ⏳ Create GitHub issues for each phase
+4. ⏳ Schedule team kickoff meeting
+5. ⏳ Begin Phase 1 implementation
+
+---
+
+**Document Version:** 1.0
+**Last Updated:** October 18, 2025
+**Status:** Draft - Awaiting Approval
+**Estimated Completion:** December 2025 (8 weeks)

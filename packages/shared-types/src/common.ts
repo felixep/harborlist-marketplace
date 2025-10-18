@@ -1,3 +1,6 @@
+// Import team types for Phase 3
+import type { TeamAssignment } from './teams';
+
 export interface Location {
   city: string;
   state: string;
@@ -168,7 +171,41 @@ export enum AdminPermission {
   TIER_MANAGEMENT = 'tier_management',
   CAPABILITY_ASSIGNMENT = 'capability_assignment',
   BILLING_MANAGEMENT = 'billing_management',
-  SALES_MANAGEMENT = 'sales_management'
+  SALES_MANAGEMENT = 'sales_management',
+  PLATFORM_SETTINGS = 'platform_settings',
+  SUPPORT_ACCESS = 'support_access'
+}
+
+// Dealer Sub-Account Types
+export enum DealerSubAccountRole {
+  ADMIN = 'admin',      // Full access to parent dealer account
+  MANAGER = 'manager',  // Manage listings and leads
+  STAFF = 'staff'       // Limited access based on delegated permissions
+}
+
+export interface DealerAccessScope {
+  listings: string[] | 'all';  // Specific listing IDs or 'all'
+  leads: boolean;               // Can access customer inquiries
+  analytics: boolean;           // Can view analytics
+  inventory: boolean;           // Can manage inventory
+  pricing: boolean;             // Can modify prices
+  financial: boolean;           // Can view financial reports
+}
+
+export interface DealerSubAccount {
+  id: string;
+  email: string;
+  name: string;
+  parentDealerId: string;
+  parentDealerName?: string;
+  dealerAccountRole: DealerSubAccountRole;
+  delegatedPermissions: string[];
+  accessScope: DealerAccessScope;
+  status: UserStatus;
+  createdAt: string;
+  createdBy: string;
+  lastLogin?: string;
+  emailVerified: boolean;
 }
 
 export interface User {
@@ -177,6 +214,7 @@ export interface User {
   name: string;
   phone?: string;
   location?: string;
+  userType?: 'customer' | 'staff'; // NEW: Differentiate between customer and staff users
   role: UserRole;
   status: UserStatus;
   permissions?: AdminPermission[];
@@ -194,6 +232,13 @@ export interface User {
   emailVerificationExpires?: string;
   createdAt: string;
   updatedAt: string;
+  
+  // Dealer Sub-Account fields (for customer users who are dealer sub-accounts)
+  isDealerSubAccount?: boolean;
+  parentDealerId?: string;
+  dealerAccountRole?: DealerSubAccountRole;
+  delegatedPermissions?: string[];
+  accessScope?: DealerAccessScope;
 }
 
 export interface AdminUser extends User {
@@ -201,6 +246,20 @@ export interface AdminUser extends User {
   permissions: AdminPermission[];
   ipWhitelist?: string[];
   sessionTimeout: number; // in minutes
+  
+  // NEW: Team-based role assignments (Phase 3)
+  teams?: TeamAssignment[]; // User's team assignments with roles
+  effectivePermissions?: string[]; // Calculated permissions from all teams
+}
+
+/**
+ * Staff User Record (Phase 3)
+ * Staff members with team-based permissions
+ */
+export interface StaffUserRecord extends AdminUser {
+  userType: 'staff'; // Always 'staff' for staff members
+  teams: TeamAssignment[]; // Required for staff members
+  effectivePermissions: string[]; // Calculated from team assignments and base permissions
 }
 
 // User tier and membership management types
@@ -250,7 +309,7 @@ export interface TierFeature {
 }
 
 export interface EnhancedUser extends User {
-  userType: 'individual' | 'dealer' | 'premium_individual' | 'premium_dealer';
+  customerTier: 'individual' | 'dealer' | 'premium_individual' | 'premium_dealer'; // Renamed from userType to avoid conflict
   membershipDetails: {
     plan?: string;
     tierId?: string;

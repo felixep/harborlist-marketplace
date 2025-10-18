@@ -1966,53 +1966,87 @@ export class DatabaseService {
     limit: number = 20,
     lastKey?: any
   ): Promise<{ items: ModerationWorkflow[]; lastKey?: any }> {
-    let keyConditionExpression = '';
-    let filterExpression = '';
-    const expressionAttributeNames: Record<string, string> = {};
-    const expressionAttributeValues: Record<string, any> = {};
-
-    // Build filter expression
-    const filterConditions = [];
+    let command;
+    
+    // Use GSI if we have status or priority filter
     if (filters?.status) {
-      filterConditions.push('#status = :status');
-      expressionAttributeNames['#status'] = 'status';
-      expressionAttributeValues[':status'] = filters.status;
-    }
-    if (filters?.priority) {
-      filterConditions.push('priority = :priority');
-      expressionAttributeValues[':priority'] = filters.priority;
-    }
-    if (filters?.assignedTo) {
-      filterConditions.push('assignedTo = :assignedTo');
-      expressionAttributeValues[':assignedTo'] = filters.assignedTo;
-    }
+      // Use StatusIndex for status-based queries
+      const queryParams: any = {
+        TableName: MODERATION_QUEUE_TABLE,
+        IndexName: 'StatusIndex',
+        KeyConditionExpression: '#status = :status',
+        ExpressionAttributeNames: {
+          '#status': 'status',
+        },
+        ExpressionAttributeValues: {
+          ':status': filters.status,
+        },
+        Limit: limit,
+        ExclusiveStartKey: lastKey,
+        ScanIndexForward: false, // Most recent first (by submittedAt)
+      };
 
-    if (filterConditions.length > 0) {
-      filterExpression = filterConditions.join(' AND ');
-    }
-
-    const queryParams: any = {
-      TableName: MODERATION_QUEUE_TABLE,
-      IndexName: 'PriorityIndex',
-      Limit: limit,
-      ExclusiveStartKey: lastKey,
-      ScanIndexForward: false, // Highest priority first
-    };
-
-    if (filterExpression) {
-      queryParams.FilterExpression = filterExpression;
-      if (Object.keys(expressionAttributeNames).length > 0) {
-        queryParams.ExpressionAttributeNames = expressionAttributeNames;
+      // Add additional filters if needed
+      const additionalFilters = [];
+      if (filters.priority) {
+        additionalFilters.push('priority = :priority');
+        queryParams.ExpressionAttributeValues[':priority'] = filters.priority;
       }
-      queryParams.ExpressionAttributeValues = expressionAttributeValues;
-    }
+      if (filters.assignedTo) {
+        additionalFilters.push('assignedTo = :assignedTo');
+        queryParams.ExpressionAttributeValues[':assignedTo'] = filters.assignedTo;
+      }
 
-    // If no specific filters, scan the table
-    const command = filterExpression ? new ScanCommand(queryParams) : new ScanCommand({
-      TableName: MODERATION_QUEUE_TABLE,
-      Limit: limit,
-      ExclusiveStartKey: lastKey,
-    });
+      if (additionalFilters.length > 0) {
+        queryParams.FilterExpression = additionalFilters.join(' AND ');
+      }
+
+      command = new QueryCommand(queryParams);
+    } else if (filters?.priority) {
+      // Use PriorityIndex for priority-based queries
+      const queryParams: any = {
+        TableName: MODERATION_QUEUE_TABLE,
+        IndexName: 'PriorityIndex',
+        KeyConditionExpression: 'priority = :priority',
+        ExpressionAttributeValues: {
+          ':priority': filters.priority,
+        },
+        Limit: limit,
+        ExclusiveStartKey: lastKey,
+        ScanIndexForward: false, // Most recent first (by submittedAt)
+      };
+
+      // Add additional filters if needed
+      if (filters.assignedTo) {
+        queryParams.FilterExpression = 'assignedTo = :assignedTo';
+        queryParams.ExpressionAttributeValues[':assignedTo'] = filters.assignedTo;
+      }
+
+      command = new QueryCommand(queryParams);
+    } else {
+      // No specific index, scan the table
+      const scanParams: any = {
+        TableName: MODERATION_QUEUE_TABLE,
+        Limit: limit,
+        ExclusiveStartKey: lastKey,
+      };
+
+      // Add filters if needed
+      const filterConditions = [];
+      const expressionAttributeValues: Record<string, any> = {};
+      
+      if (filters?.assignedTo) {
+        filterConditions.push('assignedTo = :assignedTo');
+        expressionAttributeValues[':assignedTo'] = filters.assignedTo;
+      }
+
+      if (filterConditions.length > 0) {
+        scanParams.FilterExpression = filterConditions.join(' AND ');
+        scanParams.ExpressionAttributeValues = expressionAttributeValues;
+      }
+
+      command = new ScanCommand(scanParams);
+    }
 
     const result = await docClient.send(command);
 

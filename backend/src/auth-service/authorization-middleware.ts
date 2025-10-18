@@ -33,6 +33,17 @@ import {
   createUserFriendlyErrorMessage
 } from './auth-errors';
 import { createErrorResponse } from '../shared/utils';
+import { DynamoDB } from 'aws-sdk';
+// Phase 3 imports
+import { TeamId, TeamAssignment } from '../types/teams';
+import {
+  hasPermission,
+  hasAnyPermission,
+  hasAllPermissions,
+  hasTeamAccess as checkTeamAccess,
+  isTeamManager as checkTeamManager,
+  canPerformAction
+} from '../shared/team-permissions';
 
 /**
  * Authorization context interface
@@ -468,4 +479,658 @@ export function requireStaffAccess() {
   return createAuthorizationMiddleware({
     userType: 'staff'
   });
+}
+
+/**
+ * Dealer-specific authorization functions
+ */
+
+/**
+ * Check if user has dealer or premium_dealer tier
+ */
+export async function isDealerTier(userId: string): Promise<boolean> {
+  const { DynamoDBClient } = await import('@aws-sdk/client-dynamodb');
+  const { DynamoDBDocumentClient, GetCommand } = await import('@aws-sdk/lib-dynamodb');
+  
+  const dynamoClient = new DynamoDBClient({
+    region: process.env.AWS_REGION || 'us-east-1',
+    ...(process.env.IS_LOCALSTACK === 'true' && {
+      endpoint: process.env.DYNAMODB_ENDPOINT || 'http://localhost:8000',
+      credentials: {
+        accessKeyId: 'test',
+        secretAccessKey: 'test',
+      },
+    }),
+  });
+
+  const docClient = DynamoDBDocumentClient.from(dynamoClient);
+  const USERS_TABLE = process.env.USERS_TABLE || 'harborlist-users';
+
+  try {
+    const result = await docClient.send(new GetCommand({
+      TableName: USERS_TABLE,
+      Key: { id: userId }
+    }));
+
+    if (!result.Item) {
+      return false;
+    }
+
+    const customerTier = result.Item.customerTier;
+    return customerTier === 'dealer' || customerTier === 'premium_dealer';
+  } catch (error) {
+    console.error('Error checking dealer tier:', error);
+    return false;
+  }
+}
+
+/**
+ * Validate dealer sub-account ownership
+ * Ensures the user can only access sub-accounts they own (parentDealerId matches)
+ */
+export async function validateDealerSubAccountOwnership(
+  userId: string,
+  subAccountId: string
+): Promise<{ authorized: boolean; error?: string }> {
+  const { DynamoDBClient } = await import('@aws-sdk/client-dynamodb');
+  const { DynamoDBDocumentClient, GetCommand } = await import('@aws-sdk/lib-dynamodb');
+  
+  const dynamoClient = new DynamoDBClient({
+    region: process.env.AWS_REGION || 'us-east-1',
+    ...(process.env.IS_LOCALSTACK === 'true' && {
+      endpoint: process.env.DYNAMODB_ENDPOINT || 'http://localhost:8000',
+      credentials: {
+        accessKeyId: 'test',
+        secretAccessKey: 'test',
+      },
+    }),
+  });
+
+  const docClient = DynamoDBDocumentClient.from(dynamoClient);
+  const USERS_TABLE = process.env.USERS_TABLE || 'harborlist-users';
+
+  try {
+    // Get the sub-account
+    const result = await docClient.send(new GetCommand({
+      TableName: USERS_TABLE,
+      Key: { id: subAccountId }
+    }));
+
+    if (!result.Item) {
+      return {
+        authorized: false,
+        error: 'Sub-account not found'
+      };
+    }
+
+    // Verify it's actually a sub-account
+    if (!result.Item.parentDealerId) {
+      return {
+        authorized: false,
+        error: 'Not a sub-account'
+      };
+    }
+
+    // Verify ownership
+    if (result.Item.parentDealerId !== userId) {
+      return {
+        authorized: false,
+        error: 'You do not have permission to access this sub-account'
+      };
+    }
+
+    return { authorized: true };
+  } catch (error) {
+    console.error('Error validating sub-account ownership:', error);
+    return {
+      authorized: false,
+      error: 'Failed to validate sub-account ownership'
+    };
+  }
+}
+
+/**
+ * Dealer tier requirement middleware
+ */
+export function requireDealerTier(feature?: string) {
+  return async (
+    event: APIGatewayProxyEvent,
+    claims: CustomerClaims | StaffClaims
+  ): Promise<APIGatewayProxyResult | null> => {
+    const context = extractAuthorizationContext(event, claims);
+    
+    // Must be a customer
+    if (context.userType !== 'customer' || !isCustomerClaims(context.claims)) {
+      return {
+        statusCode: 403,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({
+          error: 'Forbidden',
+          message: 'This endpoint is only accessible to customers',
+          userMessage: 'Access denied. This feature is only available to dealer accounts.'
+        })
+      };
+    }
+
+    // Check if user has dealer tier
+    const isDealer = await isDealerTier(context.userId);
+    
+    if (!isDealer) {
+      const tierError = createTierAccessError(
+        'basic', // Assume basic if not dealer
+        'dealer',
+        feature || 'sub-account management',
+        {
+          email: context.email,
+          ipAddress: context.ipAddress,
+          userAgent: context.userAgent,
+          endpoint: context.endpoint,
+          requestId: context.requestId
+        }
+      );
+      
+      await logAuthorizationError(tierError, 'dealer_tier_required');
+      
+      return {
+        statusCode: 403,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({
+          error: 'Insufficient Tier',
+          message: tierError.message,
+          userMessage: createUserFriendlyErrorMessage(tierError, {
+            action: 'access sub-account management',
+            feature: feature || 'sub-account management'
+          }),
+          requiredTier: 'dealer',
+          upgradeRequired: true
+        })
+      };
+    }
+    
+    return null; // Authorization successful
+  };
+}
+
+/**
+ * Dealer sub-account ownership requirement middleware
+ */
+export function requireSubAccountOwnership(getSubAccountId: (event: APIGatewayProxyEvent) => string) {
+  return async (
+    event: APIGatewayProxyEvent,
+    claims: CustomerClaims | StaffClaims
+  ): Promise<APIGatewayProxyResult | null> => {
+    const context = extractAuthorizationContext(event, claims);
+    
+    // Must be a customer
+    if (context.userType !== 'customer' || !isCustomerClaims(context.claims)) {
+      return {
+        statusCode: 403,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({
+          error: 'Forbidden',
+          message: 'This endpoint is only accessible to customers'
+        })
+      };
+    }
+
+    // Get sub-account ID from the event
+    const subAccountId = getSubAccountId(event);
+    
+    if (!subAccountId) {
+      return {
+        statusCode: 400,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({
+          error: 'Bad Request',
+          message: 'Sub-account ID is required'
+        })
+      };
+    }
+
+    // Validate ownership
+    const validation = await validateDealerSubAccountOwnership(context.userId, subAccountId);
+    
+    if (!validation.authorized) {
+      return {
+        statusCode: 403,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({
+          error: 'Forbidden',
+          message: validation.error || 'You do not have permission to access this sub-account',
+          userMessage: 'You can only manage sub-accounts that belong to your dealer account.'
+        })
+      };
+    }
+    
+    return null; // Authorization successful
+  };
+}
+
+// ============================================================================
+// Phase 3: Team-Based Authorization Functions
+// ============================================================================
+
+const dynamoDB = new DynamoDB.DocumentClient();
+const USERS_TABLE = process.env.USERS_TABLE_NAME || 'harborlist-users';
+
+/**
+ * Get user's team assignments and effective permissions from database
+ * 
+ * @param userId - User ID to fetch teams for
+ * @returns User's teams and effective permissions, or null if not found
+ */
+async function getUserTeamsAndPermissions(userId: string): Promise<{
+  teams: TeamAssignment[];
+  effectivePermissions: string[];
+} | null> {
+  try {
+    const result = await dynamoDB.get({
+      TableName: USERS_TABLE,
+      Key: { id: userId }
+    }).promise();
+    
+    if (!result.Item) {
+      return null;
+    }
+    
+    return {
+      teams: result.Item.teams || [],
+      effectivePermissions: result.Item.effectivePermissions || []
+    };
+  } catch (error) {
+    console.error('Error fetching user teams:', error);
+    return null;
+  }
+}
+
+/**
+ * Middleware: Require user to have access to a specific team
+ * 
+ * Use this to restrict endpoints to team members only
+ * 
+ * @param teamId - Team that user must be a member of
+ * @returns Middleware function
+ */
+export function requireTeamAccess(teamId: TeamId) {
+  return async (
+    event: APIGatewayProxyEvent,
+    claims: CustomerClaims | StaffClaims
+  ): Promise<APIGatewayProxyResult | null> => {
+    const context = extractAuthorizationContext(event, claims);
+    
+    // Only check for staff users
+    if (context.userType !== 'staff') {
+      return {
+        statusCode: 403,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({
+          error: 'Forbidden',
+          message: 'This endpoint is only accessible to staff members',
+          userMessage: 'You do not have permission to access this resource.'
+        })
+      };
+    }
+    
+    // Fetch user's team assignments
+    const userData = await getUserTeamsAndPermissions(context.userId);
+    
+    if (!userData) {
+      return {
+        statusCode: 500,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({
+          error: 'Internal Server Error',
+          message: 'Failed to fetch user team assignments',
+          userMessage: 'An error occurred while verifying your access.'
+        })
+      };
+    }
+    
+    // Check team access
+    if (!checkTeamAccess(userData.teams, teamId)) {
+      // Log authorization failure
+      console.warn('Team access denied', {
+        userId: context.userId,
+        email: context.email,
+        requiredTeam: teamId,
+        userTeams: userData.teams.map(t => t.teamId),
+        endpoint: context.endpoint,
+        timestamp: new Date().toISOString()
+      });
+      
+      return {
+        statusCode: 403,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({
+          error: 'Insufficient Team Access',
+          message: `User is not a member of the required team: ${teamId}`,
+          userMessage: 'You do not have access to this team\'s resources.',
+          requiredTeam: teamId
+        })
+      };
+    }
+    
+    return null; // Authorization successful
+  };
+}
+
+/**
+ * Middleware: Require user to have ANY of the specified permissions
+ * 
+ * User needs at least one of the permissions (OR logic)
+ * 
+ * @param permissions - Array of acceptable permissions
+ * @param errorMessage - Optional custom error message
+ * @returns Middleware function
+ */
+export function requireAnyPermission(
+  permissions: string[],
+  errorMessage?: string
+) {
+  return async (
+    event: APIGatewayProxyEvent,
+    claims: CustomerClaims | StaffClaims
+  ): Promise<APIGatewayProxyResult | null> => {
+    const context = extractAuthorizationContext(event, claims);
+    
+    // Only check for staff users
+    if (context.userType !== 'staff') {
+      return {
+        statusCode: 403,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({
+          error: 'Forbidden',
+          message: 'This endpoint is only accessible to staff members',
+          userMessage: 'You do not have permission to access this resource.'
+        })
+      };
+    }
+    
+    // Fetch user's effective permissions
+    const userData = await getUserTeamsAndPermissions(context.userId);
+    
+    if (!userData) {
+      return {
+        statusCode: 500,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({
+          error: 'Internal Server Error',
+          message: 'Failed to fetch user permissions',
+          userMessage: 'An error occurred while verifying your permissions.'
+        })
+      };
+    }
+    
+    // Check if user has any of the required permissions
+    if (!hasAnyPermission(userData.effectivePermissions, permissions)) {
+      // Log authorization failure
+      console.warn('Permission denied (requireAny)', {
+        userId: context.userId,
+        email: context.email,
+        requiredPermissions: permissions,
+        userPermissions: userData.effectivePermissions,
+        endpoint: context.endpoint,
+        timestamp: new Date().toISOString()
+      });
+      
+      return {
+        statusCode: 403,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({
+          error: 'Insufficient Permissions',
+          message: errorMessage || `User must have at least one of the following permissions: ${permissions.join(', ')}`,
+          userMessage: 'You do not have the required permissions to perform this action.',
+          requiredPermissions: permissions
+        })
+      };
+    }
+    
+    return null; // Authorization successful
+  };
+}
+
+/**
+ * Middleware: Require user to have ALL of the specified permissions
+ * 
+ * User needs all permissions (AND logic)
+ * 
+ * @param permissions - Array of required permissions
+ * @param errorMessage - Optional custom error message
+ * @returns Middleware function
+ */
+export function requireAllPermissions(
+  permissions: string[],
+  errorMessage?: string
+) {
+  return async (
+    event: APIGatewayProxyEvent,
+    claims: CustomerClaims | StaffClaims
+  ): Promise<APIGatewayProxyResult | null> => {
+    const context = extractAuthorizationContext(event, claims);
+    
+    // Only check for staff users
+    if (context.userType !== 'staff') {
+      return {
+        statusCode: 403,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({
+          error: 'Forbidden',
+          message: 'This endpoint is only accessible to staff members',
+          userMessage: 'You do not have permission to access this resource.'
+        })
+      };
+    }
+    
+    // Fetch user's effective permissions
+    const userData = await getUserTeamsAndPermissions(context.userId);
+    
+    if (!userData) {
+      return {
+        statusCode: 500,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({
+          error: 'Internal Server Error',
+          message: 'Failed to fetch user permissions',
+          userMessage: 'An error occurred while verifying your permissions.'
+        })
+      };
+    }
+    
+    // Check if user has all required permissions
+    if (!hasAllPermissions(userData.effectivePermissions, permissions)) {
+      // Find missing permissions for better error message
+      const missingPermissions = permissions.filter(
+        p => !userData.effectivePermissions.includes(p)
+      );
+      
+      // Log authorization failure
+      console.warn('Permission denied (requireAll)', {
+        userId: context.userId,
+        email: context.email,
+        requiredPermissions: permissions,
+        missingPermissions,
+        userPermissions: userData.effectivePermissions,
+        endpoint: context.endpoint,
+        timestamp: new Date().toISOString()
+      });
+      
+      return {
+        statusCode: 403,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({
+          error: 'Insufficient Permissions',
+          message: errorMessage || `User must have all of the following permissions: ${permissions.join(', ')}`,
+          userMessage: 'You do not have the required permissions to perform this action.',
+          requiredPermissions: permissions,
+          missingPermissions
+        })
+      };
+    }
+    
+    return null; // Authorization successful
+  };
+}
+
+/**
+ * Middleware: Require user to be a manager of a specific team
+ * 
+ * Use this for team management operations that require manager privileges
+ * 
+ * @param teamId - Team that user must be a manager of
+ * @returns Middleware function
+ */
+export function requireTeamManager(teamId: TeamId) {
+  return async (
+    event: APIGatewayProxyEvent,
+    claims: CustomerClaims | StaffClaims
+  ): Promise<APIGatewayProxyResult | null> => {
+    const context = extractAuthorizationContext(event, claims);
+    
+    // Only check for staff users
+    if (context.userType !== 'staff') {
+      return {
+        statusCode: 403,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({
+          error: 'Forbidden',
+          message: 'This endpoint is only accessible to staff members',
+          userMessage: 'You do not have permission to access this resource.'
+        })
+      };
+    }
+    
+    // Fetch user's team assignments
+    const userData = await getUserTeamsAndPermissions(context.userId);
+    
+    if (!userData) {
+      return {
+        statusCode: 500,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({
+          error: 'Internal Server Error',
+          message: 'Failed to fetch user team assignments',
+          userMessage: 'An error occurred while verifying your access.'
+        })
+      };
+    }
+    
+    // Check if user is a manager of the team
+    if (!checkTeamManager(userData.teams, teamId)) {
+      // Log authorization failure
+      console.warn('Team manager access denied', {
+        userId: context.userId,
+        email: context.email,
+        requiredTeam: teamId,
+        userTeams: userData.teams.map(t => ({ teamId: t.teamId, role: t.role })),
+        endpoint: context.endpoint,
+        timestamp: new Date().toISOString()
+      });
+      
+      return {
+        statusCode: 403,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({
+          error: 'Insufficient Team Access',
+          message: `User must be a manager of team: ${teamId}`,
+          userMessage: 'You must be a team manager to perform this action.',
+          requiredTeam: teamId,
+          requiredRole: 'manager'
+        })
+      };
+    }
+    
+    return null; // Authorization successful
+  };
+}
+
+/**
+ * Helper: Check if user has a specific permission (for use in handlers)
+ * 
+ * Use this inside handler functions when you need programmatic permission checking
+ * 
+ * @param userId - User ID to check
+ * @param permission - Permission to check for
+ * @returns True if user has the permission
+ */
+export async function userHasPermission(
+  userId: string,
+  permission: string
+): Promise<boolean> {
+  const userData = await getUserTeamsAndPermissions(userId);
+  if (!userData) return false;
+  
+  return hasPermission(userData.effectivePermissions, permission);
+}
+
+/**
+ * Helper: Get user's team assignments (for use in handlers)
+ * 
+ * @param userId - User ID to get teams for
+ * @returns User's team assignments
+ */
+export async function getUserTeams(userId: string): Promise<TeamAssignment[]> {
+  const userData = await getUserTeamsAndPermissions(userId);
+  return userData?.teams || [];
+}
+
+/**
+ * Helper: Get user's effective permissions (for use in handlers)
+ * 
+ * @param userId - User ID to get permissions for
+ * @returns User's effective permissions
+ */
+export async function getUserEffectivePermissions(userId: string): Promise<string[]> {
+  const userData = await getUserTeamsAndPermissions(userId);
+  return userData?.effectivePermissions || [];
 }

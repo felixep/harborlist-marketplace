@@ -172,12 +172,14 @@ const lambdaToExpress = (handlerModule: string, handlerName: string = 'handler')
       // Parse JWT token for authentication (local development only)
       let authorizer = undefined;
       const authHeader = req.headers.authorization;
+      console.log('[local-server] Auth header:', authHeader ? 'present' : 'missing');
       if (authHeader && authHeader.startsWith('Bearer ')) {
         try {
           const token = authHeader.substring(7);
           // Import JWT verification dynamically
           const { verifyToken } = await import('./shared/auth');
           const decoded = await verifyToken(token);
+          console.log('[local-server] Token verified successfully for user:', decoded.sub);
           authorizer = {
             claims: {
               sub: decoded.sub,
@@ -190,7 +192,7 @@ const lambdaToExpress = (handlerModule: string, handlerName: string = 'handler')
             }
           };
         } catch (error) {
-          console.log('JWT token validation failed:', error instanceof Error ? error.message : 'Unknown error');
+          console.log('[local-server] JWT token validation failed:', error instanceof Error ? error.message : 'Unknown error');
           // Continue without authorization context - let the handler decide if auth is required
         }
       }
@@ -271,6 +273,8 @@ app.get('/health', (req: Request, res: Response) => {
 
 // API Routes - dynamically load handlers
 app.use('/api/auth', lambdaToExpress('./auth-service'));
+// Note: slug route must come before :id route to avoid conflict
+app.use('/api/listings/slug/:slug', lambdaToExpress('./listing'));
 app.use('/api/listings/:id', lambdaToExpress('./listing'));
 app.use('/api/listings', lambdaToExpress('./listing'));
 app.use('/api/search', lambdaToExpress('./search'));
@@ -279,6 +283,7 @@ app.use('/api/email', lambdaToExpress('./email'));
 app.use('/api/admin', lambdaToExpress('./admin-service'));
 app.use('/api/analytics', lambdaToExpress('./analytics-service'));
 app.use('/api/stats', lambdaToExpress('./analytics-service')); // Platform stats
+app.use('/api/dealer', lambdaToExpress('./dealer-service')); // Dealer sub-account management
 
 // Catch-all for undefined routes
 app.use('*', (req: Request, res: Response) => {
@@ -295,6 +300,7 @@ app.use('*', (req: Request, res: Response) => {
       '/api/admin',
       '/api/analytics',
       '/api/stats',
+      '/api/dealer',
     ],
   });
 });

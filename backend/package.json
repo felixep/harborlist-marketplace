@@ -11,11 +11,11 @@
     "lint": "eslint src --ext .ts",
     "clean": "rm -rf dist",
     "create-admin": "ts-node scripts/create-admin-user.ts",
+    "create-dealer": "ts-node scripts/create-dealer-account.ts",
     "dev:local": "nodemon --exec ts-node src/local-server.ts",
     "dev:billing": "nodemon --exec ts-node src/billing-service/local-server.ts",
     "dev:finance": "nodemon --exec ts-node src/finance-service/local-server.ts",
-    "dev:user": "nodemon --exec ts-node src/user-service/local-server.ts",
-    "dev:setup-db": "./scripts/setup-local-db.sh"
+    "dev:user": "nodemon --exec ts-node src/user-service/local-server.ts"
   },
   "dependencies": {
     "@aws-sdk/client-cloudwatch-logs": "^3.908.0",
@@ -31,6 +31,7 @@
     "@paypal/paypal-server-sdk": "^1.1.0",
     "aws-lambda": "^1.0.7",
     "axios": "^1.6.0",
+    "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "express": "^4.18.2",
     "jsonwebtoken": "^9.0.2",
@@ -44,6 +45,7 @@
   },
   "devDependencies": {
     "@types/aws-lambda": "^8.10.119",
+    "@types/bcryptjs": "^2.4.6",
     "@types/cors": "^2.8.15",
     "@types/express": "^4.17.20",
     "@types/jest": "^30.0.0",

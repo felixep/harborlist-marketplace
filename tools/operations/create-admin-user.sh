@@ -28,7 +28,7 @@ NC='\033[0m' # No Color
 ENVIRONMENT="local"
 EMAIL="admin@harborlist.com"
 NAME="HarborList Admin"
-ROLE="super-admin"
+ROLE="super_admin"
 PASSWORD=""
 PERMISSIONS=""
 FORCE=false
@@ -92,7 +92,7 @@ $(print_color $YELLOW "USAGE:")
 $(print_color $YELLOW "OPTIONS:")
     -e, --email <email>      Admin user email address [default: admin@harborlist.com]
     -n, --name <name>        Admin user full name [default: HarborList Admin]
-    -r, --role <role>        Admin role [default: super-admin]
+    -r, --role <role>        Admin role [default: super_admin]
     -E, --environment <env>  Target environment (local, dev, staging, prod) [default: local]
     -p, --password <pass>    Custom password (if not provided, one will be generated)
     -P, --permissions <list> Comma-separated permissions (overrides role defaults)
@@ -103,10 +103,10 @@ $(print_color $YELLOW "OPTIONS:")
     -h, --help              Show this help message
 
 $(print_color $YELLOW "AVAILABLE ROLES:")
-    $(print_color $GREEN "super-admin") - Full system access (all permissions)
+    $(print_color $GREEN "super_admin") - Full system access (all permissions)
     $(print_color $GREEN "admin")       - User management, content moderation, analytics
-    $(print_color $GREEN "moderator")   - Content moderation and audit log access
-    $(print_color $GREEN "support")     - Limited support access (audit logs only)
+    $(print_color $GREEN "manager")     - Team oversight and management
+    $(print_color $GREEN "team_member") - Basic staff access
 
 $(print_color $YELLOW "AVAILABLE PERMISSIONS:")
     - user_management: Manage user accounts and profiles
@@ -117,7 +117,7 @@ $(print_color $YELLOW "AVAILABLE PERMISSIONS:")
     - financial_reports: Access financial and payment reports
 
 $(print_color $YELLOW "EXAMPLES:")
-    # Create default admin (admin@harborlist.com with super-admin role)
+    # Create default admin (admin@harborlist.com with super_admin role)
     $0
 
     # Create admin with custom email
@@ -127,7 +127,7 @@ $(print_color $YELLOW "EXAMPLES:")
     $0 --reset-password
 
     # Update role for existing admin
-    $0 --email admin@harborlist.com --role super-admin --update-role
+    $0 --email admin@harborlist.com --role super_admin --update-role
 
     # Create a production admin with custom password
     $0 --environment prod \\
@@ -136,7 +136,7 @@ $(print_color $YELLOW "EXAMPLES:")
        --role admin \\
        --password "SecurePass123!"
 
-    # Create a moderator for staging with specific permissions
+    # Create a manager for staging with specific permissions
     $0 --environment staging \\
        --email mod@harborlist.com \\
        --name "Content Moderator" \\
@@ -176,12 +176,12 @@ validate_email() {
 validate_role() {
     local role=$1
     case $role in
-        super-admin|admin|moderator|support)
+        super_admin|admin|manager|team_member)
             return 0
             ;;
         *)
             print_color $RED "❌ Error: Invalid role: $role"
-            print_color $YELLOW "Valid roles: super-admin, admin, moderator, support"
+            print_color $YELLOW "Valid roles: super_admin, admin, manager, team_member"
             exit 1
             ;;
     esac
@@ -315,7 +315,8 @@ create_admin_user() {
         return 0
     fi
 
-    # Execute the TypeScript script
+    # Execute via npm script - this ensures proper module resolution
+    # Works in both local and AWS environments
     cd "$BACKEND_DIR"
     if npm run create-admin -- "${cmd_args[@]}"; then
         print_color $GREEN "✅ Admin user created successfully!"
@@ -421,8 +422,8 @@ validate_arguments() {
     if [[ $NAME == "HarborList Admin" ]]; then
         print_color $BLUE "👤 Using default name: HarborList Admin"
     fi
-    if [[ $ROLE == "super-admin" ]]; then
-        print_color $BLUE "🔑 Using default role: super-admin"
+    if [[ $ROLE == "super_admin" ]]; then
+        print_color $BLUE "🔑 Using default role: super_admin"
     fi
 
     # Validate individual fields

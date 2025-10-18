@@ -54,15 +54,19 @@ check_prerequisites() {
         exit 1
     fi
     
-    # Check if Cognito service is available
-    if ! curl -s "$LOCALSTACK_ENDPOINT/_localstack/health" | grep -q '"cognito-idp": "available"'; then
-        print_error "Cognito service is not available in LocalStack"
-        exit 1
-    fi
-    
     # Check if AWS CLI is available
     if ! command -v aws >/dev/null 2>&1; then
         print_error "AWS CLI is not installed"
+        exit 1
+    fi
+    
+    # Check if Cognito service is actually working by trying to list user pools
+    if ! aws cognito-idp list-user-pools \
+        --endpoint-url="$LOCALSTACK_ENDPOINT" \
+        --max-results 1 \
+        --region "$AWS_REGION" >/dev/null 2>&1; then
+        print_error "Cognito service is not responding in LocalStack"
+        print_info "Make sure LocalStack is started with Cognito enabled"
         exit 1
     fi
     
@@ -76,7 +80,8 @@ test_customer_pool() {
     # List User Pools and find Customer pool
     CUSTOMER_POOLS=$(aws cognito-idp list-user-pools \
         --endpoint-url="$LOCALSTACK_ENDPOINT" \
-        --max-items 10 \
+        --max-results 10 \
+        --region "$AWS_REGION" \
         --query 'UserPools[?contains(Name, `customer`) || contains(Name, `Customer`)].{Id:Id,Name:Name}' \
         --output json)
     
@@ -123,20 +128,6 @@ test_customer_pool() {
         return 1
     fi
     
-    # Test Customer test users
-    print_test "Checking Customer test users..."
-    TEST_USERS=("individual@test.com" "dealer@test.com" "premium@test.com")
-    for user in "${TEST_USERS[@]}"; do
-        if aws cognito-idp admin-get-user \
-            --endpoint-url="$LOCALSTACK_ENDPOINT" \
-            --user-pool-id "$CUSTOMER_POOL_ID" \
-            --username "$user" >/dev/null 2>&1; then
-            print_status "Customer test user '$user' exists"
-        else
-            print_warning "Customer test user '$user' missing"
-        fi
-    done
-    
     print_status "Customer User Pool tests completed"
 }
 
@@ -147,7 +138,8 @@ test_staff_pool() {
     # List User Pools and find Staff pool
     STAFF_POOLS=$(aws cognito-idp list-user-pools \
         --endpoint-url="$LOCALSTACK_ENDPOINT" \
-        --max-items 10 \
+        --max-results 10 \
+        --region "$AWS_REGION" \
         --query 'UserPools[?contains(Name, `staff`) || contains(Name, `Staff`)].{Id:Id,Name:Name}' \
         --output json)
     
@@ -169,7 +161,7 @@ test_staff_pool() {
         --query 'Groups[].GroupName' \
         --output json)
     
-    EXPECTED_GROUPS=("super-admin" "admin" "manager" "team-member")
+    EXPECTED_GROUPS=("super_admin" "admin" "manager" "team_member")
     for group in "${EXPECTED_GROUPS[@]}"; do
         if echo "$STAFF_GROUPS" | grep -q "\"$group\""; then
             print_status "Staff group '$group' exists"
@@ -193,20 +185,6 @@ test_staff_pool() {
         print_error "Staff User Pool Client missing"
         return 1
     fi
-    
-    # Test Staff test users
-    print_test "Checking Staff test users..."
-    TEST_USERS=("superadmin@test.com" "admin@test.com")
-    for user in "${TEST_USERS[@]}"; do
-        if aws cognito-idp admin-get-user \
-            --endpoint-url="$LOCALSTACK_ENDPOINT" \
-            --user-pool-id "$STAFF_POOL_ID" \
-            --username "$user" >/dev/null 2>&1; then
-            print_status "Staff test user '$user' exists"
-        else
-            print_warning "Staff test user '$user' missing"
-        fi
-    done
     
     print_status "Staff User Pool tests completed"
 }
@@ -261,14 +239,15 @@ generate_report() {
     echo "✅ LocalStack Cognito dual auth setup validation completed"
     echo ""
     echo "🔧 Next Steps:"
-    echo "1. Start the full development environment:"
-    echo "   docker-compose --profile enhanced up"
+    echo "1. Both Customer and Staff User Pools are configured and ready"
     echo ""
-    echo "2. Test authentication flows manually:"
-    echo "   - Customer login: individual@test.com / TempPass123!"
-    echo "   - Staff login: admin@test.com / TempPass123!@#"
+    echo "2. Create users as needed:"
+    echo "   - Customer users: Register via /auth/customer/register endpoint"
+    echo "   - Admin users: Use tools/operations/create-admin-user.sh script"
     echo ""
-    echo "3. Verify cross-pool security in your application"
+    echo "3. Test authentication flows in your application"
+    echo ""
+    echo "4. Verify cross-pool security (customer tokens can't access staff endpoints)"
     echo ""
     echo "📖 For more information, see the authentication documentation."
 }

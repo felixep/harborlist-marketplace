@@ -426,18 +426,25 @@ async function getListingBySlug(slug: string, requestId: string, event?: APIGate
         if (event) {
           const userPayload = await getUserFromEvent(event);
           currentUserId = userPayload.sub;
+          console.log('[getListingBySlug] Authenticated user:', currentUserId);
+          console.log('[getListingBySlug] Listing owner:', result.ownerId);
+          console.log('[getListingBySlug] User role:', userPayload.role);
           // Check if user has any admin/moderator role
           const adminRoles = ['ADMIN', 'SUPER_ADMIN', 'MODERATOR', 'SUPPORT'];
           isAdmin = userPayload.role ? adminRoles.includes(userPayload.role) : false;
         }
       } catch (error) {
         // User not authenticated
+        console.log('[getListingBySlug] Auth error:', error);
       }
 
       // Only allow owner or admin/moderator to view pending listings
       if (!isAdmin && (!currentUserId || currentUserId !== result.ownerId)) {
+        console.log('[getListingBySlug] Access denied - isAdmin:', isAdmin, 'currentUserId:', currentUserId, 'ownerId:', result.ownerId);
         return createErrorResponse(404, 'NOT_FOUND', 'Listing not found', requestId);
       }
+      
+      console.log('[getListingBySlug] Access granted - user is owner or admin');
     }
 
     // Increment view count only for active/approved listings
@@ -560,7 +567,56 @@ async function getListings(event: APIGatewayProxyEvent, requestId: string): Prom
     const queryParams = event.queryStringParameters || {};
     const limit = parseInt(queryParams.limit || '20');
     const nextToken = queryParams.nextToken;
+    const ownerIdFilter = queryParams.ownerId;
 
+    // If ownerId is provided, fetch listings for that specific owner
+    if (ownerIdFilter) {
+      // Verify that the requesting user is authenticated
+      let currentUserId: string | null = null;
+      try {
+        const userPayload = await getUserFromEvent(event);
+        currentUserId = userPayload.sub;
+      } catch (error) {
+        // User not authenticated
+      }
+
+      // Only allow users to query their own listings
+      if (currentUserId !== ownerIdFilter) {
+        return createErrorResponse(403, 'FORBIDDEN', 'You can only view your own listings', requestId);
+      }
+
+      const listings = await db.getListingsByOwner(ownerIdFilter);
+      
+      // Fetch owner information for each listing
+      const listingsWithOwners = await Promise.all(
+        listings.map(async (listing: any) => {
+          try {
+            const owner = await db.getUser(listing.ownerId);
+            return {
+              ...listing,
+              owner: owner ? {
+                id: owner.id,
+                name: owner.name,
+                email: owner.email
+              } : null
+            };
+          } catch (error) {
+            console.warn(`Failed to fetch owner for listing ${listing.listingId}:`, error);
+            return {
+              ...listing,
+              owner: null
+            };
+          }
+        })
+      );
+      
+      return createResponse(200, {
+        listings: listingsWithOwners,
+        total: listingsWithOwners.length,
+      });
+    }
+
+    // Regular public listings query
     let lastKey;
     if (nextToken) {
       try {

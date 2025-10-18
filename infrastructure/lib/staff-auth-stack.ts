@@ -244,7 +244,7 @@ export class StaffAuthStack extends cdk.Stack {
     this.staffGroups = {
       superAdmin: new cognito.CfnUserPoolGroup(this, 'SuperAdminGroup', {
         userPoolId: this.userPool.userPoolId,
-        groupName: 'super-admin',
+        groupName: 'super_admin',
         description: 'Super administrators with full system access',
         precedence: 1,
       }),
@@ -265,7 +265,7 @@ export class StaffAuthStack extends cdk.Stack {
       
       teamMember: new cognito.CfnUserPoolGroup(this, 'TeamMemberGroup', {
         userPoolId: this.userPool.userPoolId,
-        groupName: 'team-member',
+        groupName: 'team_member',
         description: 'Team members with basic staff operations access',
         precedence: 4,
       }),

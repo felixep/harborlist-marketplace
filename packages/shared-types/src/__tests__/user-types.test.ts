@@ -222,7 +222,8 @@ describe('User Management Types', () => {
         createdAt: '2023-01-01T00:00:00Z',
         updatedAt: '2023-01-01T00:00:00Z',
         // Enhanced properties
-        userType: 'premium_individual',
+        userType: 'customer',
+        customerTier: 'premium_individual',
         membershipDetails: {
           plan: 'premium-individual',
           tierId: 'premium-individual',
@@ -254,23 +255,25 @@ describe('User Management Types', () => {
         premiumExpiresAt: Date.now() + 365 * 24 * 60 * 60 * 1000
       };
 
-      expect(enhancedUser.userType).toBe('premium_individual');
+      expect(enhancedUser.userType).toBe('customer');
+      expect(enhancedUser.customerTier).toBe('premium_individual');
       expect(enhancedUser.membershipDetails.plan).toBe('premium-individual');
       expect(enhancedUser.capabilities).toHaveLength(1);
       expect(enhancedUser.premiumActive).toBe(true);
     });
 
-    it('should validate userType enum values', () => {
-      const validUserTypes: EnhancedUser['userType'][] = [
+    it('should validate customerTier enum values', () => {
+      const validCustomerTiers: EnhancedUser['customerTier'][] = [
         'individual',
         'dealer',
         'premium_individual',
         'premium_dealer'
       ];
 
-      validUserTypes.forEach(userType => {
+      validCustomerTiers.forEach(customerTier => {
         const user: Partial<EnhancedUser> = {
-          userType,
+          userType: 'customer',
+          customerTier,
           membershipDetails: {
             features: [],
             limits: {
@@ -288,7 +291,8 @@ describe('User Management Types', () => {
           capabilities: [],
           premiumActive: false
         };
-        expect(user.userType).toBe(userType);
+        expect(user.userType).toBe('customer');
+        expect(user.customerTier).toBe(customerTier);
       });
     });
 
@@ -332,7 +336,8 @@ describe('User Management Types', () => {
         loginAttempts: 0,
         createdAt: '2023-01-01T00:00:00Z',
         updatedAt: '2023-01-01T00:00:00Z',
-        userType: 'dealer',
+        userType: 'customer',
+        customerTier: 'dealer',
         membershipDetails: {
           features: [],
           limits: {
