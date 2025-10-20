@@ -98,6 +98,7 @@ services:
       - SMTP_PORT=25
       - SMTP_SECURE=false
       - ACCESS_TOKEN_EXPIRY_SECONDS=86400
+      - ENABLE_RATE_LIMITING=false
       - FROM_EMAIL=noreply@harborlist.local
       - AWS_ACCESS_KEY_ID=test
       - AWS_SECRET_ACCESS_KEY=test

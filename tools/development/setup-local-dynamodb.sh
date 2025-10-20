@@ -474,6 +474,37 @@ fi
 
 create_simple_table "harborlist-support-templates"
 
+# Create user tiers table with proper schema and indexes
+echo "📊 Creating user tiers table: harborlist-user-tiers"
+if aws dynamodb describe-table --table-name "harborlist-user-tiers" --endpoint-url "$DYNAMODB_ENDPOINT" --region "$AWS_REGION" >/dev/null 2>&1; then
+    echo "   ✅ Table harborlist-user-tiers already exists"
+else
+    aws dynamodb create-table \
+        --table-name "harborlist-user-tiers" \
+        --key-schema AttributeName=tierId,KeyType=HASH \
+        --attribute-definitions \
+            AttributeName=tierId,AttributeType=S \
+            AttributeName=isPremium,AttributeType=N \
+        --provisioned-throughput ReadCapacityUnits=5,WriteCapacityUnits=5 \
+        --global-secondary-indexes \
+        '[{
+            "IndexName": "PremiumIndex",
+            "KeySchema": [{"AttributeName": "isPremium", "KeyType": "HASH"}],
+            "Projection": {"ProjectionType": "ALL"},
+            "ProvisionedThroughput": {"ReadCapacityUnits": 5, "WriteCapacityUnits": 5}
+        }]' \
+        --endpoint-url "$DYNAMODB_ENDPOINT" \
+        --region "$AWS_REGION" >/dev/null 2>&1
+    
+    if [ $? -eq 0 ]; then
+        echo "   ✅ User tiers table created successfully with PremiumIndex GSI"
+        echo "   ℹ️  To initialize default tiers, login to admin panel and use Tier Management"
+        echo "      Or call: POST /api/admin/tiers/initialize (requires admin authentication)"
+    else
+        echo "   ❌ Failed to create user tiers table"
+    fi
+fi
+
 echo ""
 echo "🎯 Setting up LocalStack S3 Buckets..."
 

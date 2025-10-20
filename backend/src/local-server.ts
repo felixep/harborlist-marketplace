@@ -280,6 +280,7 @@ app.use('/api/listings', lambdaToExpress('./listing'));
 app.use('/api/search', lambdaToExpress('./search'));
 app.use('/api/media', lambdaToExpress('./media'));
 app.use('/api/email', lambdaToExpress('./email'));
+app.use('/api/admin/tiers', lambdaToExpress('./tier'));
 app.use('/api/admin', lambdaToExpress('./admin-service'));
 app.use('/api/analytics', lambdaToExpress('./analytics-service'));
 app.use('/api/stats', lambdaToExpress('./analytics-service')); // Platform stats

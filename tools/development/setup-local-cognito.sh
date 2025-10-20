@@ -20,9 +20,12 @@ export AWS_DEFAULT_REGION="us-east-1"
 # Function to check if LocalStack is running
 check_localstack() {
     echo "🔍 Checking if LocalStack is running..."
-    if ! curl -s "$LOCALSTACK_ENDPOINT/health" > /dev/null; then
+    # Try both old and new health endpoints
+    if ! curl -s "$LOCALSTACK_ENDPOINT/_localstack/health" > /dev/null 2>&1 && \
+       ! curl -s "$LOCALSTACK_ENDPOINT/health" > /dev/null 2>&1; then
         echo "❌ LocalStack is not running. Please start LocalStack first."
         echo "   Run: docker-compose up localstack"
+        echo "   Checked: $LOCALSTACK_ENDPOINT/_localstack/health"
         exit 1
     fi
     echo "✅ LocalStack is running"

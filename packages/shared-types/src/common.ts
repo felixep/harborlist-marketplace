@@ -233,6 +233,11 @@ export interface User {
   createdAt: string;
   updatedAt: string;
   
+  // Premium membership fields
+  premiumActive?: boolean;
+  premiumExpiresAt?: number;
+  premiumTier?: string;
+  
   // Dealer Sub-Account fields (for customer users who are dealer sub-accounts)
   isDealerSubAccount?: boolean;
   parentDealerId?: string;

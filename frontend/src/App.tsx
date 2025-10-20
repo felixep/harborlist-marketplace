@@ -63,6 +63,7 @@ import {
   SupportDashboard,
   AuditLogs
 } from './pages/admin';
+import TierManagement from './pages/admin/TierManagement';
 import { AdminPermission } from '@harborlist/shared-types';
 
 /**
@@ -170,6 +171,14 @@ function App() {
                             element={
                               <AdminProtectedRoute requiredPermission={AdminPermission.SYSTEM_CONFIG}>
                                 <PlatformSettings />
+                              </AdminProtectedRoute>
+                            } 
+                          />
+                          <Route 
+                            path="tiers" 
+                            element={
+                              <AdminProtectedRoute requiredPermission={AdminPermission.SYSTEM_CONFIG}>
+                                <TierManagement />
                               </AdminProtectedRoute>
                             } 
                           />

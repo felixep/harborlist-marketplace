@@ -9,6 +9,7 @@ import ImageGallery from '../components/listing/ImageGallery';
 import ContactForm from '../components/listing/ContactForm';
 import BoatSpecs from '../components/listing/BoatSpecs';
 import FinanceCalculator from '../components/listing/FinanceCalculator';
+import ComparableBoats from '../components/listing/ComparableBoats';
 import { useToast } from '../contexts/ToastContext';
 import { 
   updateListingMetaTags, 
@@ -71,6 +72,9 @@ export default function ListingDetail() {
 
   // Check if current user is the owner
   const isOwner = user && listing && user.id === listing.ownerId;
+  
+  // Check if user has premium access
+  const isPremium = user?.premiumActive || false;
 
   const formatPrice = (price: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -243,12 +247,85 @@ export default function ListingDetail() {
               </div>
             )}
 
-            {/* Finance Calculator */}
-            <FinanceCalculator
-              boatPrice={listing.price}
-              listingId={listing.listingId}
-              className="mb-6"
-            />
+            {/* Comparable Listings - Only for premium owners */}
+            {isOwner && (
+              <div className="card p-6 mb-6">
+                <h2 className="text-xl font-semibold text-navy-900 mb-4">
+                  <span className="mr-2">📊</span>Comparable Listings
+                  {!isPremium && (
+                    <span className="ml-2 text-xs bg-gradient-to-r from-amber-500 to-orange-500 text-white px-2 py-1 rounded-full">
+                      Premium
+                    </span>
+                  )}
+                </h2>
+                
+                {isPremium ? (
+                  <>
+                    <p className="text-sm text-navy-600 mb-4">
+                      Similar boats currently on the market to help you understand your pricing position.
+                    </p>
+                    
+                    <div className="space-y-4">
+                      <ComparableBoats
+                        boatType={listing.boatDetails.type}
+                        year={listing.boatDetails.year}
+                        length={listing.boatDetails.length}
+                        currentListingId={listing.listingId}
+                        currentPrice={listing.price}
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <div className="bg-gradient-to-br from-amber-50 to-orange-50 border-2 border-amber-200 rounded-lg p-6">
+                    <div className="text-center">
+                      <div className="text-4xl mb-3">🌟</div>
+                      <h3 className="text-lg font-semibold text-navy-900 mb-2">
+                        Unlock Market Insights
+                      </h3>
+                      <p className="text-sm text-navy-600 mb-4">
+                        Get instant access to comparable listings and see how your boat compares to similar boats on the market.
+                      </p>
+                      <ul className="text-left text-sm text-navy-700 mb-6 space-y-2">
+                        <li className="flex items-center">
+                          <span className="text-seaweed-500 mr-2">✓</span>
+                          <span>See up to 5 similar boats in real-time</span>
+                        </li>
+                        <li className="flex items-center">
+                          <span className="text-seaweed-500 mr-2">✓</span>
+                          <span>Compare pricing and features instantly</span>
+                        </li>
+                        <li className="flex items-center">
+                          <span className="text-seaweed-500 mr-2">✓</span>
+                          <span>Make data-driven pricing decisions</span>
+                        </li>
+                        <li className="flex items-center">
+                          <span className="text-seaweed-500 mr-2">✓</span>
+                          <span>Stay competitive in the market</span>
+                        </li>
+                      </ul>
+                      <Link
+                        to="/premium"
+                        className="inline-block bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-semibold py-3 px-6 rounded-lg transition-all shadow-md hover:shadow-lg"
+                      >
+                        Upgrade to Premium
+                      </Link>
+                      <p className="text-xs text-navy-500 mt-3">
+                        Starting at $9.99/month
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Finance Calculator - Hidden for owners */}
+            {!isOwner && (
+              <FinanceCalculator
+                boatPrice={listing.price}
+                listingId={listing.listingId}
+                className="mb-6"
+              />
+            )}
           </div>
 
           {/* Sidebar */}
