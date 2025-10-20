@@ -84,14 +84,16 @@ const isLocalEnvironment = process.env.ENVIRONMENT === 'local' || !!process.env.
  */
 const getMediaBaseUrl = () => {
   if (isLocalEnvironment) {
-    return `https://s3.local.harborlist.com/${MEDIA_BUCKET}`;
+    // Use direct localhost URL for LocalStack S3 access
+    return `http://localhost:4566/${MEDIA_BUCKET}`;
   }
   return `https://${MEDIA_BUCKET}.s3.amazonaws.com`;
 };
 
 const getThumbnailBaseUrl = () => {
   if (isLocalEnvironment) {
-    return `https://s3.local.harborlist.com/${THUMBNAILS_BUCKET}`;
+    // Use direct localhost URL for LocalStack S3 access
+    return `http://localhost:4566/${THUMBNAILS_BUCKET}`;
   }
   return `https://${THUMBNAILS_BUCKET}.s3.amazonaws.com`;
 };

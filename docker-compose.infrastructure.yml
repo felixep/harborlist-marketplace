@@ -25,6 +25,19 @@ services:
     ports:
       - "4566:4566"
       - "4510-4559:4510-4559"
+    labels:
+      - "traefik.enable=true"
+      # S3 HTTP endpoint
+      - "traefik.http.routers.s3-http.rule=Host(`s3.local.harborlist.com`)"
+      - "traefik.http.routers.s3-http.entrypoints=web"
+      - "traefik.http.routers.s3-http.middlewares=https-redirect@file"
+      # S3 HTTPS endpoint
+      - "traefik.http.routers.s3-https.rule=Host(`s3.local.harborlist.com`)"
+      - "traefik.http.routers.s3-https.entrypoints=websecure"
+      - "traefik.http.routers.s3-https.tls=true"
+      - "traefik.http.routers.s3-https.service=localstack-s3"
+      - "traefik.http.services.localstack-s3.loadbalancer.server.port=4566"
+      - "traefik.http.services.localstack-s3.loadbalancer.server.scheme=http"
     environment:
       - SERVICES=s3,ses,cloudwatch,logs,cognito-idp,cognito-identity,lambda,iam,apigateway
       - DEBUG=1

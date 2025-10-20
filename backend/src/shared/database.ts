@@ -296,8 +296,17 @@ export class DatabaseService {
     const expressionAttributeNames: Record<string, string> = {};
     const expressionAttributeValues: Record<string, any> = {};
 
+    // GSI key attributes that cannot be empty strings
+    const gsiKeys = ['slug', 'status', 'ownerId', 'totalHorsepower', 'engineConfiguration'];
+
     for (const [key, value] of Object.entries(updates)) {
       if (key !== 'listingId' && key !== 'id') {
+        // Skip GSI keys that are empty strings
+        if (gsiKeys.includes(key) && value === '') {
+          console.warn(`Skipping empty string value for GSI key: ${key}`);
+          continue;
+        }
+        
         updateExpression.push(`#${key} = :${key}`);
         expressionAttributeNames[`#${key}`] = key;
         expressionAttributeValues[`:${key}`] = value;

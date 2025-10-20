@@ -534,9 +534,12 @@ async function getListingWithRedirect(listingId: string, requestId: string, even
       }
     }
 
+    // Check if noRedirect query parameter is set (for edit page, API clients, etc.)
+    const noRedirect = event?.queryStringParameters?.noRedirect === 'true';
+    
     // Check if listing has a slug and should redirect
     const enhancedListing = listing as any;
-    if (enhancedListing.slug) {
+    if (enhancedListing.slug && !noRedirect) {
       // Return 301 permanent redirect to slug-based URL
       return {
         statusCode: 301,
@@ -554,8 +557,8 @@ async function getListingWithRedirect(listingId: string, requestId: string, even
       };
     }
 
-    // If no slug, proceed with normal listing retrieval
-    return await getListing(listingId, requestId);
+    // If no redirect needed, fetch and return the listing data directly
+    return await getListing(listingId, requestId, event);
   } catch (error) {
     console.error('Error getting listing with redirect:', error);
     return createErrorResponse(500, 'DATABASE_ERROR', 'Failed to retrieve listing', requestId);

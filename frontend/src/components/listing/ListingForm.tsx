@@ -691,8 +691,8 @@ export default function ListingForm({ onSubmit, isLoading, initialData }: Listin
           {(uploadingFiles.images || uploadingFiles.videos) 
             ? 'Uploading Media...' 
             : isLoading 
-            ? 'Creating Listing...' 
-            : 'Create Listing'}
+            ? (initialData ? 'Updating Listing...' : 'Creating Listing...')
+            : (initialData ? 'Update Listing' : 'Create Listing')}
         </button>
       </div>
     </form>

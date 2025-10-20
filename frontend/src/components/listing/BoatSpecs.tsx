@@ -35,8 +35,8 @@ export default function BoatSpecs({ boatDetails }: BoatSpecsProps) {
     { label: 'Model', value: boatDetails.model },
     { label: 'Year', value: boatDetails.year },
     { label: 'Length', value: `${boatDetails.length} ft` },
-    { label: 'Beam', value: boatDetails.beam ? `${boatDetails.beam} ft` : undefined },
-    { label: 'Draft', value: boatDetails.draft ? `${boatDetails.draft} ft` : undefined },
+    { label: 'Beam', value: boatDetails.beam && boatDetails.beam > 0 ? `${boatDetails.beam} ft` : undefined },
+    { label: 'Draft', value: boatDetails.draft && boatDetails.draft > 0 ? `${boatDetails.draft} ft` : undefined },
     { label: 'Condition', value: boatDetails.condition },
   ].filter(spec => spec.value !== undefined);
 

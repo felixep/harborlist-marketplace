@@ -1,13 +1,15 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link, useLocation, useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import { getListing } from '../services/listings';
+import { useQuery, useMutation } from '@tanstack/react-query';
+import { getListing, updateListingStatus } from '../services/listings';
+import { useAuth } from '../components/auth/AuthProvider';
 import Layout from '../components/layout/Layout';
 import PageHeader from '../components/layout/PageHeader';
 import ImageGallery from '../components/listing/ImageGallery';
 import ContactForm from '../components/listing/ContactForm';
 import BoatSpecs from '../components/listing/BoatSpecs';
 import FinanceCalculator from '../components/listing/FinanceCalculator';
+import { useToast } from '../contexts/ToastContext';
 import { 
   updateListingMetaTags, 
   updateListingStructuredData, 
@@ -21,6 +23,8 @@ export default function ListingDetail() {
   const location = useLocation();
   const navigate = useNavigate();
   const [showContactForm, setShowContactForm] = useState(false);
+  const { user } = useAuth();
+  const { showSuccess, showError } = useToast();
 
   // Determine if we're using slug or ID-based URL
   const isSlugRoute = location.pathname.startsWith('/boat/');
@@ -64,6 +68,9 @@ export default function ListingDetail() {
   }, [data?.listing, isSlugRoute, navigate]);
 
   const listing = data?.listing;
+
+  // Check if current user is the owner
+  const isOwner = user && listing && user.id === listing.ownerId;
 
   const formatPrice = (price: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -246,6 +253,72 @@ export default function ListingDetail() {
 
           {/* Sidebar */}
           <div className="lg:col-span-1">
+            {/* Owner Actions Panel - Only visible to owner */}
+            {isOwner && (
+              <div className="card p-6 mb-6">
+                <h3 className="font-semibold text-navy-900 mb-4">
+                  <span className="mr-2">⚙️</span>Manage Listing
+                </h3>
+                <div className="space-y-2">
+                  <button
+                    onClick={() => navigate(`/edit/${listing.listingId}`)}
+                    className="w-full btn-secondary text-sm py-2"
+                  >
+                    <span className="flex items-center justify-center space-x-2">
+                      <span>✏️</span>
+                      <span>Edit Listing</span>
+                    </span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (confirm('Mark this listing as sold?')) {
+                        updateListingStatus(listing.listingId, 'sold')
+                          .then(() => {
+                            showSuccess('Success', 'Listing marked as sold');
+                            window.location.reload();
+                          })
+                          .catch(() => showError('Error', 'Failed to update status'));
+                      }
+                    }}
+                    className="w-full btn-secondary text-sm py-2"
+                  >
+                    <span className="flex items-center justify-center space-x-2">
+                      <span>✅</span>
+                      <span>Mark as Sold</span>
+                    </span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (confirm('Delete this listing permanently?')) {
+                        // TODO: Implement delete functionality
+                        showError('Not Implemented', 'Delete functionality coming soon');
+                      }
+                    }}
+                    className="w-full bg-red-50 text-red-600 hover:bg-red-100 font-medium py-2 px-4 rounded-lg transition-colors text-sm"
+                  >
+                    <span className="flex items-center justify-center space-x-2">
+                      <span>🗑️</span>
+                      <span>Delete Listing</span>
+                    </span>
+                  </button>
+                </div>
+                
+                {/* Status Badge */}
+                <div className="mt-4 pt-4 border-t border-ocean-100">
+                  <div className="text-xs text-navy-500 mb-2">Current Status:</div>
+                  <span className={`inline-block px-3 py-1.5 rounded-lg text-sm font-medium ${
+                    listing.status === 'active' ? 'bg-green-100 text-green-700' :
+                    listing.status === 'pending_moderation' ? 'bg-yellow-100 text-yellow-700' :
+                    listing.status === 'sold' ? 'bg-blue-100 text-blue-700' :
+                    'bg-gray-100 text-gray-700'
+                  }`}>
+                    {listing.status === 'pending_moderation' ? 'Pending Review' : 
+                     listing.status.charAt(0).toUpperCase() + listing.status.slice(1)}
+                  </span>
+                </div>
+              </div>
+            )}
+
             <div className="card p-6 sticky top-24">
               {/* Price */}
               <div className="text-center mb-6">
@@ -280,24 +353,24 @@ export default function ListingDetail() {
                     <span className="text-navy-600">Length:</span>
                     <span className="font-medium text-navy-900">{listing.boatDetails.length} ft</span>
                   </div>
-                  {listing.boatDetails.beam && (
+                  {listing.boatDetails.beam && listing.boatDetails.beam > 0 ? (
                     <div className="flex justify-between">
                       <span className="text-navy-600">Beam:</span>
                       <span className="font-medium text-navy-900">{listing.boatDetails.beam} ft</span>
                     </div>
-                  )}
-                  {listing.boatDetails.engine && (
+                  ) : null}
+                  {listing.boatDetails.engine ? (
                     <div className="flex justify-between">
                       <span className="text-navy-600">Engine:</span>
                       <span className="font-medium text-navy-900">{listing.boatDetails.engine}</span>
                     </div>
-                  )}
-                  {listing.boatDetails.hours && (
+                  ) : null}
+                  {listing.boatDetails.hours && listing.boatDetails.hours > 0 ? (
                     <div className="flex justify-between">
                       <span className="text-navy-600">Hours:</span>
                       <span className="font-medium text-navy-900">{listing.boatDetails.hours}</span>
                     </div>
-                  )}
+                  ) : null}
                   <div className="flex justify-between">
                     <span className="text-navy-600">Condition:</span>
                     <span className="font-medium text-navy-900">{listing.boatDetails.condition}</span>
@@ -312,16 +385,12 @@ export default function ListingDetail() {
                     <span className="mr-2">🕒</span>
                     Listed: {new Date(listing.createdAt).toLocaleDateString()}
                   </div>
-                  {listing.views && (
+                  {listing.views && listing.views > 0 ? (
                     <div className="flex items-center">
                       <span className="mr-2">👁️</span>
                       Views: {listing.views}
                     </div>
-                  )}
-                  <div className="flex items-center">
-                    <span className="mr-2">🆔</span>
-                    ID: {listing.listingId}
-                  </div>
+                  ) : null}
                 </div>
               </div>
             </div>

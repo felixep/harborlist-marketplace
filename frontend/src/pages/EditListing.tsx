@@ -1,8 +1,9 @@
 import { useParams, useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import { getListing } from '../services/listings';
+import { useQuery, useMutation } from '@tanstack/react-query';
+import { getListing, updateListing } from '../services/listings';
 import ListingForm from '../components/listing/ListingForm';
 import { useToast } from '../contexts/ToastContext';
+import { Listing } from '@harborlist/shared-types';
 
 export default function EditListing() {
   const { id } = useParams<{ id: string }>();
@@ -11,8 +12,20 @@ export default function EditListing() {
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['listing', id],
-    queryFn: () => getListing(id!, { bySlug: false }),
+    queryFn: () => getListing(id!, { bySlug: false, noRedirect: true }),
     enabled: !!id,
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: (updates: Partial<Listing>) => updateListing(id!, updates),
+    onSuccess: () => {
+      showSuccess('Listing Updated', 'Your changes have been saved.');
+      navigate('/profile');
+    },
+    onError: (error: any) => {
+      const errorMessage = error?.message || 'Failed to update listing. Please try again.';
+      showError('Update Failed', errorMessage);
+    },
   });
 
   if (isLoading) {
@@ -43,14 +56,8 @@ export default function EditListing() {
     );
   }
 
-  const handleSubmit = async (updatedData: any) => {
-    try {
-      // TODO: Implement update listing mutation
-      showSuccess('Listing Updated', 'Your changes have been saved.');
-      navigate('/profile');
-    } catch (error) {
-      showError('Update Failed', 'Failed to update listing. Please try again.');
-    }
+  const handleSubmit = (updatedData: Omit<Listing, 'listingId' | 'createdAt' | 'updatedAt'>) => {
+    updateMutation.mutate(updatedData);
   };
 
   return (
@@ -65,7 +72,7 @@ export default function EditListing() {
       <ListingForm
         initialData={data.listing}
         onSubmit={handleSubmit}
-        isLoading={false}
+        isLoading={updateMutation.isPending}
       />
     </div>
   );

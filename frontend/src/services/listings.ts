@@ -12,8 +12,9 @@ class ApiError extends Error {
 
 async function apiRequest<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const token = localStorage.getItem('authToken');
+  const fullUrl = `${API_BASE_URL}${endpoint}`;
   
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+  const response = await fetch(fullUrl, {
     headers: {
       'Content-Type': 'application/json',
       ...(token && { Authorization: `Bearer ${token}` }),
@@ -61,14 +62,10 @@ export async function getListings(params?: {
   return apiRequest(`/listings?${searchParams.toString()}`);
 }
 
-export async function getListing(
-  identifier: string, 
-  options?: { bySlug?: boolean }
-): Promise<{ listing: Listing }> {
-  if (options?.bySlug) {
-    return apiRequest(`/listings/slug/${identifier}`);
-  }
-  return apiRequest(`/listings/${identifier}`);
+export async function getListing(identifier: string, options?: { bySlug?: boolean; noRedirect?: boolean }) {
+  const endpoint = options?.bySlug ? `/listings/slug/${identifier}` : `/listings/${identifier}`;
+  const queryParams = options?.noRedirect ? '?noRedirect=true' : '';
+  return apiRequest(endpoint + queryParams);
 }
 
 export async function createListing(
@@ -84,6 +81,13 @@ export async function updateListing(id: string, updates: Partial<Listing>): Prom
   return apiRequest(`/listings/${id}`, {
     method: 'PUT',
     body: JSON.stringify(updates),
+  });
+}
+
+export async function updateListingStatus(id: string, status: string): Promise<void> {
+  return apiRequest(`/listings/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify({ status }),
   });
 }
 
