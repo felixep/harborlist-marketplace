@@ -18,6 +18,21 @@ interface AdminValidateResponse {
   valid: boolean;
 }
 
+interface VerifyUserEmailResponse {
+  success: boolean;
+  message: string;
+  alreadyVerified?: boolean;
+  cognitoUpdated: boolean;
+  cognitoError?: string;
+  user: any; // Full DynamoDB user record
+  metadata?: {
+    verifiedBy: string;
+    verifiedAt: string;
+    dynamoDbUpdated: boolean;
+    cognitoUpdated: boolean;
+  };
+}
+
 class AdminApiService {
   private async request<T>(
     endpoint: string, 
@@ -440,6 +455,12 @@ class AdminApiService {
       method: 'POST',
       body: JSON.stringify({ capability, enabled, expiresAt })
     }, { component: 'UserManagement', action: 'UpdateUserCapabilities' });
+  }
+
+  async verifyUserEmail(userId: string): Promise<VerifyUserEmailResponse> {
+    return this.request(`/admin/users/${userId}/verify-email`, {
+      method: 'POST'
+    }, { component: 'UserManagement', action: 'VerifyUserEmail' });
   }
 
   async bulkUserAction(action: string, userIds: string[], data?: any): Promise<any> {

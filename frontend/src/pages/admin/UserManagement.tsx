@@ -5,6 +5,7 @@ import { LoadingSpinner } from '../../components/common/LoadingSpinner';
 import { LoadingOverlay } from '../../components/common/LoadingOverlay';
 import { EnhancedUser, UserRole, UserStatus, UserTier, UserCapability } from '@harborlist/shared-types';
 import { adminApi } from '../../services/adminApi';
+import { TeamManagement } from '../../components/admin/TeamManagement';
 
 interface UserFilters {
   search: string;
@@ -28,7 +29,7 @@ const UserManagement: React.FC = () => {
   const { isLoading, updateUserStatus } = useAdminOperations();
   
   // Tab state
-  const [activeTab, setActiveTab] = useState<'customers' | 'staff' | 'groups'>('customers');
+  const [activeTab, setActiveTab] = useState<'customers' | 'staff' | 'groups' | 'teams'>('customers');
   
   // User management state
   const [customers, setCustomers] = useState<EnhancedUser[]>([]);
@@ -545,6 +546,16 @@ const UserManagement: React.FC = () => {
             Staff ({staff.length})
           </button>
           <button
+            onClick={() => setActiveTab('teams')}
+            className={`py-2 px-1 border-b-2 font-medium text-sm ${
+              activeTab === 'teams'
+                ? 'border-indigo-500 text-indigo-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            Teams
+          </button>
+          <button
             onClick={() => setActiveTab('groups')}
             className={`py-2 px-1 border-b-2 font-medium text-sm ${
               activeTab === 'groups'
@@ -863,6 +874,73 @@ const UserManagement: React.FC = () => {
                     <option value="premium_dealer">Premium Dealer</option>
                     <option value="dealer">Dealer</option>
                   </select>
+                </div>
+
+                {/* Email Verification Section */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Email Verification</label>
+                  <div className="flex items-center justify-between p-3 bg-gray-50 rounded-md border border-gray-200">
+                    <div className="flex items-center space-x-2">
+                      {selectedUser.emailVerified ? (
+                        <>
+                          <svg className="h-5 w-5 text-green-500" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                          </svg>
+                          <span className="text-sm text-gray-700">Email Verified</span>
+                        </>
+                      ) : (
+                        <>
+                          <svg className="h-5 w-5 text-yellow-500" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                          </svg>
+                          <span className="text-sm text-gray-700">Email Not Verified</span>
+                        </>
+                      )}
+                    </div>
+                    {!selectedUser.emailVerified && (
+                      <button
+                        onClick={async () => {
+                          try {
+                            const response = await adminApi.verifyUserEmail(selectedUser.id);
+                            
+                            // Handle the enhanced response
+                            if (response.alreadyVerified) {
+                              showSuccess('Already Verified', 'This user\'s email is already verified');
+                            } else if (response.cognitoUpdated) {
+                              showSuccess('Success', 'Email verified successfully in both DynamoDB and Cognito');
+                            } else {
+                              // DynamoDB updated but Cognito failed
+                              showSuccess(
+                                'Partially Verified', 
+                                `Email verified in database. Cognito sync failed: ${response.cognitoError || 'Unknown error'}. User may still be able to login.`
+                              );
+                            }
+                            
+                            // Update the local state with the full user record from backend
+                            if (response.user) {
+                              setSelectedUser({ ...selectedUser, ...response.user });
+                            } else {
+                              setSelectedUser({ ...selectedUser, emailVerified: true });
+                            }
+                            
+                            // Reload customers to reflect change
+                            await loadCustomers();
+                          } catch (error: any) {
+                            const errorMessage = error?.response?.data?.message || error?.message || 'Failed to verify email';
+                            showError('Error', errorMessage);
+                          }
+                        }}
+                        className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        Verify Manually
+                      </button>
+                    )}
+                  </div>
+                  {!selectedUser.emailVerified && (
+                    <p className="mt-1 text-xs text-gray-500">
+                      LocalStack doesn't send verification emails. Use this button to manually verify the user's email address.
+                    </p>
+                  )}
                 </div>
 
                 <div>
@@ -1382,6 +1460,11 @@ const UserManagement: React.FC = () => {
         </div>
       )}
         </>
+      )}
+
+      {/* Teams Tab Content */}
+      {activeTab === 'teams' && (
+        <TeamManagement />
       )}
 
       {/* Groups Tab Content */}

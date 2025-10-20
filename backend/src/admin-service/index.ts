@@ -19,6 +19,9 @@ import {
   AdminCreateUserCommand,
   AdminSetUserPasswordCommand,
   AdminAddUserToGroupCommand,
+  AdminUpdateUserAttributesCommand,
+  AdminConfirmSignUpCommand,
+  ListUsersCommand,
   MessageActionType
 } from '@aws-sdk/client-cognito-identity-provider';
 import * as crypto from 'crypto';
@@ -90,6 +93,7 @@ const PLATFORM_SETTINGS_TABLE = process.env.PLATFORM_SETTINGS_TABLE || 'harborli
 const SUPPORT_TICKETS_TABLE = process.env.SUPPORT_TICKETS_TABLE || 'harborlist-support-tickets';
 const ANNOUNCEMENTS_TABLE = process.env.ANNOUNCEMENTS_TABLE || 'harborlist-announcements';
 const STAFF_USER_POOL_ID = process.env.STAFF_USER_POOL_ID || '';
+const CUSTOMER_USER_POOL_ID = process.env.CUSTOMER_USER_POOL_ID || '';
 
 /**
  * Main Lambda handler for admin service operations with comprehensive security
@@ -233,6 +237,15 @@ export const handler = async (event: APIGatewayProxyEvent, context: any): Promis
         withAdminAuth([AdminPermission.USER_MANAGEMENT]),
         withAuditLog('CREATE_STAFF', 'staff')
       )(handleCreateStaff)(event as AuthenticatedEvent, {});
+    }
+
+    // User email verification endpoint
+    if (path.match(/\/users\/[^/]+\/verify-email$/) && method === 'POST') {
+      return await compose(
+        withRateLimit(20, 60000),
+        withAdminAuth([AdminPermission.USER_MANAGEMENT]),
+        withAuditLog('VERIFY_USER_EMAIL', 'users')
+      )(handleVerifyUserEmail)(event as AuthenticatedEvent, {});
     }
 
     if (path.includes('/users') && method === 'GET' && !path.includes('/customers') && !path.includes('/staff') && !path.includes('/analytics')) {
@@ -1112,6 +1125,178 @@ function generateTemporaryPassword(): string {
   
   // Ensure password meets requirements (uppercase, lowercase, number, special char)
   return password + 'Aa1!';
+}
+
+/**
+ * Handle manual email verification for customers (LocalStack workaround)
+ * POST /api/admin/users/:userId/verify-email
+ */
+async function handleVerifyUserEmail(event: AuthenticatedEvent): Promise<APIGatewayProxyResult> {
+  try {
+    // Extract user ID from path
+    const pathParts = event.path.split('/');
+    const userId = pathParts[pathParts.length - 2]; // Get userId from /users/:userId/verify-email
+
+    if (!userId) {
+      return createErrorResponse(400, 'VALIDATION_ERROR', 'User ID is required', event.requestContext.requestId);
+    }
+
+    console.log(`Manual email verification requested for user: ${userId} by admin: ${event.user.email}`);
+
+    // Step 1: Get current user from DynamoDB
+    const getUserCommand = new GetCommand({
+      TableName: USERS_TABLE,
+      Key: { id: userId }
+    });
+
+    const getUserResult = await docClient.send(getUserCommand);
+    
+    if (!getUserResult.Item) {
+      return createErrorResponse(404, 'USER_NOT_FOUND', 'User not found in database', event.requestContext.requestId);
+    }
+
+    const currentUser = getUserResult.Item;
+
+    // Guard: Only verify customer accounts, not staff
+    if (currentUser.userType === 'staff') {
+      return createErrorResponse(400, 'INVALID_OPERATION', 'Cannot manually verify staff accounts. Staff are auto-verified on creation.', event.requestContext.requestId);
+    }
+
+    // Check if already verified (idempotency)
+    if (currentUser.emailVerified === true) {
+      console.log(`User ${userId} (${currentUser.email}) is already verified`);
+      return createResponse(200, {
+        success: true,
+        message: 'User email is already verified',
+        alreadyVerified: true,
+        cognitoUpdated: false, // No update needed
+        user: currentUser
+      });
+    }
+
+    // Step 2: Update DynamoDB user record
+    const updateDynamoCommand = new UpdateCommand({
+      TableName: USERS_TABLE,
+      Key: { id: userId },
+      UpdateExpression: 'SET emailVerified = :verified, updatedAt = :updatedAt',
+      ExpressionAttributeValues: {
+        ':verified': true,
+        ':updatedAt': new Date().toISOString()
+      },
+      ReturnValues: 'ALL_NEW'
+    });
+
+    const dynamoResult = await docClient.send(updateDynamoCommand);
+    
+    if (!dynamoResult.Attributes) {
+      return createErrorResponse(500, 'UPDATE_FAILED', 'Failed to update user record', event.requestContext.requestId);
+    }
+
+    const updatedUser = dynamoResult.Attributes;
+
+    // Step 3: Update Cognito user status (confirm email)
+    let cognitoUpdated = false;
+    let cognitoError: string | null = null;
+
+    try {
+      const userPoolId = CUSTOMER_USER_POOL_ID;
+      
+      if (!userPoolId) {
+        throw new Error('CUSTOMER_USER_POOL_ID not configured');
+      }
+
+      // Find the actual Cognito username by email (handles both email and UUID usernames)
+      let cognitoUsername: string | undefined;
+      
+      try {
+        const listUsersResponse = await cognitoClient.send(new ListUsersCommand({
+          UserPoolId: userPoolId,
+          Filter: `email = "${updatedUser.email}"`
+        }));
+
+        const userEntry = listUsersResponse.Users?.[0];
+        cognitoUsername = userEntry?.Username;
+
+        if (!cognitoUsername) {
+          // Fallback: try using email as username
+          cognitoUsername = updatedUser.email;
+          console.log(`No Cognito user found by email filter, falling back to email as username: ${cognitoUsername}`);
+        } else {
+          console.log(`Found Cognito username: ${cognitoUsername} for email: ${updatedUser.email}`);
+        }
+      } catch (listError: any) {
+        console.warn('ListUsers failed, using email as username:', listError.message);
+        cognitoUsername = updatedUser.email;
+      }
+
+      // Update email_verified attribute
+      await cognitoClient.send(new AdminUpdateUserAttributesCommand({
+        UserPoolId: userPoolId,
+        Username: cognitoUsername,
+        UserAttributes: [
+          { Name: 'email_verified', Value: 'true' }
+        ]
+      }));
+
+      // Confirm user signup (change status from UNCONFIRMED to CONFIRMED)
+      await cognitoClient.send(new AdminConfirmSignUpCommand({
+        UserPoolId: userPoolId,
+        Username: cognitoUsername
+      }));
+
+      cognitoUpdated = true;
+      console.log(`✅ Successfully verified email in Cognito for user: ${updatedUser.email} (Username: ${cognitoUsername})`);
+
+    } catch (cognitoErr: any) {
+      cognitoError = cognitoErr.message || 'Unknown Cognito error';
+      console.error('❌ Error updating Cognito (non-fatal):', {
+        error: cognitoError,
+        code: cognitoErr.code,
+        name: cognitoErr.name,
+        userId,
+        email: updatedUser.email
+      });
+      
+      // Log specific error types for debugging
+      if (cognitoErr.name === 'UserNotFoundException') {
+        console.error('  → User not found in Cognito Customer Pool. They may need to re-register.');
+      } else if (cognitoErr.name === 'NotAuthorizedException') {
+        console.error('  → Not authorized to confirm user. Check Cognito permissions.');
+      }
+    }
+
+    // Step 4: Return comprehensive response
+    const response = {
+      success: true,
+      message: cognitoUpdated 
+        ? 'Email verified successfully in both DynamoDB and Cognito' 
+        : 'Email verified in DynamoDB. Cognito update failed (user can still login if Cognito allows).',
+      cognitoUpdated,
+      cognitoError: cognitoError || undefined,
+      user: updatedUser, // Return full user record for frontend to reflect true state
+      metadata: {
+        verifiedBy: event.user.email,
+        verifiedAt: updatedUser.updatedAt,
+        dynamoDbUpdated: true,
+        cognitoUpdated
+      }
+    };
+
+    // If Cognito failed, return 200 but include warning
+    if (!cognitoUpdated) {
+      console.warn(`⚠️  DynamoDB updated but Cognito sync failed for user ${userId}. Admin should verify user can login.`);
+    }
+
+    return createResponse(200, response);
+
+  } catch (error: unknown) {
+    console.error('Error verifying user email:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    return createErrorResponse(500, 'VERIFY_EMAIL_ERROR', 'Failed to verify user email', event.requestContext.requestId, [{ 
+      error: errorMessage,
+      stack: error instanceof Error ? error.stack : undefined
+    }]);
+  }
 }
 
 /**

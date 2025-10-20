@@ -1202,8 +1202,8 @@ class CognitoAuthService implements AuthService {
       
       const client = new DynamoDBClient({
         region: process.env.AWS_REGION || 'us-east-1',
-        ...(process.env.IS_OFFLINE === 'true' && {
-          endpoint: 'http://dynamodb-local:8000',
+        ...(process.env.ENVIRONMENT === 'local' && {
+          endpoint: process.env.DYNAMODB_ENDPOINT || 'http://dynamodb-local:8000',
           credentials: {
             accessKeyId: 'test',
             secretAccessKey: 'test'
@@ -1252,8 +1252,8 @@ class CognitoAuthService implements AuthService {
       
       const client = new DynamoDBClient({
         region: process.env.AWS_REGION || 'us-east-1',
-        ...(process.env.IS_OFFLINE === 'true' && {
-          endpoint: 'http://dynamodb-local:8000',
+        ...(process.env.ENVIRONMENT === 'local' && {
+          endpoint: process.env.DYNAMODB_ENDPOINT || 'http://dynamodb-local:8000',
           credentials: {
             accessKeyId: 'test',
             secretAccessKey: 'test'
