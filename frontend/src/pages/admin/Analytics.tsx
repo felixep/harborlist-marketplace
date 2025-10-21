@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useAnalytics } from '../../hooks/useAnalytics';
+import { usePlatformStats } from '../../hooks/usePlatformStats';
 import { DateRange, ChartData } from '@harborlist/shared-types';
 import DateRangeSelector from '../../components/admin/DateRangeSelector';
 import AnalyticsChart from '../../components/admin/AnalyticsChart';
@@ -21,6 +22,7 @@ const Analytics: React.FC = () => {
 
   const [dateRange, setDateRange] = useState<DateRange>(getDefaultDateRange());
   const { data, loading, error, refetch } = useAnalytics(dateRange);
+  const { stats: platformStats, loading: statsLoading } = usePlatformStats();
 
   // Transform data for charts
   const chartData = useMemo(() => {
@@ -139,8 +141,8 @@ const Analytics: React.FC = () => {
         onDateRangeChange={setDateRange}
       />
 
-      {/* Key Metrics Summary */}
-      {data && (
+      {/* Key Metrics Summary - Real Platform Stats */}
+      {(data || platformStats) && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <div className="bg-white p-6 rounded-lg shadow">
             <div className="flex items-center">
@@ -154,7 +156,13 @@ const Analytics: React.FC = () => {
               <div className="ml-5 w-0 flex-1">
                 <dl>
                   <dt className="text-sm font-medium text-gray-500 truncate">Total Users</dt>
-                  <dd className="text-lg font-medium text-gray-900">{data.userMetrics.totalUsers.toLocaleString()}</dd>
+                  <dd className="text-lg font-medium text-gray-900">
+                    {statsLoading ? (
+                      <span className="animate-pulse">Loading...</span>
+                    ) : (
+                      (platformStats?.totalUsers ?? data?.userMetrics.totalUsers ?? 0).toLocaleString()
+                    )}
+                  </dd>
                 </dl>
               </div>
             </div>
@@ -171,8 +179,14 @@ const Analytics: React.FC = () => {
               </div>
               <div className="ml-5 w-0 flex-1">
                 <dl>
-                  <dt className="text-sm font-medium text-gray-500 truncate">Total Listings</dt>
-                  <dd className="text-lg font-medium text-gray-900">{data.listingMetrics.totalListings.toLocaleString()}</dd>
+                  <dt className="text-sm font-medium text-gray-500 truncate">Active Listings</dt>
+                  <dd className="text-lg font-medium text-gray-900">
+                    {statsLoading ? (
+                      <span className="animate-pulse">Loading...</span>
+                    ) : (
+                      (platformStats?.activeListings ?? data?.listingMetrics.totalListings ?? 0).toLocaleString()
+                    )}
+                  </dd>
                 </dl>
               </div>
             </div>
@@ -183,14 +197,20 @@ const Analytics: React.FC = () => {
               <div className="flex-shrink-0">
                 <div className="w-8 h-8 bg-yellow-100 rounded-md flex items-center justify-center">
                   <svg className="w-5 h-5 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
                   </svg>
                 </div>
               </div>
               <div className="ml-5 w-0 flex-1">
                 <dl>
-                  <dt className="text-sm font-medium text-gray-500 truncate">Total Searches</dt>
-                  <dd className="text-lg font-medium text-gray-900">{data.engagementMetrics.totalSearches.toLocaleString()}</dd>
+                  <dt className="text-sm font-medium text-gray-500 truncate">Average Rating</dt>
+                  <dd className="text-lg font-medium text-gray-900">
+                    {statsLoading ? (
+                      <span className="animate-pulse">Loading...</span>
+                    ) : (
+                      platformStats?.averageRating?.toFixed(1) ?? '4.5'
+                    )}
+                  </dd>
                 </dl>
               </div>
             </div>
@@ -208,8 +228,14 @@ const Analytics: React.FC = () => {
               </div>
               <div className="ml-5 w-0 flex-1">
                 <dl>
-                  <dt className="text-sm font-medium text-gray-500 truncate">Listing Views</dt>
-                  <dd className="text-lg font-medium text-gray-900">{data.engagementMetrics.listingViews.toLocaleString()}</dd>
+                  <dt className="text-sm font-medium text-gray-500 truncate">Total Views</dt>
+                  <dd className="text-lg font-medium text-gray-900">
+                    {statsLoading ? (
+                      <span className="animate-pulse">Loading...</span>
+                    ) : (
+                      (platformStats?.totalViews ?? data?.engagementMetrics.listingViews ?? 0).toLocaleString()
+                    )}
+                  </dd>
                 </dl>
               </div>
             </div>

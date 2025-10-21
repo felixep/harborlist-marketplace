@@ -55,7 +55,7 @@ export interface Listing {
   images: string[];
   videos?: string[];
   thumbnails: string[];
-  status: 'active' | 'inactive' | 'sold' | 'pending_moderation' | 'flagged' | 'rejected';
+  status: 'active' | 'inactive' | 'sold' | 'pending_review' | 'under_review' | 'approved' | 'rejected';
   views?: number;
   rating?: ListingRating;
   createdAt: number;
@@ -558,6 +558,7 @@ export interface ModerationStats {
 export interface FlaggedListing {
   listingId: string;
   title: string;
+  description?: string;
   ownerId: string;
   ownerName: string;
   ownerEmail: string;
@@ -567,12 +568,24 @@ export interface FlaggedListing {
     state: string;
   };
   images: string[];
-  status: 'pending' | 'under_review' | 'approved' | 'rejected';
+  status: 'pending_review' | 'under_review' | 'approved' | 'rejected';
   flags: ContentFlag[];
   flaggedAt: string;
+  flagReason?: string;
   reviewedAt?: string;
   reviewedBy?: string;
   moderationNotes?: string;
+  // Additional listing details for moderation review
+  boatDetails?: BoatDetails;
+  features?: string[];
+  specifications?: Record<string, any>;
+  condition?: string;
+  year?: number;
+  make?: string;
+  model?: string;
+  slug?: string;
+  createdAt?: number;
+  updatedAt?: number;
 }
 
 export interface ModerationDecision {

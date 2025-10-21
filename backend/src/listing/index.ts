@@ -33,6 +33,7 @@ import { db } from '../shared/database';
 import { createResponse, createErrorResponse, parseBody, getUserId, generateId, validateRequired, sanitizeString, validatePrice, validateYear } from '../shared/utils';
 import { getUserFromEvent } from '../shared/auth';
 import { Listing, Engine, EnhancedListing } from '@harborlist/shared-types';
+import { filterContent, generateFlagReason, getViolationSummary } from '../shared/content-filter';
 
 /**
  * Helper function to validate engine specifications
@@ -109,13 +110,18 @@ function determineEngineConfiguration(engineCount: number): 'single' | 'twin' | 
  * Helper function to generate SEO-friendly URL slug with uniqueness validation
  * 
  * Creates a URL-safe slug from the listing title and ensures uniqueness
- * by appending a suffix if needed.
+ * by always including a short hash from the listing ID.
+ * 
+ * Example: "2021 Key West 239CC" -> "2021-key-west-239cc-a1b2c3d4"
  * 
  * @param title - Listing title to convert to slug
- * @param listingId - Unique listing ID for fallback
- * @returns Promise<string> - SEO-friendly URL slug
+ * @param listingId - Unique listing ID for generating hash
+ * @returns Promise<string> - SEO-friendly URL slug with unique hash
  */
 async function generateUniqueSlug(title: string, listingId: string): Promise<string> {
+  // Extract last 8 characters of listing ID for uniqueness
+  const uniqueHash = listingId.slice(-8);
+  
   // Convert to lowercase and replace spaces/special chars with hyphens
   let baseSlug = title
     .toLowerCase()
@@ -124,27 +130,15 @@ async function generateUniqueSlug(title: string, listingId: string): Promise<str
     .replace(/-+/g, '-') // Replace multiple hyphens with single
     .replace(/^-|-$/g, ''); // Remove leading/trailing hyphens
 
-  // Ensure slug is not empty and has reasonable length
+  // Ensure slug is not empty and has reasonable length (leaving room for hash)
   if (!baseSlug || baseSlug.length < 3) {
-    baseSlug = `boat-${listingId.slice(-8)}`;
-  } else if (baseSlug.length > 60) {
-    baseSlug = baseSlug.substring(0, 60).replace(/-[^-]*$/, '');
+    baseSlug = 'boat';
+  } else if (baseSlug.length > 50) {
+    baseSlug = baseSlug.substring(0, 50).replace(/-[^-]*$/, '');
   }
 
-  // Check for uniqueness and append suffix if needed
-  let slug = baseSlug;
-  let counter = 1;
-  
-  while (await db.getListingBySlug(slug)) {
-    slug = `${baseSlug}-${counter}`;
-    counter++;
-    
-    // Prevent infinite loop
-    if (counter > 100) {
-      slug = `${baseSlug}-${listingId.slice(-8)}`;
-      break;
-    }
-  }
+  // Always append unique hash to prevent collisions
+  const slug = `${baseSlug}-${uniqueHash}`;
 
   return slug;
 }
@@ -152,30 +146,36 @@ async function generateUniqueSlug(title: string, listingId: string): Promise<str
 /**
  * Helper function to generate SEO-friendly URL slug (synchronous version)
  * 
- * Creates a URL-safe slug from the listing title for immediate use.
+ * Creates a URL-safe slug from the listing title with unique hash.
  * Used when uniqueness validation is not required.
  * 
+ * Example: "2021 Key West 239CC" -> "2021-key-west-239cc-a1b2c3d4"
+ * 
  * @param title - Listing title to convert to slug
- * @param listingId - Unique listing ID for fallback
- * @returns string - SEO-friendly URL slug
+ * @param listingId - Unique listing ID for generating hash
+ * @returns string - SEO-friendly URL slug with unique hash
  */
 function generateSlug(title: string, listingId: string): string {
+  // Extract last 8 characters of listing ID for uniqueness
+  const uniqueHash = listingId.slice(-8);
+  
   // Convert to lowercase and replace spaces/special chars with hyphens
-  let slug = title
+  let baseSlug = title
     .toLowerCase()
     .replace(/[^a-z0-9\s-]/g, '') // Remove special characters
     .replace(/\s+/g, '-') // Replace spaces with hyphens
     .replace(/-+/g, '-') // Replace multiple hyphens with single
     .replace(/^-|-$/g, ''); // Remove leading/trailing hyphens
 
-  // Ensure slug is not empty and has reasonable length
-  if (!slug || slug.length < 3) {
-    slug = `boat-${listingId.slice(-8)}`;
-  } else if (slug.length > 60) {
-    slug = slug.substring(0, 60).replace(/-[^-]*$/, '');
+  // Ensure slug is not empty and has reasonable length (leaving room for hash)
+  if (!baseSlug || baseSlug.length < 3) {
+    baseSlug = 'boat';
+  } else if (baseSlug.length > 50) {
+    baseSlug = baseSlug.substring(0, 50).replace(/-[^-]*$/, '');
   }
 
-  return slug;
+  // Always append unique hash to prevent collisions
+  return `${baseSlug}-${uniqueHash}`;
 }
 
 /**
@@ -315,7 +315,8 @@ async function getListing(listingId: string, requestId: string, event?: APIGatew
     }
 
     // Check if listing is pending moderation
-    const isPending = listing.status === 'pending_moderation' || 
+    const isPending = listing.status === 'pending_review' || 
+                      listing.status === 'under_review' ||
                       listing.moderationWorkflow?.status === 'pending_review' ||
                       listing.moderationWorkflow?.status === 'changes_requested';
     
@@ -414,7 +415,8 @@ async function getListingBySlug(slug: string, requestId: string, event?: APIGate
     }
 
     // Check if listing is pending moderation
-    const isPending = result.status === 'pending_moderation' || 
+    const isPending = result.status === 'pending_review' || 
+                      result.status === 'under_review' ||
                       result.moderationWorkflow?.status === 'pending_review' ||
                       result.moderationWorkflow?.status === 'changes_requested';
     
@@ -508,7 +510,8 @@ async function getListingWithRedirect(listingId: string, requestId: string, even
     }
 
     // Check if listing is pending moderation
-    const isPending = listing.status === 'pending_moderation' || 
+    const isPending = listing.status === 'pending_review' || 
+                      listing.status === 'under_review' ||
                       listing.moderationWorkflow?.status === 'pending_review' ||
                       listing.moderationWorkflow?.status === 'changes_requested';
     
@@ -658,8 +661,9 @@ async function getListings(event: APIGatewayProxyEvent, requestId: string): Prom
     // Pending listings are only visible to their owners (handled in individual getListing calls)
     const publicListings = listingsWithOwners.filter(listing => {
       const enhancedListing = listing as EnhancedListing;
-      return listing.status === 'active' || 
-             (enhancedListing.moderationWorkflow?.status === 'approved' && listing.status !== 'pending_moderation');
+      return listing.status === 'active' || listing.status === 'approved' ||
+             (enhancedListing.moderationWorkflow?.status === 'approved' && 
+              listing.status !== 'pending_review' && listing.status !== 'under_review');
     });
     
     const response: any = {
@@ -791,7 +795,7 @@ async function createListing(event: APIGatewayProxyEvent, requestId: string): Pr
       images: body.images || [],
       videos: body.videos || [],
       thumbnails: body.thumbnails || [],
-      status: 'pending_moderation', // Set to pending moderation for content review
+      status: 'pending_review', // Set to pending review for content moderation
       moderationWorkflow: {
         status: 'pending_review',
         reviewedBy: undefined,
@@ -805,7 +809,42 @@ async function createListing(event: APIGatewayProxyEvent, requestId: string): Pr
       updatedAt: Date.now(),
     };
 
-    // Create listing in database
+    // Run automated content filter (non-blocking - only flags, doesn't reject)
+    const filterResult = filterContent(enhancedListing.title, enhancedListing.description);
+    
+    // If content violations found, add flags for moderator review
+    const flags: any[] = [];
+    if (!filterResult.isClean) {
+      console.log(`[${requestId}] Content filter detected ${filterResult.violations.length} violations for listing ${listingId}`);
+      
+      // Create flag for each violation or one combined flag
+      const flagId = generateId();
+      const flag = {
+        id: flagId,
+        type: 'inappropriate_content',
+        reason: generateFlagReason(filterResult.violations),
+        reportedBy: 'system',
+        reportedAt: new Date().toISOString(),
+        severity: filterResult.severity,
+        status: 'pending' as const,
+        details: getViolationSummary(filterResult.violations)
+      };
+      
+      flags.push(flag);
+      
+      // Add violation details to moderator notes (for reference only)
+      if (enhancedListing.moderationWorkflow) {
+        enhancedListing.moderationWorkflow.moderatorNotes = 
+          `AUTO-DETECTED: Content filter flagged this listing\n\n${getViolationSummary(filterResult.violations)}`;
+      }
+    }
+
+    // Add flags to listing if any (but still save the listing)
+    if (flags.length > 0) {
+      (enhancedListing as any).flags = flags;
+    }
+
+    // Create listing in database (always save, regardless of content filter results)
     await db.createListing(enhancedListing as any);
 
     // Create engines in separate table if any

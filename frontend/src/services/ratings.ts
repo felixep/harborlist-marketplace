@@ -10,10 +10,25 @@ export interface CreateReviewData {
 }
 
 export interface PlatformStats {
-  totalListings: number;
-  totalReviews: number;
+  // Public stats (available to all)
+  activeListings: number;
   averageRating: number;
   userSatisfactionScore: number;
+  totalReviews: number;
+  
+  // Customer stats (available to authenticated users)
+  totalListings?: number;
+  last30Days?: {
+    views: number;
+    events?: number;
+  };
+  
+  // Staff-only stats
+  totalUsers?: number;
+  totalViews?: number;
+  totalEvents?: number;
+  pendingListings?: number;
+  conversionRate?: string;
 }
 
 // Get ratings for a specific listing
@@ -53,12 +68,27 @@ export const createReview = async (reviewData: CreateReviewData): Promise<Review
 // Get platform-wide statistics including real satisfaction scores
 export const getPlatformStats = async (): Promise<PlatformStats> => {
   try {
-    const response = await fetch(`${API_BASE_URL}/stats/platform`);
+    // Get admin token from localStorage for authentication
+    const adminToken = localStorage.getItem('adminAuthToken');
+    
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json',
+    };
+    
+    // Add Authorization header if admin token exists
+    if (adminToken) {
+      headers['Authorization'] = `Bearer ${adminToken}`;
+    }
+    
+    const response = await fetch(`${API_BASE_URL}/stats/platform`, {
+      headers,
+    });
+    
     if (!response.ok) {
       // Silently return defaults if endpoint doesn't exist yet
       if (response.status === 404) {
         return {
-          totalListings: 0,
+          activeListings: 0,
           totalReviews: 0,
           averageRating: 0,
           userSatisfactionScore: 0,
@@ -74,7 +104,7 @@ export const getPlatformStats = async (): Promise<PlatformStats> => {
       console.warn('Platform stats endpoint not available, using defaults');
     }
     return {
-      totalListings: 0,
+      activeListings: 0,
       totalReviews: 0,
       averageRating: 0,
       userSatisfactionScore: 0,

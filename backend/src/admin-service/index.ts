@@ -364,6 +364,15 @@ export const handler = async (event: APIGatewayProxyEvent, context: any): Promis
       )(handleGetFlaggedListings)(event as AuthenticatedEvent, {});
     }
 
+    // Get specific listing details (must be before other /listings routes)
+    if (path.match(/\/listings\/[^/]+$/) && method === 'GET' && !path.includes('/flagged')) {
+      return await compose(
+        withRateLimit(100, 60000),
+        withAdminAuth([AdminPermission.CONTENT_MODERATION]),
+        withAuditLog('VIEW_LISTING_DETAILS', 'moderation')
+      )(handleGetListingDetails)(event as AuthenticatedEvent, {});
+    }
+
     if (path.includes('/moderation/stats') && method === 'GET') {
       return await compose(
         withRateLimit(100, 60000),
@@ -688,12 +697,16 @@ async function handleGetSystemErrors(event: AuthenticatedEvent): Promise<APIGate
 /**
  * Handle list users request
  * Supports filtering by user type: 'customer', 'staff', or 'all'
+ * Supports filtering by role (comma-separated list)
+ * Supports filtering by status
  */
 async function handleListUsers(event: AuthenticatedEvent): Promise<APIGatewayProxyResult> {
   try {
     const limit = parseInt(event.queryStringParameters?.limit || '50');
     const lastKey = event.queryStringParameters?.lastKey;
     const userType = event.queryStringParameters?.type || 'all'; // 'customer', 'staff', or 'all'
+    const roleParam = event.queryStringParameters?.role; // comma-separated roles
+    const statusParam = event.queryStringParameters?.status; // 'active', 'suspended', 'banned'
     const searchTerm = event.queryStringParameters?.search;
 
     // Scan users table
@@ -709,15 +722,25 @@ async function handleListUsers(event: AuthenticatedEvent): Promise<APIGatewayPro
     const result = await docClient.send(new ScanCommand(params));
     let users = result.Items || [];
 
-    // Filter by user type if specified
-    if (userType !== 'all') {
-      const staffRoles = ['admin', 'super_admin', 'moderator', 'support'];
-      
+    const staffRoles = ['admin', 'super_admin', 'moderator', 'support'];
+
+    // Filter by specific roles if provided (comma-separated)
+    if (roleParam) {
+      const requestedRoles = roleParam.split(',').map((r: string) => r.trim());
+      users = users.filter(user => requestedRoles.includes(user.role));
+    }
+    // Otherwise filter by user type if specified
+    else if (userType !== 'all') {
       if (userType === 'staff') {
         users = users.filter(user => staffRoles.includes(user.role));
       } else if (userType === 'customer') {
         users = users.filter(user => !staffRoles.includes(user.role) || user.role === 'user');
       }
+    }
+
+    // Filter by status if provided
+    if (statusParam) {
+      users = users.filter(user => user.status === statusParam);
     }
 
     // Apply search filter if provided
@@ -731,7 +754,6 @@ async function handleListUsers(event: AuthenticatedEvent): Promise<APIGatewayPro
     }
 
     // Get statistics
-    const staffRoles = ['admin', 'super_admin', 'moderator', 'support'];
     const allUsers = result.Items || [];
     const stats = {
       total: allUsers.length,
@@ -1879,21 +1901,28 @@ async function getRealListingsData(): Promise<{
     // Get pending listings
     const pendingResult = await docClient.send(new ScanCommand({
       TableName: LISTINGS_TABLE,
-      FilterExpression: 'moderationStatus = :pending',
+      FilterExpression: '#status IN (:pending_review, :under_review)',
+      ExpressionAttributeNames: {
+        '#status': 'status'
+      },
       ExpressionAttributeValues: {
-        ':pending': 'pending'
+        ':pending_review': 'pending_review',
+        ':under_review': 'under_review'
       },
       Select: 'COUNT'
     }));
 
     const pending = pendingResult.Count || 0;
 
-    // Get flagged listings
+    // Get flagged listings (under review)
     const flaggedResult = await docClient.send(new ScanCommand({
       TableName: LISTINGS_TABLE,
-      FilterExpression: 'moderationStatus = :flagged',
+      FilterExpression: '#status = :under_review',
+      ExpressionAttributeNames: {
+        '#status': 'status'
+      },
       ExpressionAttributeValues: {
-        ':flagged': 'flagged'
+        ':under_review': 'under_review'
       },
       Select: 'COUNT'
     }));
@@ -3090,38 +3119,149 @@ async function handleGetAnnouncementStats(event: AuthenticatedEvent): Promise<AP
  */
 async function handleGetFlaggedListings(event: AuthenticatedEvent): Promise<APIGatewayProxyResult> {
   try {
-    // Get listings that are flagged or pending review
+    // Get listings that are pending review or under review
     const result = await docClient.send(new ScanCommand({
       TableName: LISTINGS_TABLE,
-      FilterExpression: '#status IN (:pending, :flagged)',
+      FilterExpression: '#status IN (:pending_review, :under_review)',
       ExpressionAttributeNames: {
         '#status': 'status'
       },
       ExpressionAttributeValues: {
-        ':pending': 'pending_review',
-        ':flagged': 'flagged'
+        ':pending_review': 'pending_review',
+        ':under_review': 'under_review'
       }
     }));
 
-    const listings = (result.Items || []).map((listing: any) => ({
-      listingId: listing.listingId,
-      title: listing.title,
-      ownerId: listing.ownerId,
-      flagReason: listing.moderationStatus?.rejectionReason || 'Pending review',
-      status: listing.status,
-      flaggedAt: listing.moderationStatus?.reviewedAt 
-        ? new Date(listing.moderationStatus.reviewedAt * 1000).toISOString()
-        : new Date(listing.createdAt * 1000).toISOString(),
-      images: listing.images || [],
-      price: listing.price,
-      location: listing.location
-    }));
+    // Fetch owner details for all listings
+    const ownerIds = [...new Set((result.Items || []).map((item: any) => item.ownerId))];
+    const ownerMap = new Map<string, any>();
+
+    // Batch get owner details
+    for (const ownerId of ownerIds) {
+      try {
+        const ownerResult = await docClient.send(new GetCommand({
+          TableName: USERS_TABLE,
+          Key: { id: ownerId }
+        }));
+        if (ownerResult.Item) {
+          ownerMap.set(ownerId, ownerResult.Item);
+        }
+      } catch (err) {
+        console.error(`Failed to fetch owner ${ownerId}:`, err);
+      }
+    }
+
+    const listings = (result.Items || []).map((listing: any) => {
+      // Get owner info from map
+      const owner = ownerMap.get(listing.ownerId);
+      const ownerName = owner ? `${owner.firstName || ''} ${owner.lastName || ''}`.trim() || owner.name || owner.email : 'Unknown Owner';
+      const ownerEmail = owner?.email || '';
+
+      return {
+        listingId: listing.listingId,
+        title: listing.title,
+        ownerId: listing.ownerId,
+        ownerName,
+        ownerEmail,
+        flagReason: listing.moderationStatus?.rejectionReason || 'Pending review',
+        status: listing.status, // Use database status directly - no mapping needed
+        flags: listing.flags || [], // Only show actual flags, not auto-generated ones
+        flaggedAt: listing.moderationStatus?.reviewedAt 
+          ? new Date(listing.moderationStatus.reviewedAt * 1000).toISOString()
+          : new Date(listing.createdAt * 1000).toISOString(),
+        images: listing.images || [],
+        price: listing.price,
+        location: listing.location
+      };
+    });
 
     return createResponse(200, { listings });
   } catch (error: unknown) {
     console.error('Error fetching flagged listings:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return createErrorResponse(500, 'MODERATION_ERROR', 'Failed to fetch flagged listings', event.requestContext.requestId, [{ error: errorMessage }]);
+  }
+}
+
+/**
+ * Get detailed information about a specific listing for moderation
+ */
+async function handleGetListingDetails(event: AuthenticatedEvent): Promise<APIGatewayProxyResult> {
+  try {
+    // Extract listing ID from path
+    const listingId = event.path.split('/').pop();
+    
+    if (!listingId) {
+      return createErrorResponse(400, 'INVALID_REQUEST', 'Listing ID is required', event.requestContext.requestId);
+    }
+
+    // Get listing from database
+    const listingResult = await docClient.send(new GetCommand({
+      TableName: LISTINGS_TABLE,
+      Key: { listingId }
+    }));
+
+    if (!listingResult.Item) {
+      return createErrorResponse(404, 'LISTING_NOT_FOUND', 'Listing not found', event.requestContext.requestId);
+    }
+
+    const listing = listingResult.Item;
+
+    // Get owner details
+    let ownerName = 'Unknown Owner';
+    let ownerEmail = '';
+    
+    if (listing.ownerId) {
+      try {
+        const ownerResult = await docClient.send(new GetCommand({
+          TableName: USERS_TABLE,
+          Key: { id: listing.ownerId }
+        }));
+        
+        if (ownerResult.Item) {
+          const owner = ownerResult.Item;
+          ownerName = `${owner.firstName || ''} ${owner.lastName || ''}`.trim() || owner.name || owner.email;
+          ownerEmail = owner.email || '';
+        }
+      } catch (err) {
+        console.error(`Failed to fetch owner ${listing.ownerId}:`, err);
+      }
+    }
+
+    // Format response
+    const detailedListing = {
+      listingId: listing.listingId,
+      title: listing.title,
+      description: listing.description,
+      ownerId: listing.ownerId,
+      ownerName,
+      ownerEmail,
+      status: listing.status,
+      flagReason: listing.moderationStatus?.rejectionReason || 'Pending review',
+      flags: listing.flags || [], // Only show actual flags, not auto-generated ones
+      flaggedAt: listing.moderationStatus?.reviewedAt 
+        ? new Date(listing.moderationStatus.reviewedAt * 1000).toISOString()
+        : new Date(listing.createdAt * 1000).toISOString(),
+      images: listing.images || [],
+      price: listing.price,
+      location: listing.location,
+      boatDetails: listing.boatDetails,
+      specifications: listing.specifications,
+      features: listing.features,
+      condition: listing.condition,
+      year: listing.year,
+      make: listing.make,
+      model: listing.model,
+      slug: listing.slug,
+      createdAt: listing.createdAt,
+      updatedAt: listing.updatedAt
+    };
+
+    return createResponse(200, detailedListing);
+  } catch (error: unknown) {
+    console.error('Error fetching listing details:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    return createErrorResponse(500, 'MODERATION_ERROR', 'Failed to fetch listing details', event.requestContext.requestId, [{ error: errorMessage }]);
   }
 }
 
@@ -3135,10 +3275,12 @@ async function handleGetModerationStats(event: AuthenticatedEvent): Promise<APIG
     const listings = result.Items || [];
     
     // Calculate current stats
-    const pending = listings.filter((l: any) => l.status === 'pending_review').length;
-    const approved = listings.filter((l: any) => l.status === 'active' || l.status === 'approved').length;
+    const pending = listings.filter((l: any) => 
+      l.status === 'pending_review' || l.status === 'under_review'
+    ).length;
+    const approved = listings.filter((l: any) => l.status === 'approved' || l.status === 'active').length;
     const rejected = listings.filter((l: any) => l.status === 'rejected').length;
-    const flagged = listings.filter((l: any) => l.status === 'flagged').length;
+    const flagged = listings.filter((l: any) => l.status === 'under_review').length;
 
     // Calculate today's actions
     const todayStart = new Date();

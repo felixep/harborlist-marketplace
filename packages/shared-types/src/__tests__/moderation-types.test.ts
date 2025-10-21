@@ -405,7 +405,7 @@ describe('Content Moderation Types', () => {
 
     it('should validate FlaggedListing status enum values', () => {
       const validStatuses: FlaggedListing['status'][] = [
-        'pending',
+        'pending_review',
         'under_review',
         'approved',
         'rejected'

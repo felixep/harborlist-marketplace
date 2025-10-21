@@ -64,6 +64,7 @@ import {
   AuditLogs
 } from './pages/admin';
 import TierManagement from './pages/admin/TierManagement';
+import ListingModerationReview from './pages/admin/ListingModerationReview';
 import { AdminPermission } from '@harborlist/shared-types';
 
 /**
@@ -151,6 +152,14 @@ function App() {
                             element={
                               <AdminProtectedRoute requiredPermission={AdminPermission.CONTENT_MODERATION}>
                                 <ListingModeration />
+                              </AdminProtectedRoute>
+                            } 
+                          />
+                          <Route 
+                            path="moderation/review/:listingId" 
+                            element={
+                              <AdminProtectedRoute requiredPermission={AdminPermission.CONTENT_MODERATION}>
+                                <ListingModerationReview />
                               </AdminProtectedRoute>
                             } 
                           />

@@ -1,11 +1,13 @@
 import React from 'react';
 import { useDashboardMetrics } from '../../hooks/useDashboardMetrics';
+import { usePlatformStats } from '../../hooks/usePlatformStats';
 import MetricCard from '../../components/admin/MetricCard';
 import ChartContainer from '../../components/admin/ChartContainer';
 import { MetricCardData, SystemAlert } from '@harborlist/shared-types';
 
 const AdminDashboard: React.FC = () => {
   const { metrics, chartData, alerts, loading, error, refetch } = useDashboardMetrics();
+  const { stats: platformStats, loading: statsLoading } = usePlatformStats();
 
   const getMetricCards = (): MetricCardData[] => {
     if (!metrics) return [];
@@ -13,10 +15,15 @@ const AdminDashboard: React.FC = () => {
     // Get trends from API response or use defaults
     const trends = (metrics as any).trends || {};
 
+    // Prioritize real platform stats over mock data
+    const totalUsers = platformStats?.totalUsers !== undefined ? platformStats.totalUsers : metrics.totalUsers;
+    const activeListings = platformStats?.activeListings !== undefined ? platformStats.activeListings : metrics.activeListings;
+    const pendingListings = platformStats?.pendingListings !== undefined ? platformStats.pendingListings : metrics.pendingModeration;
+
     return [
       {
         title: 'Total Users',
-        value: metrics.totalUsers,
+        value: totalUsers,
         change: trends.totalUsersChange || 0,
         trend: trends.totalUsersTrend || 'stable' as const,
         icon: '👥',
@@ -24,7 +31,7 @@ const AdminDashboard: React.FC = () => {
       },
       {
         title: 'Active Listings',
-        value: metrics.activeListings,
+        value: activeListings,
         change: trends.activeListingsChange || 0,
         trend: trends.activeListingsTrend || 'stable' as const,
         icon: '⛵',
@@ -32,7 +39,7 @@ const AdminDashboard: React.FC = () => {
       },
       {
         title: 'Pending Moderation',
-        value: metrics.pendingModeration,
+        value: pendingListings,
         change: trends.pendingModerationChange || 0,
         trend: trends.pendingModerationTrend || 'stable' as const,
         icon: '⚠️',

@@ -139,8 +139,8 @@ class AdminApiService {
   }
 
   async moderateListing(listingId: string, decision: any): Promise<any> {
-    return this.request(`/admin/listings/${listingId}/moderate`, {
-      method: 'PUT',
+    return this.request(`/listings/${listingId}/moderate`, {
+      method: 'POST',
       body: JSON.stringify(decision)
     }, { component: 'ListingModeration', action: 'ModerateListing' });
   }

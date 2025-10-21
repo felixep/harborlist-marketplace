@@ -290,7 +290,7 @@ describe('Engine Types', () => {
         features: [],
         images: [],
         thumbnails: [],
-        status: 'pending_moderation',
+        status: 'pending_review',
         createdAt: Date.now(),
         updatedAt: Date.now(),
         slug: 'test-listing',

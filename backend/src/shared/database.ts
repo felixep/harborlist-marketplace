@@ -429,7 +429,7 @@ export class DatabaseService {
   async incrementViews(listingId: string): Promise<void> {
     await docClient.send(new UpdateCommand({
       TableName: LISTINGS_TABLE,
-      Key: { id: listingId },
+      Key: { listingId: listingId },
       UpdateExpression: 'ADD #views :inc',
       ExpressionAttributeNames: {
         '#views': 'views',
@@ -901,7 +901,7 @@ export class DatabaseService {
     // Update listing with engine information using direct update
     await docClient.send(new UpdateCommand({
       TableName: LISTINGS_TABLE,
-      Key: { id: listingId },
+      Key: { listingId: listingId },
       UpdateExpression: 'SET engines = :engines, totalHorsepower = :totalHorsepower, engineConfiguration = :engineConfiguration, updatedAt = :updatedAt',
       ExpressionAttributeValues: {
         ':engines': engines,

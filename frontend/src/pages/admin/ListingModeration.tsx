@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import ListingModerationQueue from '../../components/admin/ListingModerationQueue';
-import ListingDetailView from '../../components/admin/ListingDetailView';
 import ModerationNotifications from '../../components/admin/ModerationNotifications';
 import ModerationAnalytics from '../../components/admin/ModerationAnalytics';
 import ModerationWorkloadBalancer from '../../components/admin/ModerationWorkloadBalancer';
@@ -10,7 +10,7 @@ import { FlaggedListing, ModerationDecision, AdminUser } from '@harborlist/share
 import { adminApi } from '../../services/adminApi';
 
 const ListingModeration: React.FC = () => {
-  const [selectedListing, setSelectedListing] = useState<FlaggedListing | null>(null);
+  const navigate = useNavigate();
   const [moderationLoading, setModerationLoading] = useState(false);
   const [moderators, setModerators] = useState<AdminUser[]>([]);
   const [loadingModerators, setLoadingModerators] = useState(true);
@@ -53,18 +53,9 @@ const ListingModeration: React.FC = () => {
     loadModerators();
   }, [addNotification]);
 
-  const handleSelectListing = async (listing: FlaggedListing) => {
-    try {
-      // Get detailed listing information
-      const detailedListing = await getListingDetails(listing.listingId);
-      setSelectedListing(detailedListing || listing);
-    } catch (err) {
-      addNotification({
-        type: 'error',
-        title: 'Error',
-        message: 'Failed to load listing details'
-      });
-    }
+  const handleSelectListing = (listing: FlaggedListing) => {
+    // Navigate to the dedicated review page
+    navigate(`/admin/moderation/review/${listing.listingId}`);
   };
 
   const handleQuickAction = async (listingId: string, action: 'approve' | 'reject') => {
@@ -95,34 +86,7 @@ const ListingModeration: React.FC = () => {
     }
   };
 
-  const handleModerate = async (decision: ModerationDecision) => {
-    if (!selectedListing) return;
-
-    try {
-      setModerationLoading(true);
-      
-      await moderateListing(selectedListing.listingId, decision);
-      
-      addNotification({
-        type: 'success',
-        title: 'Moderation Complete',
-        message: `Listing has been ${decision.action === 'approve' ? 'approved' : 
-                  decision.action === 'reject' ? 'rejected' : 'marked for changes'}`
-      });
-      
-      setSelectedListing(null);
-    } catch (err) {
-      addNotification({
-        type: 'error',
-        title: 'Moderation Failed',
-        message: err instanceof Error ? err.message : 'Failed to moderate listing'
-      });
-    } finally {
-      setModerationLoading(false);
-    }
-  };
-
-  const handleBulkAction = async (listingIds: string[], action: 'approve' | 'reject' | 'assign') => {
+  const handleBulkAction = async (listingIds: string[], action: 'approve' | 'reject' | 'assign' | 'escalate' | 'priority_change') => {
     try {
       setModerationLoading(true);
       
@@ -141,6 +105,12 @@ const ListingModeration: React.FC = () => {
           type: 'success',
           title: 'Bulk Action Complete',
           message: `${listingIds.length} listing${listingIds.length !== 1 ? 's' : ''} ${action === 'approve' ? 'approved' : 'rejected'}`
+        });
+      } else if (action === 'escalate' || action === 'priority_change') {
+        addNotification({
+          type: 'info',
+          title: 'Feature Coming Soon',
+          message: `${action} functionality will be available soon`
         });
       }
     } catch (err) {
@@ -312,16 +282,6 @@ const ListingModeration: React.FC = () => {
         <ModerationWorkloadBalancer
           moderators={moderators}
           onRebalance={refreshListings}
-        />
-      )}
-
-      {/* Listing Detail Modal */}
-      {selectedListing && (
-        <ListingDetailView
-          listing={selectedListing}
-          onModerate={handleModerate}
-          onClose={() => setSelectedListing(null)}
-          loading={moderationLoading}
         />
       )}
 

@@ -203,9 +203,12 @@ const ListingModerationQueue: React.FC<ListingModerationQueueProps> = ({
   }, [listings, processAutomationRules, workflowAutomation.enabled]);
 
   const getHighestSeverity = (flags: ContentFlag[]) => {
-    const severityOrder = { high: 3, medium: 2, low: 1 };
+    if (!flags || flags.length === 0) {
+      return null;
+    }
+    const severityOrder: Record<string, number> = { critical: 4, high: 3, medium: 2, low: 1 };
     return flags.reduce((highest, flag) => 
-      severityOrder[flag.severity] > severityOrder[highest.severity] ? flag : highest
+      (severityOrder[flag.severity] || 0) > (severityOrder[highest.severity] || 0) ? flag : highest
     );
   };
 
@@ -237,7 +240,7 @@ const ListingModerationQueue: React.FC<ListingModerationQueueProps> = ({
     if (filterPriority !== 'all') {
       filtered = filtered.filter(listing => {
         const highestSeverity = getHighestSeverity(listing.flags);
-        return highestSeverity.severity === filterPriority;
+        return highestSeverity && highestSeverity.severity === filterPriority;
       });
     }
 
@@ -251,20 +254,22 @@ const ListingModerationQueue: React.FC<ListingModerationQueueProps> = ({
           bValue = new Date(b.flaggedAt).getTime();
           break;
         case 'severity':
-          const severityOrder = { high: 3, medium: 2, low: 1 };
-          aValue = Math.max(...a.flags.map(f => severityOrder[f.severity]));
-          bValue = Math.max(...b.flags.map(f => severityOrder[f.severity]));
+          const severityOrder: Record<string, number> = { critical: 4, high: 3, medium: 2, low: 1 };
+          aValue = Math.max(...a.flags.map(f => severityOrder[f.severity] || 0), 0);
+          bValue = Math.max(...b.flags.map(f => severityOrder[f.severity] || 0), 0);
           break;
         case 'flagCount':
           aValue = a.flags.length;
           bValue = b.flags.length;
           break;
         case 'priority':
-          const priorityOrder = { high: 3, medium: 2, low: 1 };
-          const aPriority = getHighestSeverity(a.flags).severity;
-          const bPriority = getHighestSeverity(b.flags).severity;
-          aValue = priorityOrder[aPriority];
-          bValue = priorityOrder[bPriority];
+          const priorityOrder: Record<string, number> = { critical: 4, high: 3, medium: 2, low: 1 };
+          const aPriorityFlag = getHighestSeverity(a.flags);
+          const bPriorityFlag = getHighestSeverity(b.flags);
+          const aPriority = aPriorityFlag?.severity || 'low';
+          const bPriority = bPriorityFlag?.severity || 'low';
+          aValue = priorityOrder[aPriority] || 0;
+          bValue = priorityOrder[bPriority] || 0;
           break;
         default:
           return 0;
@@ -530,7 +535,7 @@ const ListingModerationQueue: React.FC<ListingModerationQueueProps> = ({
               className="border border-gray-300 rounded-md px-3 py-1 text-sm"
             >
               <option value="all">All Status</option>
-              <option value="pending">Pending</option>
+              <option value="pending_review">Pending Review</option>
               <option value="under_review">Under Review</option>
               <option value="approved">Approved</option>
               <option value="rejected">Rejected</option>
@@ -714,10 +719,10 @@ const ListingModerationQueue: React.FC<ListingModerationQueueProps> = ({
                   <div>
                     <span className="text-sm font-medium text-gray-900">{rule.name}</span>
                     <div className="text-xs text-gray-500">
-                      {rule.conditions.flagType && `Flags: ${rule.conditions.flagType.join(', ')}`}
-                      {rule.conditions.severity && ` | Severity: ${rule.conditions.severity.join(', ')}`}
-                      {rule.conditions.reportCount && ` | Min Reports: ${rule.conditions.reportCount}`}
-                      {rule.conditions.timeInQueue && ` | Queue Time: ${rule.conditions.timeInQueue}h`}
+                      {rule.conditions.flagType ? `Flags: ${rule.conditions.flagType.join(', ')}` : null}
+                      {rule.conditions.severity ? ` | Severity: ${rule.conditions.severity.join(', ')}` : null}
+                      {rule.conditions.reportCount ? ` | Min Reports: ${rule.conditions.reportCount}` : null}
+                      {rule.conditions.timeInQueue ? ` | Queue Time: ${rule.conditions.timeInQueue}h` : null}
                     </div>
                   </div>
                   <div className="flex items-center space-x-1">
@@ -808,9 +813,11 @@ const ListingModerationQueue: React.FC<ListingModerationQueueProps> = ({
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(listing.status)}`}>
                         {listing.status.replace('_', ' ')}
                       </span>
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${getPriorityColor(highestSeverityFlag.severity)}`}>
-                        {highestSeverityFlag.severity} priority
-                      </span>
+                      {highestSeverityFlag && (
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${getPriorityColor(highestSeverityFlag.severity)}`}>
+                          {highestSeverityFlag.severity} priority
+                        </span>
+                      )}
                       
                       {/* SLA Status Indicator */}
                       {(() => {
@@ -902,7 +909,7 @@ const ListingModerationQueue: React.FC<ListingModerationQueueProps> = ({
                         )}
                       </div>
                       
-                      {listing.status === 'pending' && (
+                      {listing.status === 'pending_review' && (
                         <div className="flex space-x-2">
                           <button
                             onClick={(e) => {

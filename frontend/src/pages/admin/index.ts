@@ -3,6 +3,7 @@ export { default as AdminDashboard } from './AdminDashboard';
 export { default as AdminLogin } from './AdminLogin';
 export { default as UserManagement } from './UserManagement';
 export { default as ListingModeration } from './ListingModeration';
+export { default as ListingModerationReview } from './ListingModerationReview';
 export { default as SystemMonitoring } from './SystemMonitoring';
 export { default as Analytics } from './Analytics';
 export { default as PlatformSettings } from './PlatformSettings';

@@ -103,35 +103,18 @@ export default function TierManagement() {
       const apiUrl = import.meta.env.VITE_API_URL;
       const headers = getAuthHeaders();
       
-      console.log('🔍 Fetching tiers from:', `${apiUrl}/admin/tiers`);
-      console.log('🔑 Headers:', headers);
-      console.log('🎫 Token exists:', !!localStorage.getItem(ADMIN_TOKEN_KEY));
-      
       const response = await fetch(`${apiUrl}/admin/tiers`, {
         headers,
       });
       
-      console.log('📡 Response status:', response.status, response.statusText);
-      
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
-        console.error('❌ API Error:', errorData);
         throw new Error(errorData.message || 'Failed to fetch tiers');
       }
       
       const data = await response.json();
-      console.log('✅ API Response:', data);
-      console.log('📊 Tiers count:', data.tiers?.length || 0);
-      
       return data.tiers || [];
     },
-  });
-
-  console.log('🎨 Component State:', { 
-    tiersCount: tiers?.length, 
-    isLoading, 
-    hasError: !!error,
-    errorDetails: error 
   });
 
   const addFeatureMutation = useMutation({

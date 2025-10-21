@@ -131,12 +131,12 @@ const ListingDetailView: React.FC<ListingDetailViewProps> = ({
           {/* Status and Priority Indicators */}
           <div className="flex items-center space-x-4 mb-4">
             <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
-              listing.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+              listing.status === 'pending_review' ? 'bg-yellow-100 text-yellow-800' :
               listing.status === 'under_review' ? 'bg-blue-100 text-blue-800' :
               listing.status === 'approved' ? 'bg-green-100 text-green-800' :
               'bg-red-100 text-red-800'
             }`}>
-              {listing.status.replace('_', ' ').toUpperCase()}
+              {listing.status.replace(/_/g, ' ').toUpperCase()}
             </span>
             
             {listing.flags.length > 0 && (
@@ -198,27 +198,9 @@ const ListingDetailView: React.FC<ListingDetailViewProps> = ({
           <div className="flex-1 overflow-y-auto p-6">
             {activeTab === 'details' && (
               <div className="space-y-6">
-                {/* Basic Info */}
+                {/* Title */}
                 <div>
-                  <h3 className="text-lg font-medium text-gray-900 mb-3">{listing.title}</h3>
-                  <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div>
-                      <span className="font-medium text-gray-700">Price:</span>
-                      <span className="ml-2">${listing.price.toLocaleString()}</span>
-                    </div>
-                    <div>
-                      <span className="font-medium text-gray-700">Location:</span>
-                      <span className="ml-2">{listing.location.city}, {listing.location.state}</span>
-                    </div>
-                    <div>
-                      <span className="font-medium text-gray-700">Owner:</span>
-                      <span className="ml-2">{listing.ownerName}</span>
-                    </div>
-                    <div>
-                      <span className="font-medium text-gray-700">Email:</span>
-                      <span className="ml-2">{listing.ownerEmail}</span>
-                    </div>
-                  </div>
+                  <h3 className="text-lg font-medium text-gray-900">{listing.title}</h3>
                 </div>
 
                 {/* Images */}
@@ -230,14 +212,14 @@ const ListingDetailView: React.FC<ListingDetailViewProps> = ({
                         <img
                           src={listing.images[currentImageIndex]}
                           alt={`Listing image ${currentImageIndex + 1}`}
-                          className="w-full h-64 object-cover rounded-lg"
+                          className="w-full h-96 object-cover rounded-lg"
                         />
                         {listing.images.length > 1 && (
                           <div className="absolute inset-0 flex items-center justify-between p-2">
                             <button
                               onClick={() => setCurrentImageIndex(Math.max(0, currentImageIndex - 1))}
                               disabled={currentImageIndex === 0}
-                              className="bg-black bg-opacity-50 text-white p-2 rounded-full disabled:opacity-50"
+                              className="bg-black bg-opacity-50 text-white p-2 rounded-full disabled:opacity-50 hover:bg-opacity-70"
                             >
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -246,7 +228,7 @@ const ListingDetailView: React.FC<ListingDetailViewProps> = ({
                             <button
                               onClick={() => setCurrentImageIndex(Math.min(listing.images.length - 1, currentImageIndex + 1))}
                               disabled={currentImageIndex === listing.images.length - 1}
-                              className="bg-black bg-opacity-50 text-white p-2 rounded-full disabled:opacity-50"
+                              className="bg-black bg-opacity-50 text-white p-2 rounded-full disabled:opacity-50 hover:bg-opacity-70"
                             >
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -259,12 +241,12 @@ const ListingDetailView: React.FC<ListingDetailViewProps> = ({
                         </div>
                       </div>
                       {listing.images.length > 1 && (
-                        <div className="flex space-x-2 overflow-x-auto">
+                        <div className="flex space-x-2 overflow-x-auto pb-2">
                           {listing.images.map((image, index) => (
                             <button
                               key={index}
                               onClick={() => setCurrentImageIndex(index)}
-                              className={`flex-shrink-0 w-16 h-16 rounded border-2 ${
+                              className={`flex-shrink-0 w-20 h-20 rounded border-2 ${
                                 index === currentImageIndex ? 'border-blue-500' : 'border-gray-200'
                               }`}
                             >
@@ -281,7 +263,7 @@ const ListingDetailView: React.FC<ListingDetailViewProps> = ({
                   </div>
                 )}
 
-                {/* Additional Details */}
+                {/* Description */}
                 <div>
                   <h4 className="font-medium text-gray-900 mb-3">Description</h4>
                   <div className="bg-gray-50 rounded-lg p-4">
@@ -290,6 +272,195 @@ const ListingDetailView: React.FC<ListingDetailViewProps> = ({
                     </p>
                   </div>
                 </div>
+
+                {/* Basic Info */}
+                <div>
+                  <h4 className="font-medium text-gray-900 mb-3">Basic Information</h4>
+                  <div className="grid grid-cols-2 gap-4 text-sm bg-gray-50 rounded-lg p-4">
+                    <div>
+                      <span className="font-medium text-gray-700">Price:</span>
+                      <span className="ml-2">${listing.price.toLocaleString()}</span>
+                    </div>
+                    <div>
+                      <span className="font-medium text-gray-700">Location:</span>
+                      <span className="ml-2">{listing.location?.city}, {listing.location?.state}</span>
+                    </div>
+                    <div>
+                      <span className="font-medium text-gray-700">Owner:</span>
+                      <span className="ml-2">{listing.ownerName}</span>
+                    </div>
+                    <div>
+                      <span className="font-medium text-gray-700">Email:</span>
+                      <span className="ml-2">{listing.ownerEmail}</span>
+                    </div>
+                    <div>
+                      <span className="font-medium text-gray-700">Listing ID:</span>
+                      <span className="ml-2 font-mono text-xs">{listing.listingId}</span>
+                    </div>
+                    <div>
+                      <span className="font-medium text-gray-700">Created:</span>
+                      <span className="ml-2">{listing.createdAt ? new Date(listing.createdAt * 1000).toLocaleDateString() : 'N/A'}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Boat Details */}
+                {(listing as any).boatDetails && (
+                  <div>
+                    <h4 className="font-medium text-gray-900 mb-3">Boat Specifications</h4>
+                    <div className="bg-gray-50 rounded-lg p-4">
+                      <div className="grid grid-cols-2 gap-4 text-sm">
+                        {(listing as any).boatDetails.type && (
+                          <div>
+                            <span className="font-medium text-gray-700">Type:</span>
+                            <span className="ml-2">{(listing as any).boatDetails.type}</span>
+                          </div>
+                        )}
+                        {(listing as any).boatDetails.manufacturer && (
+                          <div>
+                            <span className="font-medium text-gray-700">Manufacturer:</span>
+                            <span className="ml-2">{(listing as any).boatDetails.manufacturer}</span>
+                          </div>
+                        )}
+                        {(listing as any).boatDetails.model && (
+                          <div>
+                            <span className="font-medium text-gray-700">Model:</span>
+                            <span className="ml-2">{(listing as any).boatDetails.model}</span>
+                          </div>
+                        )}
+                        {(listing as any).boatDetails.year && (
+                          <div>
+                            <span className="font-medium text-gray-700">Year:</span>
+                            <span className="ml-2">{(listing as any).boatDetails.year}</span>
+                          </div>
+                        )}
+                        {(listing as any).boatDetails.length && (
+                          <div>
+                            <span className="font-medium text-gray-700">Length:</span>
+                            <span className="ml-2">{(listing as any).boatDetails.length} ft</span>
+                          </div>
+                        )}
+                        {(listing as any).boatDetails.beam && (
+                          <div>
+                            <span className="font-medium text-gray-700">Beam:</span>
+                            <span className="ml-2">{(listing as any).boatDetails.beam} ft</span>
+                          </div>
+                        )}
+                        {(listing as any).boatDetails.draft && (
+                          <div>
+                            <span className="font-medium text-gray-700">Draft:</span>
+                            <span className="ml-2">{(listing as any).boatDetails.draft} ft</span>
+                          </div>
+                        )}
+                        {(listing as any).boatDetails.condition && (
+                          <div>
+                            <span className="font-medium text-gray-700">Condition:</span>
+                            <span className="ml-2">{(listing as any).boatDetails.condition}</span>
+                          </div>
+                        )}
+                        {(listing as any).boatDetails.hours && (
+                          <div>
+                            <span className="font-medium text-gray-700">Hours:</span>
+                            <span className="ml-2">{(listing as any).boatDetails.hours.toLocaleString()}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Engine Information */}
+                      {(listing as any).boatDetails.engines && (listing as any).boatDetails.engines.length > 0 && (
+                        <div className="mt-4 pt-4 border-t border-gray-200">
+                          <h5 className="font-medium text-gray-900 mb-2">Engines</h5>
+                          <div className="space-y-3">
+                            {(listing as any).boatDetails.engines.map((engine: any, idx: number) => (
+                              <div key={idx} className="bg-white rounded p-3">
+                                <div className="grid grid-cols-2 gap-3 text-sm">
+                                  <div>
+                                    <span className="font-medium text-gray-700">Make:</span>
+                                    <span className="ml-2">{engine.make}</span>
+                                  </div>
+                                  <div>
+                                    <span className="font-medium text-gray-700">Model:</span>
+                                    <span className="ml-2">{engine.model}</span>
+                                  </div>
+                                  <div>
+                                    <span className="font-medium text-gray-700">Horsepower:</span>
+                                    <span className="ml-2">{engine.horsepower} HP</span>
+                                  </div>
+                                  <div>
+                                    <span className="font-medium text-gray-700">Fuel:</span>
+                                    <span className="ml-2 capitalize">{engine.fuelType}</span>
+                                  </div>
+                                  {engine.year && (
+                                    <div>
+                                      <span className="font-medium text-gray-700">Year:</span>
+                                      <span className="ml-2">{engine.year}</span>
+                                    </div>
+                                  )}
+                                  {engine.hours && (
+                                    <div>
+                                      <span className="font-medium text-gray-700">Hours:</span>
+                                      <span className="ml-2">{engine.hours.toLocaleString()}</span>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                          {(listing as any).boatDetails.totalHorsepower && (
+                            <div className="mt-2 text-sm">
+                              <span className="font-medium text-gray-700">Total Horsepower:</span>
+                              <span className="ml-2">{(listing as any).boatDetails.totalHorsepower} HP</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      {(listing as any).boatDetails.engine && (
+                        <div className="mt-4 pt-4 border-t border-gray-200">
+                          <div className="text-sm">
+                            <span className="font-medium text-gray-700">Engine:</span>
+                            <span className="ml-2">{(listing as any).boatDetails.engine}</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Features */}
+                {(listing as any).features && (listing as any).features.length > 0 && (
+                  <div>
+                    <h4 className="font-medium text-gray-900 mb-3">Features</h4>
+                    <div className="bg-gray-50 rounded-lg p-4">
+                      <div className="flex flex-wrap gap-2">
+                        {(listing as any).features.map((feature: string, idx: number) => (
+                          <span
+                            key={idx}
+                            className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-blue-100 text-blue-800"
+                          >
+                            {feature}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Additional Specifications */}
+                {(listing as any).specifications && Object.keys((listing as any).specifications).length > 0 && (
+                  <div>
+                    <h4 className="font-medium text-gray-900 mb-3">Additional Specifications</h4>
+                    <div className="bg-gray-50 rounded-lg p-4">
+                      <div className="grid grid-cols-2 gap-4 text-sm">
+                        {Object.entries((listing as any).specifications).map(([key, value]: [string, any]) => (
+                          <div key={key}>
+                            <span className="font-medium text-gray-700 capitalize">{key.replace(/_/g, ' ')}:</span>
+                            <span className="ml-2">{typeof value === 'object' ? JSON.stringify(value) : String(value)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -374,8 +545,8 @@ const ListingDetailView: React.FC<ListingDetailViewProps> = ({
           </div>
 
           {/* Right Panel - Enhanced Moderation Actions */}
-          <div className="w-96 border-l border-gray-200 p-6 overflow-y-auto">
-            <form onSubmit={handleSubmit} className="space-y-6">
+          <div className="w-96 border-l border-gray-200 overflow-y-auto">
+            <form onSubmit={handleSubmit} className="space-y-6 p-6 pb-12">
               <div>
                 <h4 className="font-medium text-gray-900 mb-3">Moderation Decision</h4>
                 <div className="space-y-3">
