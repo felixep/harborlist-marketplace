@@ -172,6 +172,25 @@ async function handleTrackEvent(
     const userId = extractUserIdFromToken(event.headers);
     const sessionId = body.sessionId || event.headers['x-session-id'] || generateSessionId();
 
+    // Check if this is an owner viewing their own listing (don't count as view)
+    if (listingId && userId && isListingViewEvent(eventType)) {
+      const isOwnerView = await checkIfOwnerView(userId, listingId);
+      
+      if (isOwnerView) {
+        console.log('Owner view detected - not tracking:', {
+          eventType,
+          userId,
+          listingId,
+        });
+        
+        return createResponse(200, {
+          success: true,
+          message: 'Owner view not tracked',
+          ownerView: true,
+        });
+      }
+    }
+
     // Get client info
     const clientInfo = extractClientInfo(event);
 
@@ -187,6 +206,7 @@ async function handleTrackEvent(
         ...metadata,
         ...clientInfo,
         page: metadata.page || event.headers.referer || 'unknown',
+        isOwnerView: false,
       },
     };
 
@@ -214,13 +234,16 @@ async function handleTrackEvent(
 }
 
 /**
- * Get platform-wide statistics
+ * Get platform-wide statistics with role-based data segmentation
  */
 async function handleGetPlatformStats(
   event: APIGatewayProxyEvent,
   requestId: string
 ): Promise<APIGatewayProxyResult> {
   try {
+    // Determine user role and authentication status
+    const userContext = await getUserContext(event);
+    
     // Get total listings
     const listingsResult = await docClient.send(new ScanCommand({
       TableName: LISTINGS_TABLE,
@@ -238,63 +261,209 @@ async function handleGetPlatformStats(
     }));
     const activeListings = activeListingsResult.Count || 0;
 
-    // Get total users
-    const usersResult = await docClient.send(new ScanCommand({
-      TableName: USERS_TABLE,
-      Select: 'COUNT',
-    }));
-    const totalUsers = usersResult.Count || 0;
+    // Initialize analytics data with defaults
+    let totalEvents = 0;
+    let totalViews = 0;
 
-    // Get total events in last 30 days
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    // Try to get analytics data, but don't fail if table doesn't exist
+    try {
+      // Get total events in last 30 days
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-    const eventsResult = await docClient.send(new ScanCommand({
-      TableName: ANALYTICS_TABLE,
-      FilterExpression: '#timestamp >= :thirtyDaysAgo',
-      ExpressionAttributeNames: { '#timestamp': 'timestamp' },
-      ExpressionAttributeValues: { ':thirtyDaysAgo': thirtyDaysAgo.toISOString() },
-      Select: 'COUNT',
-    }));
-    const totalEvents = eventsResult.Count || 0;
+      const eventsResult = await docClient.send(new ScanCommand({
+        TableName: ANALYTICS_TABLE,
+        FilterExpression: '#timestamp >= :thirtyDaysAgo',
+        ExpressionAttributeNames: { '#timestamp': 'timestamp' },
+        ExpressionAttributeValues: { ':thirtyDaysAgo': thirtyDaysAgo.toISOString() },
+        Select: 'COUNT',
+      }));
+      totalEvents = eventsResult.Count || 0;
 
-    // Count specific event types
-    const viewsResult = await docClient.send(new QueryCommand({
-      TableName: ANALYTICS_TABLE,
-      IndexName: 'EventTypeIndex',
-      KeyConditionExpression: 'eventType = :viewType',
-      ExpressionAttributeValues: {
-        ':viewType': AnalyticsEventType.LISTING_VIEW,
-      },
-      Select: 'COUNT',
-    }));
-    const totalViews = viewsResult.Count || 0;
+      // Count specific event types
+      const viewsResult = await docClient.send(new QueryCommand({
+        TableName: ANALYTICS_TABLE,
+        IndexName: 'EventTypeIndex',
+        KeyConditionExpression: 'eventType = :viewType',
+        ExpressionAttributeValues: {
+          ':viewType': AnalyticsEventType.LISTING_VIEW,
+        },
+        Select: 'COUNT',
+      }));
+      totalViews = viewsResult.Count || 0;
+    } catch (analyticsError: any) {
+      // If analytics table doesn't exist, just log and continue with default values
+      if (analyticsError.name === 'ResourceNotFoundException') {
+        console.log('Analytics table not found, returning stats without analytics data');
+      } else {
+        console.warn('Error fetching analytics data:', analyticsError.message);
+      }
+    }
 
     // Calculate engagement score (placeholder algorithm)
-    const engagementScore = totalEvents > 0 
+    const engagementScore = totalEvents > 0 && totalListings > 0
       ? Math.min(5.0, 3.0 + (totalEvents / totalListings) / 10)
       : 4.0;
 
-    const stats = {
+    // Build response based on user access level
+    const stats = await buildStatsResponse(userContext, {
       totalListings,
       activeListings,
-      totalUsers,
       totalViews,
       totalEvents,
-      averageRating: 4.5, // Placeholder until reviews are implemented
-      userSatisfactionScore: parseFloat(engagementScore.toFixed(1)),
-      totalReviews: 0, // Placeholder until reviews are implemented
-      last30Days: {
-        views: totalViews,
-        events: totalEvents,
-      },
-    };
+      engagementScore,
+    });
 
     return createResponse(200, stats);
   } catch (error) {
     console.error('Error getting platform stats:', error);
     return createErrorResponse(500, 'STATS_ERROR', 'Failed to get platform stats', requestId);
   }
+}
+
+/**
+ * Get user context including authentication status and role
+ */
+async function getUserContext(event: APIGatewayProxyEvent): Promise<{
+  isAuthenticated: boolean;
+  isStaff: boolean;
+  userId?: string;
+  role?: string;
+  permissions?: string[];
+}> {
+  const authHeader = event.headers.Authorization || event.headers.authorization;
+  
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return { isAuthenticated: false, isStaff: false };
+  }
+
+  try {
+    const token = authHeader.substring(7);
+    const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64').toString());
+    
+    const userId = payload.sub || payload.userId;
+    const role = payload.role || payload['cognito:groups']?.[0] || 'user';
+    const userType = payload.userType;
+    const permissions = payload.permissions || [];
+    const cognitoGroups = payload['cognito:groups'] || [];
+    
+    // Check if user is staff based on multiple indicators:
+    // 1. userType === 'staff'
+    // 2. cognito:groups contains admin roles
+    // 3. role is an admin role
+    const staffRoles = ['admin', 'super_admin', 'moderator', 'support'];
+    const isStaff = userType === 'staff' || 
+                   staffRoles.includes(role) ||
+                   cognitoGroups.some((group: string) => staffRoles.includes(group));
+    
+    return {
+      isAuthenticated: true,
+      isStaff,
+      userId,
+      role,
+      permissions,
+    };
+  } catch (error) {
+    console.warn('Error parsing token:', error);
+    return { isAuthenticated: false, isStaff: false };
+  }
+}
+
+/**
+ * Build stats response based on user access level
+ * 
+ * Access levels:
+ * - Non-authenticated: Public stats only (active listings, average rating)
+ * - Authenticated customers: Public stats + limited engagement metrics
+ * - Staff: Full analytics including total users, detailed events, admin metrics
+ */
+async function buildStatsResponse(
+  userContext: { isAuthenticated: boolean; isStaff: boolean },
+  data: {
+    totalListings: number;
+    activeListings: number;
+    totalViews: number;
+    totalEvents: number;
+    engagementScore: number;
+  }
+) {
+  const { isAuthenticated, isStaff } = userContext;
+  const { totalListings, activeListings, totalViews, totalEvents, engagementScore } = data;
+
+  // Non-authenticated users: Public marketplace stats only
+  if (!isAuthenticated) {
+    return {
+      activeListings,
+      averageRating: 4.5, // Placeholder until reviews are implemented
+      userSatisfactionScore: parseFloat(engagementScore.toFixed(1)),
+      totalReviews: 0, // Placeholder until reviews are implemented
+    };
+  }
+
+  // Authenticated customers: Public stats + engagement metrics
+  if (!isStaff) {
+    return {
+      activeListings,
+      totalListings, // Show total listings to authenticated users
+      averageRating: 4.5,
+      userSatisfactionScore: parseFloat(engagementScore.toFixed(1)),
+      totalReviews: 0,
+      last30Days: {
+        views: totalViews,
+      },
+    };
+  }
+
+  // Staff: Full analytics access
+  // Get total users (staff only)
+  return await getStaffStats(data);
+}
+
+/**
+ * Get comprehensive stats for staff members
+ */
+async function getStaffStats(data: {
+  totalListings: number;
+  activeListings: number;
+  totalViews: number;
+  totalEvents: number;
+  engagementScore: number;
+}): Promise<any> {
+  const { totalListings, activeListings, totalViews, totalEvents, engagementScore } = data;
+  
+  // Get total users (staff only)
+  let totalUsers = 0;
+  try {
+    const usersResult = await docClient.send(new ScanCommand({
+      TableName: USERS_TABLE,
+      Select: 'COUNT',
+    }));
+    totalUsers = usersResult.Count || 0;
+  } catch (error) {
+    console.warn('Error fetching user count:', error);
+  }
+
+  return {
+    // Public stats
+    activeListings,
+    totalListings,
+    averageRating: 4.5,
+    userSatisfactionScore: parseFloat(engagementScore.toFixed(1)),
+    totalReviews: 0,
+    
+    // Staff-only stats
+    totalUsers,
+    totalViews,
+    totalEvents,
+    last30Days: {
+      views: totalViews,
+      events: totalEvents,
+    },
+    
+    // Admin-specific metrics
+    pendingListings: totalListings - activeListings,
+    conversionRate: totalListings > 0 ? ((totalViews / totalListings) * 100).toFixed(2) : '0.00',
+  };
 }
 
 /**
@@ -484,6 +653,57 @@ function extractClientInfo(event: APIGatewayProxyEvent) {
  */
 function generateSessionId(): string {
   return `session-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+}
+
+/**
+ * Helper: Check if event type is a listing view event
+ */
+function isListingViewEvent(eventType: AnalyticsEventType): boolean {
+  const viewEventTypes = [
+    AnalyticsEventType.LISTING_VIEW,
+    AnalyticsEventType.LISTING_CARD_CLICK,
+    AnalyticsEventType.LISTING_IMAGE_VIEW,
+    AnalyticsEventType.LISTING_IMAGE_EXPAND,
+  ];
+  return viewEventTypes.includes(eventType);
+}
+
+/**
+ * Helper: Check if the user is viewing their own listing
+ */
+async function checkIfOwnerView(userId: string, listingId: string): Promise<boolean> {
+  try {
+    // Query the listing to get the owner
+    const result = await docClient.send(new GetCommand({
+      TableName: LISTINGS_TABLE,
+      Key: { listingId },
+    }));
+
+    if (!result.Item) {
+      // Listing not found, allow tracking (it will be caught elsewhere)
+      return false;
+    }
+
+    const ownerId = result.Item.ownerId;
+    
+    // Check if the current user is the owner
+    const isOwner = userId === ownerId;
+    
+    if (isOwner) {
+      console.log('Owner view detected:', {
+        userId,
+        ownerId,
+        listingId,
+        message: 'Skipping analytics tracking for owner view',
+      });
+    }
+    
+    return isOwner;
+  } catch (error) {
+    console.error('Error checking owner view:', error);
+    // On error, allow the tracking to proceed (fail open)
+    return false;
+  }
 }
 
 /**

@@ -306,6 +306,79 @@ create_engines_table() {
     fi
 }
 
+# Function to create analytics events table with proper schema and indexes
+create_analytics_events_table() {
+    local table_name="harborlist-analytics-events"
+    
+    echo "📊 Creating analytics events table: $table_name"
+    
+    # Check if table exists
+    if aws dynamodb describe-table --table-name "$table_name" --endpoint-url "$DYNAMODB_ENDPOINT" --region "$AWS_REGION" >/dev/null 2>&1; then
+        echo "   ✅ Table $table_name already exists"
+        return
+    fi
+
+    # Create analytics events table for tracking user behavior
+    # Structure: eventId (PK), timestamp, eventType, userId, sessionId, listingId, metadata
+    aws dynamodb create-table \
+        --table-name "$table_name" \
+        --key-schema AttributeName=eventId,KeyType=HASH \
+        --attribute-definitions \
+            AttributeName=eventId,AttributeType=S \
+            AttributeName=timestamp,AttributeType=S \
+            AttributeName=eventType,AttributeType=S \
+            AttributeName=listingId,AttributeType=S \
+            AttributeName=userId,AttributeType=S \
+        --provisioned-throughput ReadCapacityUnits=10,WriteCapacityUnits=10 \
+        --global-secondary-indexes \
+        '[{
+            "IndexName": "TimestampIndex",
+            "KeySchema": [{"AttributeName": "timestamp", "KeyType": "HASH"}],
+            "Projection": {"ProjectionType": "ALL"},
+            "ProvisionedThroughput": {"ReadCapacityUnits": 5, "WriteCapacityUnits": 5}
+        },
+        {
+            "IndexName": "ListingEventsIndex",
+            "KeySchema": [
+                {"AttributeName": "listingId", "KeyType": "HASH"},
+                {"AttributeName": "timestamp", "KeyType": "RANGE"}
+            ],
+            "Projection": {"ProjectionType": "ALL"},
+            "ProvisionedThroughput": {"ReadCapacityUnits": 5, "WriteCapacityUnits": 5}
+        },
+        {
+            "IndexName": "UserEventsIndex",
+            "KeySchema": [
+                {"AttributeName": "userId", "KeyType": "HASH"},
+                {"AttributeName": "timestamp", "KeyType": "RANGE"}
+            ],
+            "Projection": {"ProjectionType": "ALL"},
+            "ProvisionedThroughput": {"ReadCapacityUnits": 5, "WriteCapacityUnits": 5}
+        },
+        {
+            "IndexName": "EventTypeIndex",
+            "KeySchema": [
+                {"AttributeName": "eventType", "KeyType": "HASH"},
+                {"AttributeName": "timestamp", "KeyType": "RANGE"}
+            ],
+            "Projection": {"ProjectionType": "ALL"},
+            "ProvisionedThroughput": {"ReadCapacityUnits": 5, "WriteCapacityUnits": 5}
+        }]' \
+        --endpoint-url "$DYNAMODB_ENDPOINT" \
+        --region "$AWS_REGION" >/dev/null 2>&1
+    
+    if [ $? -eq 0 ]; then
+        echo "   ✅ Analytics events table $table_name created successfully with:"
+        echo "      - TimestampIndex GSI"
+        echo "      - ListingEventsIndex GSI"
+        echo "      - UserEventsIndex GSI"
+        echo "      - EventTypeIndex GSI"
+    else
+        echo "   ❌ Failed to create analytics events table $table_name"
+        return 1
+    fi
+}
+
 # Function to create sessions table with sessionId as primary key (to match production)
 create_sessions_table() {
     local table_name="harborlist-sessions"
@@ -393,6 +466,7 @@ create_simple_table "harborlist-analytics"
 
 # Enhanced feature tables for boat marketplace enhancements
 create_engines_table  # Use specialized function for engines table with ListingIndex GSI
+create_analytics_events_table  # Analytics events table for tracking user behavior
 create_simple_table "harborlist-billing-accounts"
 create_simple_table "harborlist-transactions"
 create_simple_table "harborlist-finance-calculations"
