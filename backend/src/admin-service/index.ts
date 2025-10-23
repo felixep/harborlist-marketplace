@@ -26,6 +26,7 @@ import {
 } from '@aws-sdk/client-cognito-identity-provider';
 import * as crypto from 'crypto';
 import { createResponse, createErrorResponse } from '../shared/utils';
+import { db } from '../shared/database';
 
 // Import the existing secure middleware system
 import { 
@@ -110,9 +111,10 @@ export const handler = async (event: APIGatewayProxyEvent, context: any): Promis
     // Handle CORS preflight requests
     if (method === 'OPTIONS') {
       return createResponse(200, {}, {
-        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Origin': 'https://local.harborlist.com',
         'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
         'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With',
+        'Access-Control-Allow-Credentials': 'true',
         'Access-Control-Max-Age': '86400'
       });
     }
@@ -365,12 +367,30 @@ export const handler = async (event: APIGatewayProxyEvent, context: any): Promis
     }
 
     // Get specific listing details (must be before other /listings routes)
-    if (path.match(/\/listings\/[^/]+$/) && method === 'GET' && !path.includes('/flagged')) {
+    if (path.match(/\/listings\/[^/]+$/) && method === 'GET' && !path.includes('/flagged') && !path.includes('/pending-update')) {
       return await compose(
         withRateLimit(100, 60000),
         withAdminAuth([AdminPermission.CONTENT_MODERATION]),
         withAuditLog('VIEW_LISTING_DETAILS', 'moderation')
       )(handleGetListingDetails)(event as AuthenticatedEvent, {});
+    }
+
+    // Approve pending update
+    if (path.match(/\/listings\/[^/]+\/pending-update\/approve$/) && method === 'POST') {
+      return await compose(
+        withRateLimit(20, 60000),
+        withAdminAuth([AdminPermission.CONTENT_MODERATION]),
+        withAuditLog('APPROVE_PENDING_UPDATE', 'moderation')
+      )(handleApprovePendingUpdate)(event as AuthenticatedEvent, {});
+    }
+
+    // Reject pending update
+    if (path.match(/\/listings\/[^/]+\/pending-update\/reject$/) && method === 'POST') {
+      return await compose(
+        withRateLimit(20, 60000),
+        withAdminAuth([AdminPermission.CONTENT_MODERATION]),
+        withAuditLog('REJECT_PENDING_UPDATE', 'moderation')
+      )(handleRejectPendingUpdate)(event as AuthenticatedEvent, {});
     }
 
     if (path.includes('/moderation/stats') && method === 'GET') {
@@ -386,6 +406,16 @@ export const handler = async (event: APIGatewayProxyEvent, context: any): Promis
     if (path.includes('/teams')) {
       console.log(`[${requestId}] Routing to team management handler`);
       return await teamsHandler(event);
+    }
+
+    // Error reporting endpoint (stub)
+    if (path.includes('/error-reports') && method === 'POST') {
+      console.log(`[${requestId}] Error report received:`, JSON.parse(event.body || '{}'));
+      return createResponse(200, { 
+        success: true,
+        message: 'Error report logged',
+        reportId: `error-${Date.now()}`
+      });
     }
 
     // Default response for unhandled routes
@@ -3119,21 +3149,22 @@ async function handleGetAnnouncementStats(event: AuthenticatedEvent): Promise<AP
  */
 async function handleGetFlaggedListings(event: AuthenticatedEvent): Promise<APIGatewayProxyResult> {
   try {
-    // Get listings that are pending review or under review
+    // Get ALL listings to filter for those needing moderation
     const result = await docClient.send(new ScanCommand({
-      TableName: LISTINGS_TABLE,
-      FilterExpression: '#status IN (:pending_review, :under_review)',
-      ExpressionAttributeNames: {
-        '#status': 'status'
-      },
-      ExpressionAttributeValues: {
-        ':pending_review': 'pending_review',
-        ':under_review': 'under_review'
-      }
+      TableName: LISTINGS_TABLE
     }));
 
-    // Fetch owner details for all listings
-    const ownerIds = [...new Set((result.Items || []).map((item: any) => item.ownerId))];
+    // Filter for listings that need moderation:
+    // 1. Status is pending_review or under_review
+    // 2. OR listing has pendingUpdate (active listings with pending changes)
+    const listingsNeedingReview = (result.Items || []).filter((listing: any) => {
+      const hasPendingUpdate = listing.pendingUpdate && listing.pendingUpdate.status === 'pending_review';
+      const isPendingReview = listing.status === 'pending_review' || listing.status === 'under_review';
+      return hasPendingUpdate || isPendingReview;
+    });
+
+    // Fetch owner details for all listings needing review
+    const ownerIds = [...new Set(listingsNeedingReview.map((item: any) => item.ownerId))];
     const ownerMap = new Map<string, any>();
 
     // Batch get owner details
@@ -3151,11 +3182,14 @@ async function handleGetFlaggedListings(event: AuthenticatedEvent): Promise<APIG
       }
     }
 
-    const listings = (result.Items || []).map((listing: any) => {
+    const listings = listingsNeedingReview.map((listing: any) => {
       // Get owner info from map
       const owner = ownerMap.get(listing.ownerId);
       const ownerName = owner ? `${owner.firstName || ''} ${owner.lastName || ''}`.trim() || owner.name || owner.email : 'Unknown Owner';
       const ownerEmail = owner?.email || '';
+
+      // Determine if this is a pending update or new/resubmission
+      const hasPendingUpdate = listing.pendingUpdate && listing.pendingUpdate.status === 'pending_review';
 
       return {
         listingId: listing.listingId,
@@ -3163,7 +3197,7 @@ async function handleGetFlaggedListings(event: AuthenticatedEvent): Promise<APIG
         ownerId: listing.ownerId,
         ownerName,
         ownerEmail,
-        flagReason: listing.moderationStatus?.rejectionReason || 'Pending review',
+        flagReason: listing.moderationStatus?.rejectionReason || (hasPendingUpdate ? 'Update pending review' : 'Pending review'),
         status: listing.status, // Use database status directly - no mapping needed
         flags: listing.flags || [], // Only show actual flags, not auto-generated ones
         flaggedAt: listing.moderationStatus?.reviewedAt 
@@ -3171,7 +3205,11 @@ async function handleGetFlaggedListings(event: AuthenticatedEvent): Promise<APIG
           : new Date(listing.createdAt * 1000).toISOString(),
         images: listing.images || [],
         price: listing.price,
-        location: listing.location
+        location: listing.location,
+        submissionType: hasPendingUpdate ? 'update' : (listing.moderationWorkflow?.submissionType || 'initial'),
+        previousReviewCount: listing.moderationWorkflow?.previousReviewCount || 0,
+        hasPendingUpdate,
+        pendingUpdate: hasPendingUpdate ? listing.pendingUpdate : undefined
       };
     });
 
@@ -3254,7 +3292,13 @@ async function handleGetListingDetails(event: AuthenticatedEvent): Promise<APIGa
       model: listing.model,
       slug: listing.slug,
       createdAt: listing.createdAt,
-      updatedAt: listing.updatedAt
+      updatedAt: listing.updatedAt,
+      moderationHistory: listing.moderationHistory || [],
+      moderationWorkflow: listing.moderationWorkflow,
+      submissionType: listing.moderationWorkflow?.submissionType || 'initial',
+      previousReviewCount: listing.moderationWorkflow?.previousReviewCount || 0,
+      pendingUpdate: listing.pendingUpdate, // Include pending update data
+      priceHistory: listing.priceHistory || [] // Include price history
     };
 
     return createResponse(200, detailedListing);
@@ -3325,6 +3369,213 @@ async function handleGetModerationStats(event: AuthenticatedEvent): Promise<APIG
     console.error('Error fetching moderation stats:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return createErrorResponse(500, 'MODERATION_ERROR', 'Failed to fetch moderation stats', event.requestContext.requestId, [{ error: errorMessage }]);
+  }
+}
+
+/**
+ * Approve pending update - merge changes into main listing
+ */
+async function handleApprovePendingUpdate(event: AuthenticatedEvent): Promise<APIGatewayProxyResult> {
+  try {
+    console.log('[APPROVE UPDATE] Request received:', { path: event.path, httpMethod: event.httpMethod });
+    
+    const pathParts = event.path.split('/');
+    const listingId = pathParts[pathParts.indexOf('listings') + 1];
+    const moderatorId = event.requestContext.authorizer?.userId;
+    const body = JSON.parse(event.body || '{}');
+    const { moderatorNotes } = body;
+
+    console.log('[APPROVE UPDATE] Extracted listingId:', listingId, 'moderatorId:', moderatorId);
+
+    if (!listingId) {
+      return createErrorResponse(400, 'INVALID_REQUEST', 'Listing ID is required', event.requestContext.requestId);
+    }
+
+    // Get the listing with pending update using db service
+    const listing = await db.getListing(listingId) as any;
+    
+    if (!listing) {
+      return createErrorResponse(404, 'NOT_FOUND', 'Listing not found', event.requestContext.requestId);
+    }
+
+    if (!listing.pendingUpdate) {
+      return createErrorResponse(400, 'NO_PENDING_UPDATE', 'This listing has no pending update', event.requestContext.requestId);
+    }
+
+    // Merge pending changes into main listing
+    const updates: any = {
+      ...listing.pendingUpdate.changes,
+      updatedAt: Date.now()
+    };
+
+    // Track price change in priceHistory if price changed
+    if (listing.pendingUpdate.changes.price && listing.pendingUpdate.changes.price !== listing.price) {
+      const priceHistoryEntry = {
+        price: listing.pendingUpdate.changes.price,
+        changedAt: Date.now(),
+        changedBy: listing.ownerId,
+        reason: 'Owner update - approved by moderator'
+      };
+
+      updates.priceHistory = [
+        ...(listing.priceHistory || []),
+        priceHistoryEntry
+      ];
+
+      console.log(`[APPROVE UPDATE] Price changed from $${listing.price} to $${listing.pendingUpdate.changes.price}`);
+    }
+
+    // Add to moderation history
+    const historyEntry = {
+      action: 'approve_update' as const,
+      reviewedBy: moderatorId || 'system',
+      reviewedAt: Date.now(),
+      status: 'approved',
+      publicNotes: 'Update approved by moderator',
+      internalNotes: moderatorNotes || ''
+    };
+
+    updates.moderationHistory = [
+      ...(listing.moderationHistory || []),
+      historyEntry
+    ];
+
+    // Clear pending update
+    updates.pendingUpdate = null;
+
+    // Update the listing in database using db service
+    await db.updateListing(listingId, updates);
+
+    // Get updated listing for response
+    const updatedListing = await db.getListing(listingId);
+
+    // Send notification to owner
+    await sendNotificationToOwner(
+      listing.ownerId,
+      listingId,
+      'listing_approved',
+      '✅ Update Approved',
+      'Your listing update has been approved and is now live.',
+      listing.slug
+    );
+
+    console.log(`✅ Approved pending update for listing ${listingId}`);
+
+    return createResponse(200, { 
+      success: true,
+      message: 'Pending update approved successfully',
+      listing: updatedListing
+    });
+  } catch (error: unknown) {
+    console.error('Error approving pending update:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    return createErrorResponse(500, 'MODERATION_ERROR', 'Failed to approve pending update', event.requestContext.requestId, [{ error: errorMessage }]);
+  }
+}
+
+/**
+ * Reject pending update - discard changes and notify owner
+ */
+async function handleRejectPendingUpdate(event: AuthenticatedEvent): Promise<APIGatewayProxyResult> {
+  try {
+    const pathParts = event.path.split('/');
+    const listingId = pathParts[pathParts.indexOf('listings') + 1];
+    const moderatorId = event.requestContext.authorizer?.userId;
+    const body = JSON.parse(event.body || '{}');
+    const { rejectionReason, moderatorNotes } = body;
+
+    if (!listingId) {
+      return createErrorResponse(400, 'INVALID_REQUEST', 'Listing ID is required', event.requestContext.requestId);
+    }
+
+    if (!rejectionReason) {
+      return createErrorResponse(400, 'INVALID_REQUEST', 'Rejection reason is required', event.requestContext.requestId);
+    }
+
+    // Get the listing with pending update using db service
+    const listing = await db.getListing(listingId) as any;
+    
+    if (!listing) {
+      return createErrorResponse(404, 'NOT_FOUND', 'Listing not found', event.requestContext.requestId);
+    }
+
+    if (!listing.pendingUpdate) {
+      return createErrorResponse(400, 'NO_PENDING_UPDATE', 'This listing has no pending update', event.requestContext.requestId);
+    }
+
+    // Add to moderation history
+    const historyEntry = {
+      action: 'reject' as const,
+      reviewedBy: moderatorId || 'system',
+      reviewedAt: Date.now(),
+      status: 'rejected',
+      rejectionReason,
+      publicNotes: rejectionReason,
+      internalNotes: moderatorNotes || ''
+    };
+
+    const updates: any = {
+      moderationHistory: [
+        ...(listing.moderationHistory || []),
+        historyEntry
+      ],
+      updatedAt: Date.now(),
+      pendingUpdate: null  // Clear pending update
+    };
+
+    // Update the listing in database using db service
+    await db.updateListing(listingId, updates);
+
+    // Send notification to owner
+    await sendNotificationToOwner(
+      listing.ownerId,
+      listingId,
+      'listing_rejected',
+      '❌ Update Rejected',
+      `Your listing update was rejected: ${rejectionReason}`,
+      listing.slug
+    );
+
+    console.log(`❌ Rejected pending update for listing ${listingId}`);
+
+    return createResponse(200, { 
+      success: true,
+      message: 'Pending update rejected successfully'
+    });
+  } catch (error: unknown) {
+    console.error('Error rejecting pending update:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    return createErrorResponse(500, 'MODERATION_ERROR', 'Failed to reject pending update', event.requestContext.requestId, [{ error: errorMessage }]);
+  }
+}
+
+/**
+ * Helper function to send notification to listing owner
+ */
+async function sendNotificationToOwner(
+  ownerId: string,
+  listingId: string,
+  type: 'listing_approved' | 'listing_rejected' | 'listing_changes_requested',
+  title: string,
+  message: string,
+  slug: string
+): Promise<void> {
+  try {
+    const { createNotification } = await import('../notification-service/index');
+    await createNotification(
+      ownerId,
+      type,
+      title,
+      message,
+      {
+        listingId,
+        timestamp: Date.now(),
+      },
+      `/boat/${slug}`
+    );
+  } catch (error) {
+    console.error('Failed to send notification to owner:', error);
+    // Don't throw - notification failure shouldn't block moderation
   }
 }
 

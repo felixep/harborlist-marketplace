@@ -85,6 +85,37 @@ export default function ListingDetail() {
     }).format(price);
   };
 
+  /**
+   * Calculates price drop information from price history
+   */
+  const getPriceDropInfo = () => {
+    if (!listing || !(listing as any).priceHistory || (listing as any).priceHistory.length < 2) {
+      return { hasDrop: false, previousPrice: 0, dropAmount: 0, dropPercentage: 0 };
+    }
+
+    // Get the most recent price change (last entry in array)
+    const sortedHistory = [...(listing as any).priceHistory].sort((a: any, b: any) => b.changedAt - a.changedAt);
+    const currentPriceEntry = sortedHistory[0];
+    const previousPriceEntry = sortedHistory[1];
+
+    // Check if the most recent change was a price drop
+    if (previousPriceEntry && currentPriceEntry.price < previousPriceEntry.price) {
+      const dropAmount = previousPriceEntry.price - currentPriceEntry.price;
+      const dropPercentage = Math.round((dropAmount / previousPriceEntry.price) * 100);
+      
+      return {
+        hasDrop: true,
+        previousPrice: previousPriceEntry.price,
+        dropAmount,
+        dropPercentage
+      };
+    }
+
+    return { hasDrop: false, previousPrice: 0, dropAmount: 0, dropPercentage: 0 };
+  };
+
+  const priceDropInfo = getPriceDropInfo();
+
   if (isLoading) {
     return (
       <>
@@ -199,7 +230,17 @@ export default function ListingDetail() {
             {/* Price & Basic Info */}
             <div className="card p-6 mb-6">
               <div className="flex items-center justify-between mb-4">
-                <div className="price-large">{formatPrice(listing.price)}</div>
+                <div className="flex items-center gap-3">
+                  <div className="price-large">{formatPrice(listing.price)}</div>
+                  {priceDropInfo.hasDrop && (
+                    <div className="flex items-center gap-1.5 text-sm font-semibold text-green-600 bg-green-50 px-3 py-1.5 rounded-full border border-green-200">
+                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M14.707 10.293a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 111.414-1.414L9 12.586V5a1 1 0 012 0v7.586l2.293-2.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                      </svg>
+                      <span>Price dropped {priceDropInfo.dropPercentage}%</span>
+                    </div>
+                  )}
+                </div>
                 <div className="text-right">
                   <div className="text-lg font-semibold text-navy-900">
                     {listing.boatDetails.year} {listing.boatDetails.type}

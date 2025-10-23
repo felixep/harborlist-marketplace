@@ -62,8 +62,16 @@ export default function OwnerListingCard({ listing }: OwnerListingCardProps) {
   const getStatusBadge = () => {
     const status = listing.status;
     const moderationStatus = (listing as any).moderationWorkflow?.status;
+    const hasPendingUpdate = (listing as any).pendingUpdate && (listing as any).pendingUpdate.status === 'pending_review';
 
-    if (status === 'pending_moderation' || moderationStatus === 'pending_review') {
+    if (hasPendingUpdate) {
+      return {
+        label: 'Update Pending',
+        color: 'bg-blue-100 text-blue-800 border-blue-200',
+        icon: '📝',
+      };
+    }
+    if (status === 'pending_review' || moderationStatus === 'pending_review') {
       return {
         label: 'Pending Review',
         color: 'bg-yellow-100 text-yellow-800 border-yellow-200',
@@ -157,6 +165,23 @@ export default function OwnerListingCard({ listing }: OwnerListingCardProps) {
           </p>
 
           <p className="text-2xl font-bold text-blue-600 mb-3">{price}</p>
+
+          {/* Pending Update Banner */}
+          {(listing as any).pendingUpdate && (listing as any).pendingUpdate.status === 'pending_review' && (
+            <div className="mb-3 p-3 bg-blue-50 border border-blue-200 rounded">
+              <div className="flex items-start">
+                <svg className="h-5 w-5 text-blue-600 mr-2 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-blue-900">Update Pending Review</p>
+                  <p className="text-xs text-blue-700 mt-1">
+                    Your changes are being reviewed by our moderation team. Your listing remains visible with current details.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Moderation Message */}
           {(listing as any).moderationWorkflow?.status === 'changes_requested' && (

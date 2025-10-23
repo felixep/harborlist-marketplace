@@ -78,7 +78,46 @@ export interface EnhancedListing extends Listing {
     rejectionReason?: string;
     moderatorNotes?: string;
     requiredChanges?: string[];
+    submissionType?: 'initial' | 'resubmission' | 'update'; // Track listing lifecycle
+    previousReviewCount?: number; // How many times this listing has been reviewed
   };
+  moderationHistory?: Array<{
+    action: 'approve' | 'reject' | 'request_changes' | 'resubmit' | 'approve_update';
+    reviewedBy: string;
+    reviewedAt: number;
+    status: 'approved' | 'rejected' | 'changes_requested' | 'resubmitted';
+    rejectionReason?: string;
+    publicNotes?: string;
+    internalNotes?: string;
+    requiredChanges?: string[];
+  }>;
+  pendingUpdate?: {
+    status: 'pending_review' | 'changes_requested';
+    submittedAt: number;
+    submittedBy: string;
+    lastUpdatedAt: number;
+    changes: Partial<EnhancedListing>; // Fields that changed
+    changeHistory: Array<{
+      field: string;
+      oldValue: any;
+      newValue: any;
+      timestamp: number;
+    }>;
+    moderationWorkflow?: {
+      status: 'pending_review' | 'approved' | 'rejected' | 'changes_requested';
+      reviewedBy?: string;
+      reviewedAt?: number;
+      rejectionReason?: string;
+      moderatorNotes?: string;
+      requiredChanges?: string[];
+    };
+  };
+  priceHistory?: Array<{
+    price: number;
+    changedAt: number;
+    changedBy: string; // ownerId
+    reason?: 'initial' | 'owner_update' | 'market_adjustment' | 'correction';
+  }>;
 }
 
 export interface Review {
@@ -575,6 +614,18 @@ export interface FlaggedListing {
   reviewedAt?: string;
   reviewedBy?: string;
   moderationNotes?: string;
+  moderationHistory?: Array<{
+    action: 'approve' | 'reject' | 'request_changes' | 'resubmit';
+    reviewedBy: string;
+    reviewedAt: string;
+    status: string;
+    rejectionReason?: string;
+    publicNotes?: string;
+    internalNotes?: string;
+    requiredChanges?: string[];
+  }>;
+  submissionType?: 'initial' | 'resubmission' | 'update'; // Track listing lifecycle
+  previousReviewCount?: number; // How many times reviewed
   // Additional listing details for moderation review
   boatDetails?: BoatDetails;
   features?: string[];

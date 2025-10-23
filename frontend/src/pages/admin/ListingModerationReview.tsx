@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { FlaggedListing, ModerationDecision } from '@harborlist/shared-types';
 import { useModerationQueue } from '../../hooks/useModerationQueue';
 import { useNotifications } from '../../hooks/useNotifications';
+import { adminApi } from '../../services/adminApi';
 
 interface ChangeRequest {
   category: 'title' | 'description' | 'price' | 'images' | 'specifications' | 'other';
@@ -87,18 +88,66 @@ const ListingModerationReview: React.FC = () => {
 
     if (!listing) return;
 
-    const decision: ModerationDecision = {
-      action: selectedAction,
-      reason: reason.trim(),
-      notes: notes.trim() || undefined,
-      notifyUser,
-      publicNotes: publicNotes.trim() || undefined,
-      changeRequests: selectedAction === 'request_changes' ? changeRequests : undefined,
-      confidence: reviewConfidence
-    };
-
     try {
       setSubmitting(true);
+      
+      // Check if this is a pending update for an active listing
+      const hasPendingUpdate = (listing as any).pendingUpdate && (listing as any).pendingUpdate.status === 'pending_review';
+      
+      console.log('[Moderation Review] Submit decision:', {
+        listingId: listing.listingId,
+        selectedAction,
+        hasPendingUpdate,
+        pendingUpdate: (listing as any).pendingUpdate,
+        listingStatus: listing.status
+      });
+      
+      if (hasPendingUpdate && selectedAction === 'approve') {
+        console.log('[Pending Update] Approving update for listing:', listing.listingId);
+        
+        // Approve the pending update using adminApi service
+        await adminApi.approvePendingUpdate(listing.listingId, notes.trim() || 'Update approved');
+
+        addNotification({
+          type: 'success',
+          title: 'Success',
+          message: 'Listing update approved successfully'
+        });
+        
+        navigate('/admin/moderation');
+        return;
+      }
+      
+      if (hasPendingUpdate && selectedAction === 'reject') {
+        console.log('[Pending Update] Rejecting update for listing:', listing.listingId);
+        
+        // Reject the pending update using adminApi service
+        await adminApi.rejectPendingUpdate(
+          listing.listingId, 
+          notes.trim() || reason.trim() || 'Update does not meet requirements'
+        );
+
+        addNotification({
+          type: 'success',
+          title: 'Success',
+          message: 'Listing update rejected successfully'
+        });
+        
+        navigate('/admin/moderation');
+        return;
+      }
+
+      // Regular listing moderation (not a pending update)
+      const decision: ModerationDecision = {
+        action: selectedAction,
+        reason: reason.trim(),
+        notes: notes.trim() || undefined,
+        notifyUser,
+        publicNotes: publicNotes.trim() || undefined,
+        changeRequests: selectedAction === 'request_changes' ? changeRequests : undefined,
+        confidence: reviewConfidence
+      };
+
       await moderateListing(listing.listingId, decision);
       
       addNotification({
@@ -210,6 +259,19 @@ const ListingModerationReview: React.FC = () => {
 
             {/* Status Indicators */}
             <div className="flex items-center space-x-4">
+              {/* Submission Type Badge */}
+              {listing.submissionType && (
+                <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${
+                  listing.submissionType === 'initial' ? 'bg-blue-100 text-blue-800' :
+                  listing.submissionType === 'resubmission' ? 'bg-yellow-100 text-yellow-800' :
+                  'bg-purple-100 text-purple-800'
+                }`}>
+                  {listing.submissionType === 'initial' && '🆕 Initial'}
+                  {listing.submissionType === 'resubmission' && `🔄 Resubmission (${listing.previousReviewCount || 1}x)`}
+                  {listing.submissionType === 'update' && '✏️ Update'}
+                </span>
+              )}
+              
               <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
                 listing.status === 'pending_review' ? 'bg-yellow-100 text-yellow-800' :
                 listing.status === 'under_review' ? 'bg-blue-100 text-blue-800' :
@@ -602,7 +664,62 @@ const ListingModerationReview: React.FC = () => {
             {activeTab === 'history' && (
               <div className="bg-white rounded-lg shadow p-6">
                 <h3 className="text-lg font-medium text-gray-900 mb-4">Moderation History</h3>
-                {listing.reviewedAt ? (
+                {listing.moderationHistory && listing.moderationHistory.length > 0 ? (
+                  <div className="space-y-4">
+                    {listing.moderationHistory.map((entry: any, index: number) => (
+                      <div key={index} className="border rounded-lg p-4">
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center gap-2">
+                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                              entry.action === 'approve' ? 'bg-green-100 text-green-800' :
+                              entry.action === 'reject' ? 'bg-red-100 text-red-800' :
+                              'bg-yellow-100 text-yellow-800'
+                            }`}>
+                              {entry.action === 'approve' ? 'Approved' :
+                               entry.action === 'reject' ? 'Rejected' :
+                               'Changes Requested'}
+                            </span>
+                          </div>
+                          <span className="text-sm text-gray-500">
+                            {new Date(entry.reviewedAt).toLocaleString()}
+                          </span>
+                        </div>
+                        <div className="text-sm space-y-2">
+                          <p className="text-gray-600">
+                            <span className="font-medium">Reviewed by:</span> {entry.reviewedBy}
+                          </p>
+                          {entry.publicNotes && (
+                            <div className="bg-blue-50 border border-blue-200 rounded p-3">
+                              <p className="font-medium text-blue-900 text-xs mb-1">Public Notes (visible to owner):</p>
+                              <p className="text-blue-800">{entry.publicNotes}</p>
+                            </div>
+                          )}
+                          {entry.internalNotes && (
+                            <div className="bg-gray-50 border border-gray-200 rounded p-3">
+                              <p className="font-medium text-gray-900 text-xs mb-1">Internal Notes (moderators only):</p>
+                              <p className="text-gray-700">{entry.internalNotes}</p>
+                            </div>
+                          )}
+                          {entry.rejectionReason && (
+                            <p className="text-red-700">
+                              <span className="font-medium">Reason:</span> {entry.rejectionReason}
+                            </p>
+                          )}
+                          {entry.requiredChanges && entry.requiredChanges.length > 0 && (
+                            <div className="mt-2">
+                              <p className="font-medium text-gray-900 text-xs mb-1">Required Changes:</p>
+                              <ul className="list-disc list-inside text-gray-700 space-y-1">
+                                {entry.requiredChanges.map((change: string, i: number) => (
+                                  <li key={i}>{change}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : listing.reviewedAt ? (
                   <div className="border rounded-lg p-4">
                     <div className="flex items-center justify-between mb-3">
                       <span className="font-medium">Previous Review</span>

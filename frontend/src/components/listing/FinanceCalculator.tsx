@@ -93,6 +93,50 @@ const FinanceCalculator: React.FC<FinanceCalculatorProps> = ({
   // Real-time calculation updates
   useEffect(() => {
     if (boatPrice > 0 && downPayment >= 0 && interestRate >= 0 && termMonths > 0) {
+      const timeoutId = setTimeout(() => {
+        performCalculation();
+      }, 500);
+
+      return () => clearTimeout(timeoutId);
+    }
+  }, [boatPrice, downPayment, interestRate, termMonths]);
+
+  // Perform calculation using backend API with fallback
+  const performCalculation = async () => {
+    setIsCalculating(true);
+    try {
+      // Try backend API first
+      const response = await fetch('/api/finance/calculate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          boatPrice,
+          downPayment,
+          interestRate,
+          termMonths,
+          includeSchedule,
+          listingId,
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setCalculation({
+          monthlyPayment: data.calculation.monthlyPayment,
+          totalInterest: data.calculation.totalInterest,
+          totalCost: data.calculation.totalCost,
+          loanAmount: data.calculation.loanAmount,
+          paymentSchedule: data.calculation.paymentSchedule,
+        });
+        setError(null);
+      } else {
+        throw new Error('API calculation failed');
+      }
+    } catch (err) {
+      console.error('Backend calculation failed, using client-side:', err);
+      // Fallback to client-side calculation
       try {
         const result = calculatePayment({
           boatPrice,
@@ -102,12 +146,14 @@ const FinanceCalculator: React.FC<FinanceCalculatorProps> = ({
         });
         setCalculation(result);
         setError(null);
-      } catch (err) {
+      } catch (clientErr) {
         setError('Invalid calculation parameters');
         setCalculation(null);
       }
+    } finally {
+      setIsCalculating(false);
     }
-  }, [boatPrice, downPayment, interestRate, termMonths, calculatePayment]);
+  };
 
   // Validate inputs
   const validateInputs = (): string | null => {
@@ -149,11 +195,12 @@ const FinanceCalculator: React.FC<FinanceCalculatorProps> = ({
 
     setIsSaving(true);
     try {
+      const token = localStorage.getItem('authToken');
       const response = await fetch('/api/finance/calculate/save', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${user.token}`
+          'Authorization': token ? `Bearer ${token}` : ''
         },
         body: JSON.stringify({
           boatPrice,

@@ -409,6 +409,30 @@ export class HarborListStack extends cdk.Stack {
       sortKey: { name: 'createdAt', type: dynamodb.AttributeType.NUMBER },
     });
 
+    // Notifications Table - stores user notifications (messages, alerts, updates)
+    const notificationsTable = new dynamodb.Table(this, 'NotificationsTable', {
+      tableName: 'harborlist-notifications',
+      partitionKey: { name: 'notificationId', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'createdAt', type: dynamodb.AttributeType.NUMBER },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+      timeToLiveAttribute: 'ttl', // Auto-delete old notifications after 90 days
+    });
+
+    // GSI for querying notifications by user
+    notificationsTable.addGlobalSecondaryIndex({
+      indexName: 'user-index',
+      partitionKey: { name: 'userId', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'createdAt', type: dynamodb.AttributeType.NUMBER },
+    });
+
+    // GSI for querying unread notifications by user
+    notificationsTable.addGlobalSecondaryIndex({
+      indexName: 'user-status-index',
+      partitionKey: { name: 'userId', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'status', type: dynamodb.AttributeType.STRING },
+    });
+
     // S3 Buckets
     const mediaBucket = new s3.Bucket(this, 'MediaBucket', {
       bucketName: `harborlist-media-${this.account}`,
@@ -509,6 +533,7 @@ export class HarborListStack extends cdk.Stack {
         USERS_TABLE: usersTable.tableName,
         ENGINES_TABLE: enginesTable.tableName,
         MODERATION_QUEUE_TABLE: moderationQueueTable.tableName,
+        NOTIFICATIONS_TABLE: notificationsTable.tableName,
         JWT_SECRET: jwtConfig.JWT_SECRET,
         JWT_SECRET_ARN: jwtConfig.JWT_SECRET_ARN,
         ENVIRONMENT: environment,
@@ -586,6 +611,7 @@ export class HarborListStack extends cdk.Stack {
         PLATFORM_SETTINGS_TABLE: platformSettingsTable.tableName,
         SUPPORT_TICKETS_TABLE: supportTicketsTable.tableName,
         ANNOUNCEMENTS_TABLE: announcementsTable.tableName,
+        NOTIFICATIONS_TABLE: notificationsTable.tableName,
         JWT_SECRET: jwtConfig.JWT_SECRET,
         JWT_SECRET_ARN: jwtConfig.JWT_SECRET_ARN,
         ENVIRONMENT: environment,
@@ -694,6 +720,10 @@ export class HarborListStack extends cdk.Stack {
     platformSettingsTable.grantReadWriteData(adminFunction);
     supportTicketsTable.grantReadWriteData(adminFunction);
     announcementsTable.grantReadWriteData(adminFunction);
+    notificationsTable.grantReadWriteData(adminFunction);
+
+    // Grant listing function access to notifications table
+    notificationsTable.grantReadWriteData(listingFunction);
 
     // Grant admin function scan permissions
     adminFunction.addToRolePolicy(new iam.PolicyStatement({

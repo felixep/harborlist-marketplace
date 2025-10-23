@@ -546,6 +546,43 @@ else
     fi
 fi
 
+# Create notifications table with proper schema and indexes
+echo "📊 Creating notifications table: harborlist-notifications"
+if aws dynamodb describe-table --table-name "harborlist-notifications" --endpoint-url "$DYNAMODB_ENDPOINT" --region "$AWS_REGION" >/dev/null 2>&1; then
+    echo "   ✅ Table harborlist-notifications already exists"
+else
+    aws dynamodb create-table \
+        --table-name "harborlist-notifications" \
+        --key-schema AttributeName=notificationId,KeyType=HASH AttributeName=createdAt,KeyType=RANGE \
+        --attribute-definitions \
+            AttributeName=notificationId,AttributeType=S \
+            AttributeName=createdAt,AttributeType=N \
+            AttributeName=userId,AttributeType=S \
+            AttributeName=status,AttributeType=S \
+        --provisioned-throughput ReadCapacityUnits=5,WriteCapacityUnits=5 \
+        --global-secondary-indexes \
+        '[{
+            "IndexName": "user-index",
+            "KeySchema": [{"AttributeName": "userId", "KeyType": "HASH"}, {"AttributeName": "createdAt", "KeyType": "RANGE"}],
+            "Projection": {"ProjectionType": "ALL"},
+            "ProvisionedThroughput": {"ReadCapacityUnits": 5, "WriteCapacityUnits": 5}
+        },
+        {
+            "IndexName": "user-status-index",
+            "KeySchema": [{"AttributeName": "userId", "KeyType": "HASH"}, {"AttributeName": "status", "KeyType": "RANGE"}],
+            "Projection": {"ProjectionType": "ALL"},
+            "ProvisionedThroughput": {"ReadCapacityUnits": 5, "WriteCapacityUnits": 5}
+        }]' \
+        --endpoint-url "$DYNAMODB_ENDPOINT" \
+        --region "$AWS_REGION" >/dev/null 2>&1
+    
+    if [ $? -eq 0 ]; then
+        echo "   ✅ Notifications table created successfully with user-index and user-status-index GSIs"
+    else
+        echo "   ❌ Failed to create notifications table"
+    fi
+fi
+
 create_simple_table "harborlist-support-templates"
 
 # Create user tiers table with proper schema and indexes

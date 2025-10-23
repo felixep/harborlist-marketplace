@@ -1,0 +1,5 @@
+/Users/felixparedes/Documents/Projects/harborlist-marketplace/frontend/src/components/admin/ListingModerationQueue.tsx
+
+/Users/felixparedes/Documents/Projects/harborlist-marketplace/frontend/src/pages/admin/ListingModerationReview.tsx
+
+Quick Approve and Approval on the review page should behave the same and I think the code is duplicated

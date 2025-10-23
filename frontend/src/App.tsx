@@ -37,6 +37,8 @@ import { Onboarding } from './pages/Onboarding';
 import { PremiumUpgrade } from './pages/PremiumUpgrade';
 import Sell from './pages/Sell';
 import Finance from './pages/Finance';
+import FinanceCalculator from './pages/FinanceCalculator';
+import BillingDashboard from './pages/BillingDashboard';
 import SharedCalculation from './pages/SharedCalculation';
 import About from './pages/About';
 import Valuation from './pages/Valuation';
@@ -61,7 +63,8 @@ import {
   Analytics, 
   PlatformSettings,
   SupportDashboard,
-  AuditLogs
+  AuditLogs,
+  FinancialManagement
 } from './pages/admin';
 import TierManagement from './pages/admin/TierManagement';
 import ListingModerationReview from './pages/admin/ListingModerationReview';
@@ -196,6 +199,14 @@ function App() {
                             element={<SupportDashboard />} 
                           />
                           <Route 
+                            path="financial" 
+                            element={
+                              <AdminProtectedRoute requiredPermission={AdminPermission.BILLING_MANAGEMENT}>
+                                <FinancialManagement />
+                              </AdminProtectedRoute>
+                            } 
+                          />
+                          <Route 
                             path="audit-logs" 
                             element={
                               <AdminProtectedRoute requiredPermission={AdminPermission.AUDIT_LOG_VIEW}>
@@ -230,7 +241,16 @@ function App() {
                           <Route path="/registration-success" element={<RegistrationSuccess />} />
                           <Route path="/sell" element={<Sell />} />
                           <Route path="/finance" element={<Finance />} />
+                          <Route path="/finance/calculator" element={<FinanceCalculator />} />
                           <Route path="/finance/shared/:shareToken" element={<SharedCalculation />} />
+                          <Route
+                            path="/billing"
+                            element={
+                              <ProtectedRoute>
+                                <BillingDashboard />
+                              </ProtectedRoute>
+                            }
+                          />
                           <Route path="/about" element={<About />} />
                           <Route path="/valuation" element={<Valuation />} />
                           <Route path="/services" element={<Services />} />

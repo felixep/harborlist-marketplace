@@ -132,6 +132,42 @@ export default function ListingCard({ listing, featured = false, compact = false
   };
 
   /**
+   * Calculates price drop information from price history
+   * 
+   * @returns Object with hasDrop (boolean), previousPrice (number), and dropAmount (number)
+   */
+  const getPriceDropInfo = () => {
+    const enhancedListing = listing as EnhancedListing;
+    
+    // Check if listing has priceHistory and it has at least 2 entries
+    if (!enhancedListing.priceHistory || enhancedListing.priceHistory.length < 2) {
+      return { hasDrop: false, previousPrice: 0, dropAmount: 0, dropPercentage: 0 };
+    }
+
+    // Get the most recent price change (last entry in array)
+    const sortedHistory = [...enhancedListing.priceHistory].sort((a, b) => b.changedAt - a.changedAt);
+    const currentPriceEntry = sortedHistory[0];
+    const previousPriceEntry = sortedHistory[1];
+
+    // Check if the most recent change was a price drop
+    if (previousPriceEntry && currentPriceEntry.price < previousPriceEntry.price) {
+      const dropAmount = previousPriceEntry.price - currentPriceEntry.price;
+      const dropPercentage = Math.round((dropAmount / previousPriceEntry.price) * 100);
+      
+      return {
+        hasDrop: true,
+        previousPrice: previousPriceEntry.price,
+        dropAmount,
+        dropPercentage
+      };
+    }
+
+    return { hasDrop: false, previousPrice: 0, dropAmount: 0, dropPercentage: 0 };
+  };
+
+  const priceDropInfo = getPriceDropInfo();
+
+  /**
    * Formats timestamp as relative date string
    * 
    * Converts timestamps to user-friendly relative dates for
@@ -283,8 +319,18 @@ export default function ListingCard({ listing, featured = false, compact = false
           {/* Price Badge */}
           <div className="absolute top-4 right-4">
             <div className="bg-white/95 backdrop-blur-sm px-4 py-2 rounded-full shadow-lg border border-slate-200">
-              <div className="text-lg font-bold text-slate-900">
-                {formatPrice(listing.price)}
+              <div className="flex items-center gap-2">
+                <div className="text-lg font-bold text-slate-900">
+                  {formatPrice(listing.price)}
+                </div>
+                {priceDropInfo.hasDrop && (
+                  <div className="flex items-center gap-1 text-xs font-semibold text-green-600 bg-green-50 px-2 py-1 rounded-full">
+                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M14.707 10.293a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 111.414-1.414L9 12.586V5a1 1 0 012 0v7.586l2.293-2.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                    </svg>
+                    <span>{priceDropInfo.dropPercentage}%</span>
+                  </div>
+                )}
               </div>
             </div>
           </div>

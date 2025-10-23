@@ -26,6 +26,28 @@ interface RefundRequest {
   reason: string;
 }
 
+// Mock data for development
+const mockDisputes = [
+  {
+    id: 'disp_001',
+    userName: 'John Smith',
+    userEmail: 'john@example.com',
+    amount: 29999,
+    disputeReason: 'Unauthorized charge',
+    disputeStatus: 'pending',
+    disputeDate: '2024-01-15T10:30:00Z',
+  },
+  {
+    id: 'disp_002',
+    userName: 'Sarah Johnson',
+    userEmail: 'sarah@example.com',
+    amount: 9999,
+    disputeReason: 'Service not received',
+    disputeStatus: 'investigating',
+    disputeDate: '2024-01-14T14:20:00Z',
+  },
+];
+
 const FinancialManagement: React.FC = () => {
   const { showSuccess, showError, showWarning } = useToast();
   const [activeTab, setActiveTab] = useState<'overview' | 'transactions' | 'billing' | 'disputes' | 'reports'>('overview');
@@ -775,51 +797,134 @@ const FinancialManagement: React.FC = () => {
 
   const renderReports = () => (
     <div className="space-y-6">
+      {/* Report Generation */}
       <div className="bg-white rounded-lg shadow p-6">
-        <h3 className="text-lg font-medium text-gray-900 mb-4">Financial Reports</h3>
+        <h3 className="text-lg font-medium text-gray-900 mb-4">Generate Reports</h3>
         
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          <div className="border border-gray-200 rounded-lg p-4">
-            <h4 className="font-medium text-gray-900 mb-2">Revenue Summary</h4>
-            <p className="text-sm text-gray-600 mb-4">
-              Comprehensive revenue breakdown by time period, payment method, and commission structure.
-            </p>
-            <button className="w-full bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700">
-              Generate Report
-            </button>
-          </div>
-
-          <div className="border border-gray-200 rounded-lg p-4">
-            <h4 className="font-medium text-gray-900 mb-2">Commission Tracking</h4>
-            <p className="text-sm text-gray-600 mb-4">
-              Detailed commission calculations and payout schedules for platform earnings.
-            </p>
-            <button className="w-full bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700">
-              Generate Report
-            </button>
-          </div>
-
-          <div className="border border-gray-200 rounded-lg p-4">
-            <h4 className="font-medium text-gray-900 mb-2">Payout Schedule</h4>
-            <p className="text-sm text-gray-600 mb-4">
-              Scheduled payouts to sellers and commission distribution timeline.
-            </p>
-            <button className="w-full bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700">
-              Generate Report
-            </button>
-          </div>
-        </div>
-
-        <div className="mt-8 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-          <div className="flex">
-            <span className="text-yellow-400 mt-0.5">⚠️</span>
-            <div className="ml-3">
-              <h4 className="text-sm font-medium text-yellow-800">Integration Required</h4>
-              <p className="text-sm text-yellow-700 mt-1">
-                Financial reporting features require integration with payment processor APIs (Stripe, PayPal, etc.) 
-                to access real transaction data and generate accurate reports.
-              </p>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <button
+            onClick={() => generateReport('revenue')}
+            className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 text-left"
+          >
+            <div className="flex items-center space-x-3">
+              <span className="text-2xl">📊</span>
+              <div>
+                <h4 className="font-medium text-gray-900">Revenue Report</h4>
+                <p className="text-sm text-gray-500">Monthly and yearly revenue breakdown</p>
+              </div>
             </div>
+          </button>
+
+          <button
+            onClick={() => generateReport('transactions')}
+            className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 text-left"
+          >
+            <div className="flex items-center space-x-3">
+              <span className="text-2xl">💳</span>
+              <div>
+                <h4 className="font-medium text-gray-900">Transaction Report</h4>
+                <p className="text-sm text-gray-500">Detailed transaction history</p>
+              </div>
+            </div>
+          </button>
+
+          <button
+            onClick={() => generateReport('billing')}
+            className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 text-left"
+          >
+            <div className="flex items-center space-x-3">
+              <span className="text-2xl">🧾</span>
+              <div>
+                <h4 className="font-medium text-gray-900">Billing Report</h4>
+                <p className="text-sm text-gray-500">Customer billing and subscriptions</p>
+              </div>
+            </div>
+          </button>
+
+          <button
+            onClick={() => generateReport('commission')}
+            className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 text-left"
+          >
+            <div className="flex items-center space-x-3">
+              <span className="text-2xl">💰</span>
+              <div>
+                <h4 className="font-medium text-gray-900">Commission Report</h4>
+                <p className="text-sm text-gray-500">Platform commission breakdown</p>
+              </div>
+            </div>
+          </button>
+
+          <button
+            onClick={() => generateReport('payout')}
+            className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 text-left"
+          >
+            <div className="flex items-center space-x-3">
+              <span className="text-2xl">💸</span>
+              <div>
+                <h4 className="font-medium text-gray-900">Payout Report</h4>
+                <p className="text-sm text-gray-500">Seller payout summary</p>
+              </div>
+            </div>
+          </button>
+
+          <button
+            onClick={() => generateReport('disputes')}
+            className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 text-left"
+          >
+            <div className="flex items-center space-x-3">
+              <span className="text-2xl">⚠️</span>
+              <div>
+                <h4 className="font-medium text-gray-900">Disputes Report</h4>
+                <p className="text-sm text-gray-500">Dispute resolution summary</p>
+              </div>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      {/* Recent Reports */}
+      <div className="bg-white rounded-lg shadow p-6">
+        <h3 className="text-lg font-medium text-gray-900 mb-4">Recent Reports</h3>
+        
+        {reports.length > 0 ? (
+          <div className="space-y-3">
+            {reports.map((report) => (
+              <div key={report.id} className="flex items-center justify-between p-3 border border-gray-200 rounded-lg">
+                <div>
+                  <h4 className="font-medium text-gray-900">{report.title}</h4>
+                  <p className="text-sm text-gray-500">
+                    Generated {formatDate(report.generatedAt)} • {report.format.toUpperCase()}
+                  </p>
+                </div>
+                <div className="flex space-x-2">
+                  <button className="text-blue-600 hover:text-blue-800 text-sm">
+                    Download
+                  </button>
+                  <button className="text-red-600 hover:text-red-800 text-sm">
+                    Delete
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-8">
+            <span className="text-4xl mb-4 block">📋</span>
+            <p className="text-gray-500">No reports generated yet</p>
+          </div>
+        )}
+      </div>
+
+      {/* Integration Notice */}
+      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+        <div className="flex">
+          <span className="text-yellow-400 mt-0.5">⚠️</span>
+          <div className="ml-3">
+            <h4 className="text-sm font-medium text-yellow-800">Integration Required</h4>
+            <p className="text-sm text-yellow-700 mt-1">
+              Financial reporting features require integration with payment processor APIs (Stripe, PayPal, etc.) 
+              to access real transaction data and generate accurate reports.
+            </p>
           </div>
         </div>
       </div>
@@ -828,43 +933,6 @@ const FinancialManagement: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-semibold text-gray-900">Financial Management</h1>
-        <div className="flex space-x-3">
-          <button className="bg-white border border-gray-300 rounded-md px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
-            Export Data
-          </button>
-          <button className="bg-indigo-600 text-white rounded-md px-4 py-2 text-sm font-medium hover:bg-indigo-700">
-            Process Payout
-          </button>
-        </div>
-      </div>
-
-      {/* Tab Navigation */}
-      <div className="border-b border-gray-200">
-        <nav className="-mb-px flex space-x-8">
-          {[
-            { key: 'overview', label: 'Overview' },
-            { key: 'transactions', label: 'Transactions' },
-            { key: 'billing', label: 'Billing Accounts' },
-            { key: 'disputes', label: 'Disputes' },
-            { key: 'reports', label: 'Reports' }
-          ].map((tab) => (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key as any)}
-              className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                activeTab === tab.key
-                  ? 'border-indigo-500 text-indigo-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </nav>
-      </div>
-
       {/* Loading Overlay */}
       <LoadingOverlay 
         isVisible={isLoading} 

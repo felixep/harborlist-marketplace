@@ -280,6 +280,8 @@ app.use('/api/listings', lambdaToExpress('./listing'));
 app.use('/api/search', lambdaToExpress('./search'));
 app.use('/api/media', lambdaToExpress('./media'));
 app.use('/api/email', lambdaToExpress('./email'));
+app.use('/api/notifications', lambdaToExpress('./notification-service')); // User notifications
+app.use('/api/admin/billing', lambdaToExpress('./financial-service')); // Financial data (must be before /api/admin)
 app.use('/api/admin/tiers', lambdaToExpress('./tier'));
 app.use('/api/admin', lambdaToExpress('./admin-service'));
 app.use('/api/analytics', lambdaToExpress('./analytics-service'));
@@ -298,6 +300,7 @@ app.use('*', (req: Request, res: Response) => {
       '/api/search',
       '/api/media',
       '/api/email',
+      '/api/notifications',
       '/api/admin',
       '/api/analytics',
       '/api/stats',

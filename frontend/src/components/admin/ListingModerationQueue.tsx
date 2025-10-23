@@ -4,7 +4,7 @@ import { FlaggedListing, ContentFlag, ModerationWorkflow, AdminUser } from '@har
 interface ListingModerationQueueProps {
   listings: FlaggedListing[];
   onSelectListing: (listing: FlaggedListing) => void;
-  onQuickAction: (listingId: string, action: 'approve' | 'reject') => void;
+  onQuickAction: (listingId: string, action: 'approve' | 'reject' | 'approve_update' | 'reject_update') => void;
   onBulkAction?: (listingIds: string[], action: 'approve' | 'reject' | 'assign' | 'escalate' | 'priority_change') => void;
   onAssignModerator?: (listingIds: string[], moderatorId: string) => void;
   onEscalate?: (listingIds: string[], reason: string) => void;
@@ -813,6 +813,7 @@ const ListingModerationQueue: React.FC<ListingModerationQueueProps> = ({
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(listing.status)}`}>
                         {listing.status.replace('_', ' ')}
                       </span>
+                      
                       {highestSeverityFlag && (
                         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${getPriorityColor(highestSeverityFlag.severity)}`}>
                           {highestSeverityFlag.severity} priority
@@ -876,58 +877,54 @@ const ListingModerationQueue: React.FC<ListingModerationQueueProps> = ({
                         <div>Location: <span className="font-medium">{listing.location.city}, {listing.location.state}</span></div>
                       </div>
                       <div className="space-y-1">
-                        <div>Flags: <span className="font-medium">{listing.flags.length}</span></div>
+                        <div>Submission Type: <span className="font-medium capitalize">{listing.submissionType || 'initial'}</span></div>
+                        <div>Flags: <span className="font-medium">{listing.flags.length > 0 ? listing.flags.map(f => f.type).join(', ') : 'None'}</span></div>
                         <div>Assigned: <span className="font-medium">{getAssigneeDisplay(listing)}</span></div>
-                        <div>Flagged: <span className="font-medium">{new Date(listing.flaggedAt).toLocaleDateString()}</span></div>
                       </div>
                     </div>
 
-                    <div className="flex flex-wrap gap-2 mb-3">
-                      {listing.flags.slice(0, 4).map((flag, index) => (
-                        <span
-                          key={index}
-                          className={`inline-flex items-center px-2 py-1 rounded-md text-xs border ${getSeverityColor(flag.severity)}`}
-                        >
-                          {flag.type}: {flag.reason}
-                        </span>
-                      ))}
-                      {listing.flags.length > 4 && (
-                        <span className="inline-flex items-center px-2 py-1 rounded-md text-xs bg-gray-100 text-gray-700 border border-gray-200">
-                          +{listing.flags.length - 4} more
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="flex items-center justify-between">
-                      <div className="text-xs text-gray-400">
-                        Flagged {new Date(listing.flaggedAt).toLocaleDateString()} at{' '}
-                        {new Date(listing.flaggedAt).toLocaleTimeString()}
-                        {listing.reviewedAt && (
-                          <span className="ml-2">
-                            • Reviewed {new Date(listing.reviewedAt).toLocaleDateString()}
+                    {listing.flags.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mb-3">
+                        {listing.flags.slice(0, 4).map((flag, index) => (
+                          <span
+                            key={index}
+                            className={`inline-flex items-center px-2 py-1 rounded-md text-xs border ${getSeverityColor(flag.severity)}`}
+                          >
+                            {flag.type}: {flag.reason}
+                          </span>
+                        ))}
+                        {listing.flags.length > 4 && (
+                          <span className="inline-flex items-center px-2 py-1 rounded-md text-xs bg-gray-100 text-gray-700 border border-gray-200">
+                            +{listing.flags.length - 4} more
                           </span>
                         )}
                       </div>
-                      
-                      {listing.status === 'pending_review' && (
+                    )}
+
+                    <div className="flex items-center justify-end">
+                      {(listing.status === 'pending_review' || (listing as any).hasPendingUpdate) && (
                         <div className="flex space-x-2">
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              onQuickAction(listing.listingId, 'approve');
+                              const action = (listing as any).hasPendingUpdate ? 'approve_update' : 'approve';
+                              console.log('[Button Click] Approve button clicked:', { listingId: listing.listingId, action, hasPendingUpdate: (listing as any).hasPendingUpdate });
+                              onQuickAction(listing.listingId, action);
                             }}
                             className="px-3 py-1 bg-green-600 text-white text-xs rounded hover:bg-green-700 transition-colors"
                           >
-                            Quick Approve
+                            {(listing as any).hasPendingUpdate ? 'Approve Update' : 'Quick Approve'}
                           </button>
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              onQuickAction(listing.listingId, 'reject');
+                              const action = (listing as any).hasPendingUpdate ? 'reject_update' : 'reject';
+                              console.log('[Button Click] Reject button clicked:', { listingId: listing.listingId, action, hasPendingUpdate: (listing as any).hasPendingUpdate });
+                              onQuickAction(listing.listingId, action);
                             }}
                             className="px-3 py-1 bg-red-600 text-white text-xs rounded hover:bg-red-700 transition-colors"
                           >
-                            Quick Reject
+                            {(listing as any).hasPendingUpdate ? 'Reject Update' : 'Quick Reject'}
                           </button>
                         </div>
                       )}

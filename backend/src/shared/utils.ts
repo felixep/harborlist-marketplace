@@ -64,10 +64,10 @@ export function createResponse<T>(
     statusCode,
     headers: {
       'Content-Type': 'application/json',
-      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Origin': 'https://local.harborlist.com',
       'Access-Control-Allow-Headers': 'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token',
       'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
-      'Access-Control-Allow-Credentials': 'false',
+      'Access-Control-Allow-Credentials': 'true',
       ...headers,
     },
     body: JSON.stringify(data),

@@ -145,6 +145,20 @@ class AdminApiService {
     }, { component: 'ListingModeration', action: 'ModerateListing' });
   }
 
+  async approvePendingUpdate(listingId: string, moderatorNotes?: string): Promise<any> {
+    return this.request(`/admin/listings/${listingId}/pending-update/approve`, {
+      method: 'POST',
+      body: JSON.stringify({ moderatorNotes: moderatorNotes || 'Update approved' })
+    }, { component: 'ListingModeration', action: 'ApprovePendingUpdate' });
+  }
+
+  async rejectPendingUpdate(listingId: string, moderatorNotes: string): Promise<any> {
+    return this.request(`/admin/listings/${listingId}/pending-update/reject`, {
+      method: 'POST',
+      body: JSON.stringify({ moderatorNotes })
+    }, { component: 'ListingModeration', action: 'RejectPendingUpdate' });
+  }
+
   async getModerationStats(): Promise<any> {
     return this.request('/admin/moderation/stats', {}, 
       { component: 'ListingModeration', action: 'GetModerationStats' });

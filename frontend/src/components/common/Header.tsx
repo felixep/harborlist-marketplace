@@ -12,6 +12,7 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../auth/AuthProvider';
+import NotificationBell from '../notifications/NotificationBell';
 
 /**
  * Main navigation header component for the HarborList platform
@@ -146,7 +147,7 @@ export default function Header() {
               Sell
             </Link>
             <Link 
-              to="/finance" 
+              to="/finance/calculator" 
               className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors duration-150 ${
                 isActivePath('/finance') 
                   ? 'text-blue-600 bg-blue-50' 
@@ -178,6 +179,9 @@ export default function Header() {
 
             {isAuthenticated ? (
               <>
+                {/* Notifications */}
+                <NotificationBell />
+
                 {/* Favorites */}
                 <button className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors duration-150">
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -216,6 +220,9 @@ export default function Header() {
                       Favorites
                     </Link>
                     <div className="border-t border-slate-100 my-1"></div>
+                    <Link to="/billing" className="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors duration-150">
+                      💳 Billing & Subscriptions
+                    </Link>
                     <Link to="/profile" className="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors duration-150">
                       Settings
                     </Link>

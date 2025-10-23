@@ -26,13 +26,13 @@ class ApiService {
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ error: 'Request failed' }));
-      
+
       // Create a custom error object with more information
       const error = new Error(errorData.error?.message || errorData.error || `HTTP ${response.status}`) as any;
       error.code = errorData.error?.code;
       error.requestId = errorData.error?.requestId;
       error.status = response.status;
-      
+
       throw error;
     }
 
@@ -50,10 +50,10 @@ class ApiService {
   async register(name: string, email: string, password: string, customerType?: string) {
     return this.request(endpoints.auth.register, {
       method: 'POST',
-      body: JSON.stringify({ 
-        name, 
-        email, 
-        password, 
+      body: JSON.stringify({
+        name,
+        email,
+        password,
         customerType: customerType || 'individual'
       })
     });
@@ -132,6 +132,14 @@ class ApiService {
     return this.request('/api/billing/subscriptions', {
       method: 'POST',
       body: JSON.stringify(subscriptionData)
+    });
+  }
+
+  // Finance Calculator
+  async calculateLoanPayment(calculationData: any) {
+    return this.request('/api/finance/calculate', {
+      method: 'POST',
+      body: JSON.stringify(calculationData)
     });
   }
 

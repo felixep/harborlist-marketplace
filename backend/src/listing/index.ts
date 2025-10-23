@@ -803,6 +803,8 @@ async function createListing(event: APIGatewayProxyEvent, requestId: string): Pr
         rejectionReason: undefined,
         moderatorNotes: undefined,
         requiredChanges: undefined,
+        submissionType: 'initial', // First time submission
+        previousReviewCount: 0,
       },
       views: 0,
       createdAt: Date.now(),
@@ -925,17 +927,132 @@ async function updateListing(listingId: string, event: APIGatewayProxyEvent, req
     if (updates.features) updates.features = updates.features.map(f => sanitizeString(f));
 
     // Update slug if title changed
+    let newSlug: string | undefined;
     if (updates.title && updates.title !== existingListing.title) {
-      const newSlug = await generateUniqueSlug(updates.title, listingId);
+      newSlug = await generateUniqueSlug(updates.title, listingId);
       (updates as any).slug = newSlug;
       
       // Store old slug for potential redirect handling
       await db.createSlugRedirect((existingListing as any).slug, newSlug, listingId);
     }
 
+    const listingWithWorkflow = existingListing as any;
+    const currentTimestamp = Date.now();
+
+    // CASE 1: Listing is ACTIVE (approved) - Create/update pendingUpdate for moderation
+    if (existingListing.status === 'active' || existingListing.status === 'approved') {
+      console.log(`[PENDING UPDATE] Listing ${listingId} is active - changes will go through moderation`);
+      
+      // Track price changes in priceHistory
+      if (updates.price && updates.price !== existingListing.price) {
+        const existingPriceHistory = listingWithWorkflow.priceHistory || [];
+        const newPriceEntry = {
+          price: updates.price,
+          changedAt: currentTimestamp,
+          changedBy: userId,
+          reason: 'owner_update'
+        };
+        (updates as any).priceHistory = [...existingPriceHistory, newPriceEntry];
+      }
+      
+      // Build change history for tracking all modifications
+      const changeHistory: Array<{ field: string; oldValue: any; newValue: any; timestamp: number }> = [];
+      Object.keys(updates).forEach(key => {
+        if (key !== 'updatedAt' && (updates as any)[key] !== (existingListing as any)[key]) {
+          changeHistory.push({
+            field: key,
+            oldValue: (existingListing as any)[key],
+            newValue: (updates as any)[key],
+            timestamp: currentTimestamp
+          });
+        }
+      });
+      
+      // Create or update pendingUpdate object
+      const existingPendingUpdate = listingWithWorkflow.pendingUpdate;
+      const accumulatedChanges = existingPendingUpdate?.changes || {};
+      const existingChangeHistory = existingPendingUpdate?.changeHistory || [];
+      
+      (updates as any).pendingUpdate = {
+        status: 'pending_review',
+        submittedAt: existingPendingUpdate?.submittedAt || currentTimestamp,
+        submittedBy: userId,
+        lastUpdatedAt: currentTimestamp,
+        changes: {
+          ...accumulatedChanges,
+          ...updates // Accumulate changes - latest values override previous
+        },
+        changeHistory: [...existingChangeHistory, ...changeHistory],
+        moderationWorkflow: {
+          status: 'pending_review',
+          submissionType: 'update',
+          previousReviewCount: 0
+        }
+      };
+      
+      // Don't apply updates directly - they stay in pendingUpdate
+      // Only update timestamp and pendingUpdate object
+      const pendingUpdateData: any = {
+        updatedAt: currentTimestamp,
+        pendingUpdate: (updates as any).pendingUpdate
+      };
+      
+      if ((updates as any).priceHistory) {
+        pendingUpdateData.priceHistory = (updates as any).priceHistory;
+      }
+      
+      await db.updateListing(listingId, pendingUpdateData);
+      
+      console.log(`✅ Listing ${listingId} - changes accumulated in pendingUpdate (${changeHistory.length} fields changed)`);
+      
+      // TODO: Send notification to moderators about pending update
+      // This will be implemented when moderator notification system is ready
+      
+      return createResponse(200, { 
+        message: 'Changes submitted for review. Your listing will remain visible with current details until approved.',
+        pendingReview: true,
+        changesCount: changeHistory.length
+      });
+    }
+
+    // CASE 2: Listing with changes_requested - automatically resubmit for review
+    if (listingWithWorkflow.moderationWorkflow?.status === 'changes_requested' && 
+        existingListing.status === 'under_review') {
+      
+      console.log(`[RESUBMIT] Listing ${listingId} updated after changes requested - resubmitting for review`);
+      
+      // Add history entry for the resubmission
+      const existingHistory = listingWithWorkflow.moderationHistory || [];
+      const resubmitEntry = {
+        action: 'resubmit' as const,
+        reviewedBy: userId,
+        reviewedAt: currentTimestamp,
+        status: 'resubmitted',
+        publicNotes: 'Owner updated the listing and resubmitted for review',
+      };
+      
+      // Reset status to pending_review and update moderation workflow for resubmission
+      const previousReviewCount = (listingWithWorkflow.moderationWorkflow?.previousReviewCount || 0) + 1;
+      
+      updates.status = 'pending_review' as any;
+      (updates as any).moderationWorkflow = {
+        status: 'pending_review',
+        submittedAt: currentTimestamp,
+        submissionType: 'resubmission',
+        previousReviewCount,
+      };
+      (updates as any).moderationHistory = [...existingHistory, resubmitEntry];
+      
+      console.log(`✅ Listing ${listingId} resubmitted (review count: ${previousReviewCount}) - status changed to pending_review`);
+    }
+
+    // CASE 3: Other statuses - apply updates directly
     await db.updateListing(listingId, updates);
 
-    return createResponse(200, { message: 'Listing updated successfully' });
+    return createResponse(200, { 
+      message: 'Listing updated successfully',
+      resubmitted: listingWithWorkflow.moderationWorkflow?.status === 'changes_requested'
+    });
   } catch (error) {
     console.error('Error updating listing:', error);
     
@@ -1177,12 +1294,36 @@ async function processModerationDecision(listingId: string, event: APIGatewayPro
         moderationWorkflowStatus = 'rejected';
         break;
       case 'request_changes':
-        newStatus = 'pending_moderation';
+        newStatus = 'under_review';
         moderationWorkflowStatus = 'changes_requested';
         break;
       default:
         return createErrorResponse(400, 'INVALID_ACTION', 'Invalid moderation action', requestId);
     }
+
+    // Get existing moderation history
+    const existingHistory = (existingListing as any).moderationHistory || [];
+    
+    console.log(`[MODERATION] Existing history length: ${existingHistory.length}`);
+    console.log(`[MODERATION] Existing history:`, JSON.stringify(existingHistory, null, 2));
+    
+    // Create history entry for this action
+    const historyEntry = {
+      action: body.action,
+      reviewedBy: userId,
+      reviewedAt: Date.now(),
+      status: moderationWorkflowStatus,
+      rejectionReason: body.action === 'reject' ? body.reason : undefined,
+      publicNotes: body.publicNotes,
+      internalNotes: body.internalNotes,
+      requiredChanges: body.requiredChanges,
+    };
+
+    console.log(`[MODERATION] New history entry:`, JSON.stringify(historyEntry, null, 2));
+    
+    const newHistory = [...existingHistory, historyEntry];
+    console.log(`[MODERATION] New history array length: ${newHistory.length}`);
+    console.log(`[MODERATION] New history array:`, JSON.stringify(newHistory, null, 2));
 
     // Update listing with moderation decision
     await db.updateListing(listingId, {
@@ -1195,6 +1336,7 @@ async function processModerationDecision(listingId: string, event: APIGatewayPro
         moderatorNotes: body.internalNotes,
         requiredChanges: body.requiredChanges,
       },
+      moderationHistory: newHistory,
       updatedAt: Date.now(),
     } as any);
 
@@ -1231,8 +1373,8 @@ async function processModerationDecision(listingId: string, event: APIGatewayPro
 /**
  * Sends notification to listing owner about moderation status
  * 
- * Placeholder function for notification service integration.
- * In a real implementation, this would send email/SMS notifications.
+ * Creates an in-app notification that the user can view in their notifications inbox.
+ * In a future enhancement, this could also send email/SMS notifications.
  * 
  * @param ownerId - User ID of the listing owner
  * @param listingId - Listing ID that was moderated
@@ -1241,24 +1383,51 @@ async function processModerationDecision(listingId: string, event: APIGatewayPro
  */
 async function sendModerationNotification(ownerId: string, listingId: string, action: string, message: string): Promise<void> {
   try {
-    // This would integrate with your notification service
-    console.log(`Sending moderation notification to user ${ownerId} for listing ${listingId}: ${action} - ${message}`);
+    // Import notification service functions
+    const { createNotification } = await import('../notification-service/index');
     
-    // Example notification payload:
-    const notification = {
-      userId: ownerId,
-      type: 'moderation_update',
-      title: `Listing Moderation Update`,
-      message: `Your listing has been ${action === 'approve' ? 'approved' : action === 'reject' ? 'rejected' : 'returned for changes'}: ${message}`,
-      data: {
+    // Get listing to get the slug for the action URL
+    const listing = await db.getListing(listingId) as any;
+    const slug = listing?.slug || listingId;
+    
+    // Determine notification type and title based on action
+    let notificationType: 'listing_approved' | 'listing_rejected' | 'listing_changes_requested';
+    let title: string;
+    
+    switch (action) {
+      case 'approve':
+        notificationType = 'listing_approved';
+        title = '✅ Listing Approved';
+        break;
+      case 'reject':
+        notificationType = 'listing_rejected';
+        title = '❌ Listing Rejected';
+        break;
+      case 'request_changes':
+        notificationType = 'listing_changes_requested';
+        title = '📝 Changes Requested';
+        break;
+      default:
+        notificationType = 'listing_approved';
+        title = 'Listing Update';
+    }
+    
+    // Create the notification
+    await createNotification(
+      ownerId,
+      notificationType,
+      title,
+      message,
+      {
         listingId,
         action,
         timestamp: Date.now(),
       },
-    };
-
-    // Here you would call your notification service
-    // await notificationService.send(notification);
+      `/boat/${slug}` // Action URL using slug for better UX
+    );
+    
+    console.log(`✅ Notification created for user ${ownerId} about listing ${listingId}: ${action}`);
+    
   } catch (error) {
     console.error('Failed to send moderation notification:', error);
     // Don't throw error as this is not critical to the moderation process
@@ -1298,7 +1467,7 @@ async function resubmitForModeration(listingId: string, event: APIGatewayProxyEv
 
     // Update listing status to pending review
     await db.updateListing(listingId, {
-      status: 'pending_moderation' as any,
+      status: 'pending_review' as any,
       moderationWorkflow: {
         status: 'pending_review',
         reviewedBy: undefined,

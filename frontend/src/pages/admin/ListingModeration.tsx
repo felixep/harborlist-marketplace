@@ -58,12 +58,89 @@ const ListingModeration: React.FC = () => {
     navigate(`/admin/moderation/review/${listing.listingId}`);
   };
 
-  const handleQuickAction = async (listingId: string, action: 'approve' | 'reject') => {
+  const handleQuickAction = async (listingId: string, action: 'approve' | 'reject' | 'approve_update' | 'reject_update') => {
+    console.log('[handleQuickAction] Called with:', { listingId, action });
+    
     try {
       setModerationLoading(true);
       
+      // Handle pending update actions
+      if (action === 'approve_update') {
+        console.log('[Approve Update] Starting approval for listing:', listingId);
+        
+        const response = await fetch(`https://local-api.harborlist.com/api/admin/listings/${listingId}/pending-update/approve`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include',
+          body: JSON.stringify({
+            moderatorNotes: 'Quick approval - update looks good'
+          })
+        });
+
+        console.log('[Approve Update] Response status:', response.status);
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          console.error('[Approve Update] Failed:', errorData);
+          throw new Error(errorData.error?.message || 'Failed to approve update');
+        }
+
+        const result = await response.json();
+        console.log('[Approve Update] Success:', result);
+
+        addNotification({
+          type: 'success',
+          title: 'Update Approved',
+          message: 'Listing update has been approved and is now live'
+        });
+        
+        // Refresh the queue
+        await refreshListings();
+        return;
+      }
+
+      if (action === 'reject_update') {
+        console.log('[Reject Update] Starting rejection for listing:', listingId);
+        
+        const response = await fetch(`https://local-api.harborlist.com/api/admin/listings/${listingId}/pending-update/reject`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include',
+          body: JSON.stringify({
+            rejectionReason: 'Update does not meet requirements',
+            moderatorNotes: 'Quick rejection - update needs revision'
+          })
+        });
+
+        console.log('[Reject Update] Response status:', response.status);
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          console.error('[Reject Update] Failed:', errorData);
+          throw new Error(errorData.error?.message || 'Failed to reject update');
+        }
+
+        const result = await response.json();
+        console.log('[Reject Update] Success:', result);
+
+        addNotification({
+          type: 'success',
+          title: 'Update Rejected',
+          message: 'Listing update has been rejected'
+        });
+        
+        // Refresh the queue
+        await refreshListings();
+        return;
+      }
+
+      // Handle regular listing moderation
       const decision: ModerationDecision = {
-        action,
+        action: action as 'approve' | 'reject',
         reason: action === 'approve' ? 'Quick approval - no issues found' : 'Quick rejection - violates platform policies',
         notifyUser: true
       };
