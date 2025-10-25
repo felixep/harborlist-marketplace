@@ -2322,7 +2322,7 @@ async function handleGetListingAnalytics(event: AuthenticatedEvent): Promise<API
 }
 
 async function handleGetEngagementAnalytics(event: AuthenticatedEvent): Promise<APIGatewayProxyResult> {
-  try {
+  return ResponseHandler.wrapHandler(async () => {
     // Get audit logs for engagement data
     const auditLogsResult = await docClient.send(new ScanCommand({
       TableName: AUDIT_LOGS_TABLE,
@@ -2385,16 +2385,15 @@ async function handleGetEngagementAnalytics(event: AuthenticatedEvent): Promise<
       topSearchTerms
     };
 
-    return createResponse(200, data);
-  } catch (error: unknown) {
-    console.error('Error fetching engagement analytics:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    return createErrorResponse(500, 'ANALYTICS_ERROR', 'Failed to fetch engagement analytics', event.requestContext.requestId, [{ error: errorMessage }]);
-  }
+    return ResponseHandler.success(data);
+  }, {
+    operation: 'getEngagementAnalytics',
+    requestId: event.requestContext.requestId
+  });
 }
 
 async function handleGetGeographicAnalytics(event: AuthenticatedEvent): Promise<APIGatewayProxyResult> {
-  try {
+  return ResponseHandler.wrapHandler(async () => {
     // Get all users from database
     const usersResult = await docClient.send(new ScanCommand({
       TableName: USERS_TABLE
@@ -2418,19 +2417,18 @@ async function handleGetGeographicAnalytics(event: AuthenticatedEvent): Promise<
       usersByRegion: regionsArray
     };
 
-    return createResponse(200, data);
-  } catch (error: unknown) {
-    console.error('Error fetching geographic analytics:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    return createErrorResponse(500, 'ANALYTICS_ERROR', 'Failed to fetch geographic analytics', event.requestContext.requestId, [{ error: errorMessage }]);
-  }
+    return ResponseHandler.success(data);
+  }, {
+    operation: 'getGeographicAnalytics',
+    requestId: event.requestContext.requestId
+  });
 }
 
 /**
  * AUDIT LOGS HANDLERS - Real data implementations
  */
 async function handleGetAuditLogs(event: AuthenticatedEvent): Promise<APIGatewayProxyResult> {
-  try {
+  return ResponseHandler.wrapHandler(async () => {
     const { 
       page = '1', 
       limit = '50', 
@@ -2518,7 +2516,7 @@ async function handleGetAuditLogs(event: AuthenticatedEvent): Promise<APIGateway
     const startIndex = (pageNum - 1) * limitNum;
     const paginatedLogs = auditLogs.slice(startIndex, startIndex + limitNum);
 
-    return createResponse(200, {
+    return ResponseHandler.success({
       auditLogs: paginatedLogs,
       pagination: {
         page: pageNum,
@@ -2527,15 +2525,14 @@ async function handleGetAuditLogs(event: AuthenticatedEvent): Promise<APIGateway
         totalPages
       }
     });
-  } catch (error: unknown) {
-    console.error('Error fetching audit logs:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    return createErrorResponse(500, 'AUDIT_ERROR', 'Failed to fetch audit logs', event.requestContext.requestId, [{ error: errorMessage }]);
-  }
+  }, {
+    operation: 'getAuditLogs',
+    requestId: event.requestContext.requestId
+  });
 }
 
 async function handleGetAuditStats(event: AuthenticatedEvent): Promise<APIGatewayProxyResult> {
-  try {
+  return ResponseHandler.wrapHandler(async () => {
     const { timeRange = '7d' } = event.queryStringParameters || {};
     
     // Calculate date range
@@ -2609,16 +2606,15 @@ async function handleGetAuditStats(event: AuthenticatedEvent): Promise<APIGatewa
       topUsers
     };
 
-    return createResponse(200, stats);
-  } catch (error: unknown) {
-    console.error('Error fetching audit stats:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    return createErrorResponse(500, 'AUDIT_ERROR', 'Failed to fetch audit stats', event.requestContext.requestId, [{ error: errorMessage }]);
-  }
+    return ResponseHandler.success(stats);
+  }, {
+    operation: 'getAuditStats',
+    requestId: event.requestContext.requestId
+  });
 }
 
 async function handleExportAuditLogs(event: AuthenticatedEvent): Promise<APIGatewayProxyResult> {
-  try {
+  return ResponseHandler.wrapHandler(async () => {
     const body = JSON.parse(event.body || '{}');
     const { format = 'csv', startDate, endDate, userId, action, resource } = body;
 
@@ -2693,16 +2689,15 @@ async function handleExportAuditLogs(event: AuthenticatedEvent): Promise<APIGate
 
     const filename = `audit-logs-${startDate || 'all'}-to-${endDate || 'now'}.${format}`;
 
-    return createResponse(200, {
+    return ResponseHandler.success({
       data: exportData,
       filename,
       recordCount: logs.length
     });
-  } catch (error: unknown) {
-    console.error('Error exporting audit logs:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    return createErrorResponse(500, 'EXPORT_ERROR', 'Failed to export audit logs', event.requestContext.requestId, [{ error: errorMessage }]);
-  }
+  }, {
+    operation: 'exportAuditLogs',
+    requestId: event.requestContext.requestId
+  });
 }
 
 /**
@@ -2739,7 +2734,7 @@ const DEFAULT_PLATFORM_SETTINGS = {
 };
 
 async function handleGetPlatformSettings(event: AuthenticatedEvent): Promise<APIGatewayProxyResult> {
-  try {
+  return ResponseHandler.wrapHandler(async () => {
     // Try to get settings from DynamoDB
     try {
       const result = await docClient.send(new GetCommand({
@@ -2748,23 +2743,22 @@ async function handleGetPlatformSettings(event: AuthenticatedEvent): Promise<API
       }));
 
       if (result.Item) {
-        return createResponse(200, result.Item.settings || DEFAULT_PLATFORM_SETTINGS);
+        return ResponseHandler.success(result.Item.settings || DEFAULT_PLATFORM_SETTINGS);
       }
     } catch (dbError) {
       console.log('Settings table not found or error accessing it, using defaults:', dbError);
     }
 
     // Return default settings if table doesn't exist or no settings found
-    return createResponse(200, DEFAULT_PLATFORM_SETTINGS);
-  } catch (error: unknown) {
-    console.error('Error fetching platform settings:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    return createErrorResponse(500, 'SETTINGS_ERROR', 'Failed to fetch platform settings', event.requestContext.requestId, [{ error: errorMessage }]);
-  }
+    return ResponseHandler.success(DEFAULT_PLATFORM_SETTINGS);
+  }, {
+    operation: 'getPlatformSettings',
+    requestId: event.requestContext.requestId
+  });
 }
 
 async function handleUpdatePlatformSettings(event: AuthenticatedEvent): Promise<APIGatewayProxyResult> {
-  try {
+  return ResponseHandler.wrapHandler(async () => {
     const settings = JSON.parse(event.body || '{}');
     const { userId, userEmail } = event.requestContext.authorizer || {};
 
@@ -2799,20 +2793,19 @@ async function handleUpdatePlatformSettings(event: AuthenticatedEvent): Promise<
       }
     }));
 
-    return createResponse(200, { 
+    return ResponseHandler.success({ 
       success: true, 
       message: 'Settings updated successfully',
       timestamp: new Date().toISOString()
     });
-  } catch (error: unknown) {
-    console.error('Error updating platform settings:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    return createErrorResponse(500, 'SETTINGS_ERROR', 'Failed to update platform settings', event.requestContext.requestId, [{ error: errorMessage }]);
-  }
+  }, {
+    operation: 'updatePlatformSettings',
+    requestId: event.requestContext.requestId
+  });
 }
 
 async function handleGetSettingsAuditLog(event: AuthenticatedEvent): Promise<APIGatewayProxyResult> {
-  try {
+  return ResponseHandler.wrapHandler(async () => {
     // Query audit logs for settings changes
     const result = await docClient.send(new ScanCommand({
       TableName: AUDIT_LOGS_TABLE,
@@ -2839,19 +2832,18 @@ async function handleGetSettingsAuditLog(event: AuthenticatedEvent): Promise<API
         ipAddress: item.ipAddress
       }));
 
-    return createResponse(200, { logs });
-  } catch (error: unknown) {
-    console.error('Error fetching settings audit log:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    return createErrorResponse(500, 'SETTINGS_ERROR', 'Failed to fetch settings audit log', event.requestContext.requestId, [{ error: errorMessage }]);
-  }
+    return ResponseHandler.success({ logs });
+  }, {
+    operation: 'getSettingsAuditLog',
+    requestId: event.requestContext.requestId
+  });
 }
 
 /**
  * SUPPORT HANDLERS - Real data implementations
  */
 async function handleGetSupportTickets(event: AuthenticatedEvent): Promise<APIGatewayProxyResult> {
-  try {
+  return ResponseHandler.wrapHandler(async () => {
     const queryParams = event.queryStringParameters || {};
     const status = queryParams.status;
     const limit = parseInt(queryParams.limit || '50');
@@ -2885,20 +2877,19 @@ async function handleGetSupportTickets(event: AuthenticatedEvent): Promise<APIGa
           lastUpdated: ticket.lastUpdated ? new Date(ticket.lastUpdated * 1000).toISOString() : undefined
         }));
 
-      return createResponse(200, { tickets, total: tickets.length });
+      return ResponseHandler.success({ tickets, total: tickets.length });
     } catch (dbError) {
       console.log('Support tickets table may not exist yet, returning empty array');
-      return createResponse(200, { tickets: [], total: 0 });
+      return ResponseHandler.success({ tickets: [], total: 0 });
     }
-  } catch (error: unknown) {
-    console.error('Error fetching support tickets:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    return createErrorResponse(500, 'SUPPORT_ERROR', 'Failed to fetch support tickets', event.requestContext.requestId, [{ error: errorMessage }]);
-  }
+  }, {
+    operation: 'getSupportTickets',
+    requestId: event.requestContext.requestId
+  });
 }
 
 async function handleGetSupportStats(event: AuthenticatedEvent): Promise<APIGatewayProxyResult> {
-  try {
+  return ResponseHandler.wrapHandler(async () => {
     try {
       const result = await docClient.send(new ScanCommand({
         TableName: SUPPORT_TICKETS_TABLE
@@ -2981,7 +2972,7 @@ async function handleGetSupportStats(event: AuthenticatedEvent): Promise<APIGate
         general: tickets.filter((t: any) => t.category === 'general').length
       };
 
-      return createResponse(200, {
+      return ResponseHandler.success({
         totalTickets: tickets.length,
         openTickets,
         inProgressTickets,
@@ -2995,7 +2986,7 @@ async function handleGetSupportStats(event: AuthenticatedEvent): Promise<APIGate
       });
     } catch (dbError) {
       console.log('Support tickets table may not exist yet, returning default stats');
-      return createResponse(200, {
+      return ResponseHandler.success({
         totalTickets: 0,
         openTickets: 0,
         inProgressTickets: 0,
@@ -3025,15 +3016,14 @@ async function handleGetSupportStats(event: AuthenticatedEvent): Promise<APIGate
         }
       });
     }
-  } catch (error: unknown) {
-    console.error('Error fetching support stats:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    return createErrorResponse(500, 'SUPPORT_ERROR', 'Failed to fetch support stats', event.requestContext.requestId, [{ error: errorMessage }]);
-  }
+  }, {
+    operation: 'getSupportStats',
+    requestId: event.requestContext.requestId
+  });
 }
 
 async function handleGetAnnouncements(event: AuthenticatedEvent): Promise<APIGatewayProxyResult> {
-  try {
+  return ResponseHandler.wrapHandler(async () => {
     const queryParams = event.queryStringParameters || {};
     const status = queryParams.status;
     const limit = parseInt(queryParams.limit || '50');
@@ -3064,20 +3054,19 @@ async function handleGetAnnouncements(event: AuthenticatedEvent): Promise<APIGat
           author: announcement.author
         }));
 
-      return createResponse(200, { announcements, total: announcements.length });
+      return ResponseHandler.success({ announcements, total: announcements.length });
     } catch (dbError) {
       console.log('Announcements table may not exist yet, returning empty array');
-      return createResponse(200, { announcements: [], total: 0 });
+      return ResponseHandler.success({ announcements: [], total: 0 });
     }
-  } catch (error: unknown) {
-    console.error('Error fetching announcements:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    return createErrorResponse(500, 'SUPPORT_ERROR', 'Failed to fetch announcements', event.requestContext.requestId, [{ error: errorMessage }]);
-  }
+  }, {
+    operation: 'getAnnouncements',
+    requestId: event.requestContext.requestId
+  });
 }
 
 async function handleGetAnnouncementStats(event: AuthenticatedEvent): Promise<APIGatewayProxyResult> {
-  try {
+  return ResponseHandler.wrapHandler(async () => {
     try {
       const result = await docClient.send(new ScanCommand({
         TableName: ANNOUNCEMENTS_TABLE
@@ -3094,31 +3083,30 @@ async function handleGetAnnouncementStats(event: AuthenticatedEvent): Promise<AP
         ? Math.round(announcementsWithViews.reduce((sum: number, a: any) => sum + a.viewCount, 0) / announcementsWithViews.length)
         : 0;
 
-      return createResponse(200, {
+      return ResponseHandler.success({
         totalAnnouncements,
         publishedAnnouncements,
         averageReach
       });
     } catch (dbError) {
       console.log('Announcements table may not exist yet, returning default stats');
-      return createResponse(200, {
+      return ResponseHandler.success({
         totalAnnouncements: 0,
         publishedAnnouncements: 0,
         averageReach: 0
       });
     }
-  } catch (error: unknown) {
-    console.error('Error fetching announcement stats:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    return createErrorResponse(500, 'SUPPORT_ERROR', 'Failed to fetch announcement stats', event.requestContext.requestId, [{ error: errorMessage }]);
-  }
+  }, {
+    operation: 'getAnnouncementStats',
+    requestId: event.requestContext.requestId
+  });
 }
 
 /**
  * MODERATION HANDLERS - Real data implementations  
  */
 async function handleGetFlaggedListings(event: AuthenticatedEvent): Promise<APIGatewayProxyResult> {
-  try {
+  return ResponseHandler.wrapHandler(async () => {
     // Get ALL listings to filter for those needing moderation
     const result = await docClient.send(new ScanCommand({
       TableName: LISTINGS_TABLE
@@ -3183,24 +3171,23 @@ async function handleGetFlaggedListings(event: AuthenticatedEvent): Promise<APIG
       };
     });
 
-    return createResponse(200, { listings });
-  } catch (error: unknown) {
-    console.error('Error fetching flagged listings:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    return createErrorResponse(500, 'MODERATION_ERROR', 'Failed to fetch flagged listings', event.requestContext.requestId, [{ error: errorMessage }]);
-  }
+    return ResponseHandler.success({ listings });
+  }, {
+    operation: 'getFlaggedListings',
+    requestId: event.requestContext.requestId
+  });
 }
 
 /**
  * Get detailed information about a specific listing for moderation
  */
 async function handleGetListingDetails(event: AuthenticatedEvent): Promise<APIGatewayProxyResult> {
-  try {
+  return ResponseHandler.wrapHandler(async () => {
     // Extract listing ID from path
     const listingId = event.path.split('/').pop();
     
     if (!listingId) {
-      return createErrorResponse(400, 'INVALID_REQUEST', 'Listing ID is required', event.requestContext.requestId);
+      return ResponseHandler.error('Listing ID is required', 'INVALID_REQUEST', 400);
     }
 
     // Get listing from database
@@ -3210,7 +3197,7 @@ async function handleGetListingDetails(event: AuthenticatedEvent): Promise<APIGa
     }));
 
     if (!listingResult.Item) {
-      return createErrorResponse(404, 'LISTING_NOT_FOUND', 'Listing not found', event.requestContext.requestId);
+      return ResponseHandler.error('Listing not found', 'LISTING_NOT_FOUND', 404);
     }
 
     const listing = listingResult.Item;
@@ -3271,16 +3258,15 @@ async function handleGetListingDetails(event: AuthenticatedEvent): Promise<APIGa
       priceHistory: listing.priceHistory || [] // Include price history
     };
 
-    return createResponse(200, detailedListing);
-  } catch (error: unknown) {
-    console.error('Error fetching listing details:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    return createErrorResponse(500, 'MODERATION_ERROR', 'Failed to fetch listing details', event.requestContext.requestId, [{ error: errorMessage }]);
-  }
+    return ResponseHandler.success(detailedListing);
+  }, {
+    operation: 'getListingDetails',
+    requestId: event.requestContext.requestId
+  });
 }
 
 async function handleGetModerationStats(event: AuthenticatedEvent): Promise<APIGatewayProxyResult> {
-  try {
+  return ResponseHandler.wrapHandler(async () => {
     // Scan all listings to calculate moderation statistics
     const result = await docClient.send(new ScanCommand({
       TableName: LISTINGS_TABLE
@@ -3334,19 +3320,18 @@ async function handleGetModerationStats(event: AuthenticatedEvent): Promise<APIG
       averageReviewTime
     };
 
-    return createResponse(200, mockStats);
-  } catch (error: unknown) {
-    console.error('Error fetching moderation stats:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    return createErrorResponse(500, 'MODERATION_ERROR', 'Failed to fetch moderation stats', event.requestContext.requestId, [{ error: errorMessage }]);
-  }
+    return ResponseHandler.success(mockStats);
+  }, {
+    operation: 'getModerationStats',
+    requestId: event.requestContext.requestId
+  });
 }
 
 /**
  * Approve pending update - merge changes into main listing
  */
 async function handleApprovePendingUpdate(event: AuthenticatedEvent): Promise<APIGatewayProxyResult> {
-  try {
+  return ResponseHandler.wrapHandler(async () => {
     console.log('[APPROVE UPDATE] Request received:', { path: event.path, httpMethod: event.httpMethod });
     
     const pathParts = event.path.split('/');
@@ -3358,18 +3343,18 @@ async function handleApprovePendingUpdate(event: AuthenticatedEvent): Promise<AP
     console.log('[APPROVE UPDATE] Extracted listingId:', listingId, 'moderatorId:', moderatorId);
 
     if (!listingId) {
-      return createErrorResponse(400, 'INVALID_REQUEST', 'Listing ID is required', event.requestContext.requestId);
+      return ResponseHandler.error('Listing ID is required', 'INVALID_REQUEST', 400);
     }
 
     // Get the listing with pending update using db service
     const listing = await db.getListing(listingId) as any;
     
     if (!listing) {
-      return createErrorResponse(404, 'NOT_FOUND', 'Listing not found', event.requestContext.requestId);
+      return ResponseHandler.error('Listing not found', 'NOT_FOUND', 404);
     }
 
     if (!listing.pendingUpdate) {
-      return createErrorResponse(400, 'NO_PENDING_UPDATE', 'This listing has no pending update', event.requestContext.requestId);
+      return ResponseHandler.error('This listing has no pending update', 'NO_PENDING_UPDATE', 400);
     }
 
     // Merge pending changes into main listing
@@ -3431,23 +3416,22 @@ async function handleApprovePendingUpdate(event: AuthenticatedEvent): Promise<AP
 
     console.log(`✅ Approved pending update for listing ${listingId}`);
 
-    return createResponse(200, { 
+    return ResponseHandler.success({ 
       success: true,
       message: 'Pending update approved successfully',
       listing: updatedListing
     });
-  } catch (error: unknown) {
-    console.error('Error approving pending update:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    return createErrorResponse(500, 'MODERATION_ERROR', 'Failed to approve pending update', event.requestContext.requestId, [{ error: errorMessage }]);
-  }
+  }, {
+    operation: 'approvePendingUpdate',
+    requestId: event.requestContext.requestId
+  });
 }
 
 /**
  * Reject pending update - discard changes and notify owner
  */
 async function handleRejectPendingUpdate(event: AuthenticatedEvent): Promise<APIGatewayProxyResult> {
-  try {
+  return ResponseHandler.wrapHandler(async () => {
     const pathParts = event.path.split('/');
     const listingId = pathParts[pathParts.indexOf('listings') + 1];
     const moderatorId = event.requestContext.authorizer?.userId;
@@ -3455,22 +3439,22 @@ async function handleRejectPendingUpdate(event: AuthenticatedEvent): Promise<API
     const { rejectionReason, moderatorNotes } = body;
 
     if (!listingId) {
-      return createErrorResponse(400, 'INVALID_REQUEST', 'Listing ID is required', event.requestContext.requestId);
+      return ResponseHandler.error('Listing ID is required', 'INVALID_REQUEST', 400);
     }
 
     if (!rejectionReason) {
-      return createErrorResponse(400, 'INVALID_REQUEST', 'Rejection reason is required', event.requestContext.requestId);
+      return ResponseHandler.error('Rejection reason is required', 'INVALID_REQUEST', 400);
     }
 
     // Get the listing with pending update using db service
     const listing = await db.getListing(listingId) as any;
     
     if (!listing) {
-      return createErrorResponse(404, 'NOT_FOUND', 'Listing not found', event.requestContext.requestId);
+      return ResponseHandler.error('Listing not found', 'NOT_FOUND', 404);
     }
 
     if (!listing.pendingUpdate) {
-      return createErrorResponse(400, 'NO_PENDING_UPDATE', 'This listing has no pending update', event.requestContext.requestId);
+      return ResponseHandler.error('This listing has no pending update', 'NO_PENDING_UPDATE', 400);
     }
 
     // Add to moderation history
@@ -3508,15 +3492,14 @@ async function handleRejectPendingUpdate(event: AuthenticatedEvent): Promise<API
 
     console.log(`❌ Rejected pending update for listing ${listingId}`);
 
-    return createResponse(200, { 
+    return ResponseHandler.success({ 
       success: true,
       message: 'Pending update rejected successfully'
     });
-  } catch (error: unknown) {
-    console.error('Error rejecting pending update:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    return createErrorResponse(500, 'MODERATION_ERROR', 'Failed to reject pending update', event.requestContext.requestId, [{ error: errorMessage }]);
-  }
+  }, {
+    operation: 'rejectPendingUpdate',
+    requestId: event.requestContext.requestId
+  });
 }
 
 /**

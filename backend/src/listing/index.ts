@@ -309,67 +309,67 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
  * @throws {Error} When database operations fail or listing not found
  */
 async function getListing(listingId: string, requestId: string, event?: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
-  try {
-    const listing = await db.getListing(listingId) as EnhancedListing;
-    
-    if (!listing) {
-      return createErrorResponse(404, 'NOT_FOUND', 'Listing not found', requestId);
-    }
+  return ResponseHandler.wrapHandler(
+    async () => {
+      const listing = await db.getListing(listingId) as EnhancedListing;
+      
+      if (!listing) {
+        return ResponseHandler.error('Listing not found', 'NOT_FOUND', 404);
+      }
 
-    // Check if listing is pending moderation
-    const isPending = listing.status === 'pending_review' || 
-                      listing.status === 'under_review' ||
-                      listing.moderationWorkflow?.status === 'pending_review' ||
-                      listing.moderationWorkflow?.status === 'changes_requested';
-    
-    if (isPending) {
-      // Get current user and check permissions
-      let currentUserId: string | null = null;
-      let isAdmin = false;
-      try {
-        if (event) {
-          const userPayload = await getUserFromEvent(event);
-          currentUserId = userPayload.sub;
-          // Check if user has any admin/moderator role
-          const adminRoles = ['ADMIN', 'SUPER_ADMIN', 'MODERATOR', 'SUPPORT'];
-          isAdmin = userPayload.role ? adminRoles.includes(userPayload.role) : false;
+      // Check if listing is pending moderation
+      const isPending = listing.status === 'pending_review' || 
+                        listing.status === 'under_review' ||
+                        listing.moderationWorkflow?.status === 'pending_review' ||
+                        listing.moderationWorkflow?.status === 'changes_requested';
+      
+      if (isPending) {
+        // Get current user and check permissions
+        let currentUserId: string | null = null;
+        let isAdmin = false;
+        try {
+          if (event) {
+            const userPayload = await getUserFromEvent(event);
+            currentUserId = userPayload.sub;
+            // Check if user has any admin/moderator role
+            const adminRoles = ['ADMIN', 'SUPER_ADMIN', 'MODERATOR', 'SUPPORT'];
+            isAdmin = userPayload.role ? adminRoles.includes(userPayload.role) : false;
+          }
+        } catch (error) {
+          // User not authenticated
         }
+
+        // Only allow owner or admin/moderator to view pending listings
+        if (!isAdmin && (!currentUserId || currentUserId !== listing.ownerId)) {
+          return ResponseHandler.error('Listing not found', 'NOT_FOUND', 404);
+        }
+      }
+
+      // Increment view count only for active/approved listings
+      if (!isPending) {
+        await db.incrementViews(listingId);
+      }
+
+      // Fetch owner information
+      let listingWithOwner = listing;
+      try {
+        const owner = await db.getUser(listing.ownerId);
+        listingWithOwner = {
+          ...listing,
+          owner: owner ? {
+            id: owner.id,
+            name: owner.name,
+            email: owner.email
+          } : null
+        } as any;
       } catch (error) {
-        // User not authenticated
+        console.warn(`Failed to fetch owner for listing ${listingId}:`, error);
       }
 
-      // Only allow owner or admin/moderator to view pending listings
-      if (!isAdmin && (!currentUserId || currentUserId !== listing.ownerId)) {
-        return createErrorResponse(404, 'NOT_FOUND', 'Listing not found', requestId);
-      }
-    }
-
-    // Increment view count only for active/approved listings
-    if (!isPending) {
-      await db.incrementViews(listingId);
-    }
-
-    // Fetch owner information
-    let listingWithOwner = listing;
-    try {
-      const owner = await db.getUser(listing.ownerId);
-      listingWithOwner = {
-        ...listing,
-        owner: owner ? {
-          id: owner.id,
-          name: owner.name,
-          email: owner.email
-        } : null
-      } as any;
-    } catch (error) {
-      console.warn(`Failed to fetch owner for listing ${listingId}:`, error);
-    }
-
-    return createResponse(200, { listing: listingWithOwner });
-  } catch (error) {
-    console.error('Error getting listing:', error);
-    return createErrorResponse(500, 'DATABASE_ERROR', 'Failed to retrieve listing', requestId);
-  }
+      return ResponseHandler.success({ listing: listingWithOwner });
+    },
+    { operation: 'Get Listing', requestId }
+  );
 }
 
 /**
@@ -922,175 +922,172 @@ async function createListing(event: APIGatewayProxyEvent, requestId: string): Pr
 }
 
 async function updateListing(listingId: string, event: APIGatewayProxyEvent, requestId: string): Promise<APIGatewayProxyResult> {
-  try {
-    const userId = getUserId(event);
-    const body = parseBody<Partial<Listing>>(event);
+  return ResponseHandler.wrapHandler(
+    async () => {
+      const userId = getUserId(event);
+      const body = parseBody<Partial<Listing>>(event);
 
-    // Check if listing exists and user owns it
-    const existingListing = await db.getListing(listingId);
-    if (!existingListing) {
-      return createErrorResponse(404, 'NOT_FOUND', 'Listing not found', requestId);
-    }
-
-    if (existingListing.ownerId !== userId) {
-      return createErrorResponse(403, 'FORBIDDEN', 'You can only update your own listings', requestId);
-    }
-
-    // Validate updates
-    if (body.price && !validatePrice(body.price)) {
-      return createErrorResponse(400, 'INVALID_PRICE', 'Price must be between $1 and $10,000,000', requestId);
-    }
-
-    if (body.boatDetails?.year && !validateYear(body.boatDetails.year)) {
-      return createErrorResponse(400, 'INVALID_YEAR', 'Year must be between 1900 and current year + 1', requestId);
-    }
-
-    // Sanitize string fields
-    const updates: Partial<Listing> = {
-      ...body,
-      updatedAt: Date.now(),
-    };
-
-    if (updates.title) updates.title = sanitizeString(updates.title);
-    if (updates.description) updates.description = sanitizeString(updates.description);
-    if (updates.features) updates.features = updates.features.map(f => sanitizeString(f));
-
-    // Update slug if title changed
-    let newSlug: string | undefined;
-    if (updates.title && updates.title !== existingListing.title) {
-      newSlug = await generateUniqueSlug(updates.title, listingId);
-      (updates as any).slug = newSlug;
-      
-      // Store old slug for potential redirect handling
-      await db.createSlugRedirect((existingListing as any).slug, newSlug, listingId);
-    }
-
-    const listingWithWorkflow = existingListing as any;
-    const currentTimestamp = Date.now();
-
-    // CASE 1: Listing is ACTIVE (approved) - Create/update pendingUpdate for moderation
-    if (existingListing.status === 'active' || existingListing.status === 'approved') {
-      console.log(`[PENDING UPDATE] Listing ${listingId} is active - changes will go through moderation`);
-      
-      // Track price changes in priceHistory
-      if (updates.price && updates.price !== existingListing.price) {
-        const existingPriceHistory = listingWithWorkflow.priceHistory || [];
-        const newPriceEntry = {
-          price: updates.price,
-          changedAt: currentTimestamp,
-          changedBy: userId,
-          reason: 'owner_update'
-        };
-        (updates as any).priceHistory = [...existingPriceHistory, newPriceEntry];
+      // Check if listing exists and user owns it
+      const existingListing = await db.getListing(listingId);
+      if (!existingListing) {
+        return ResponseHandler.error('Listing not found', 'NOT_FOUND', 404);
       }
-      
-      // Build change history for tracking all modifications
-      const changeHistory: Array<{ field: string; oldValue: any; newValue: any; timestamp: number }> = [];
-      Object.keys(updates).forEach(key => {
-        if (key !== 'updatedAt' && (updates as any)[key] !== (existingListing as any)[key]) {
-          changeHistory.push({
-            field: key,
-            oldValue: (existingListing as any)[key],
-            newValue: (updates as any)[key],
-            timestamp: currentTimestamp
-          });
+
+      if (existingListing.ownerId !== userId) {
+        return ResponseHandler.error('You can only update your own listings', 'FORBIDDEN', 403);
+      }
+
+      // Validate updates
+      if (body.price && !validatePrice(body.price)) {
+        return ResponseHandler.error('Price must be between $1 and $10,000,000', 'INVALID_PRICE', 400);
+      }
+
+      if (body.boatDetails?.year && !validateYear(body.boatDetails.year)) {
+        return ResponseHandler.error('Year must be between 1900 and current year + 1', 'INVALID_YEAR', 400);
+      }
+
+      // Sanitize string fields
+      const updates: Partial<Listing> = {
+        ...body,
+        updatedAt: Date.now(),
+      };
+
+      if (updates.title) updates.title = sanitizeString(updates.title);
+      if (updates.description) updates.description = sanitizeString(updates.description);
+      if (updates.features) updates.features = updates.features.map(f => sanitizeString(f));
+
+      // Update slug if title changed
+      let newSlug: string | undefined;
+      if (updates.title && updates.title !== existingListing.title) {
+        newSlug = await generateUniqueSlug(updates.title, listingId);
+        (updates as any).slug = newSlug;
+        
+        // Store old slug for potential redirect handling
+        await db.createSlugRedirect((existingListing as any).slug, newSlug, listingId);
+      }
+
+      const listingWithWorkflow = existingListing as any;
+      const currentTimestamp = Date.now();
+
+      // CASE 1: Listing is ACTIVE (approved) - Create/update pendingUpdate for moderation
+      if (existingListing.status === 'active' || existingListing.status === 'approved') {
+        console.log(`[PENDING UPDATE] Listing ${listingId} is active - changes will go through moderation`);
+        
+        // Track price changes in priceHistory
+        if (updates.price && updates.price !== existingListing.price) {
+          const existingPriceHistory = listingWithWorkflow.priceHistory || [];
+          const newPriceEntry = {
+            price: updates.price,
+            changedAt: currentTimestamp,
+            changedBy: userId,
+            reason: 'owner_update'
+          };
+          (updates as any).priceHistory = [...existingPriceHistory, newPriceEntry];
         }
-      });
-      
-      // Create or update pendingUpdate object
-      const existingPendingUpdate = listingWithWorkflow.pendingUpdate;
-      const accumulatedChanges = existingPendingUpdate?.changes || {};
-      const existingChangeHistory = existingPendingUpdate?.changeHistory || [];
-      
-      (updates as any).pendingUpdate = {
-        status: 'pending_review',
-        submittedAt: existingPendingUpdate?.submittedAt || currentTimestamp,
-        submittedBy: userId,
-        lastUpdatedAt: currentTimestamp,
-        changes: {
-          ...accumulatedChanges,
-          ...updates // Accumulate changes - latest values override previous
-        },
-        changeHistory: [...existingChangeHistory, ...changeHistory],
-        moderationWorkflow: {
+        
+        // Build change history for tracking all modifications
+        const changeHistory: Array<{ field: string; oldValue: any; newValue: any; timestamp: number }> = [];
+        Object.keys(updates).forEach(key => {
+          if (key !== 'updatedAt' && (updates as any)[key] !== (existingListing as any)[key]) {
+            changeHistory.push({
+              field: key,
+              oldValue: (existingListing as any)[key],
+              newValue: (updates as any)[key],
+              timestamp: currentTimestamp
+            });
+          }
+        });
+        
+        // Create or update pendingUpdate object
+        const existingPendingUpdate = listingWithWorkflow.pendingUpdate;
+        const accumulatedChanges = existingPendingUpdate?.changes || {};
+        const existingChangeHistory = existingPendingUpdate?.changeHistory || [];
+        
+        (updates as any).pendingUpdate = {
           status: 'pending_review',
-          submissionType: 'update',
-          previousReviewCount: 0
+          submittedAt: existingPendingUpdate?.submittedAt || currentTimestamp,
+          submittedBy: userId,
+          lastUpdatedAt: currentTimestamp,
+          changes: {
+            ...accumulatedChanges,
+            ...updates // Accumulate changes - latest values override previous
+          },
+          changeHistory: [...existingChangeHistory, ...changeHistory],
+          moderationWorkflow: {
+            status: 'pending_review',
+            submissionType: 'update',
+            previousReviewCount: 0
+          }
+        };
+        
+        // Don't apply updates directly - they stay in pendingUpdate
+        // Only update timestamp and pendingUpdate object
+        const pendingUpdateData: any = {
+          updatedAt: currentTimestamp,
+          pendingUpdate: (updates as any).pendingUpdate
+        };
+        
+        if ((updates as any).priceHistory) {
+          pendingUpdateData.priceHistory = (updates as any).priceHistory;
         }
-      };
-      
-      // Don't apply updates directly - they stay in pendingUpdate
-      // Only update timestamp and pendingUpdate object
-      const pendingUpdateData: any = {
-        updatedAt: currentTimestamp,
-        pendingUpdate: (updates as any).pendingUpdate
-      };
-      
-      if ((updates as any).priceHistory) {
-        pendingUpdateData.priceHistory = (updates as any).priceHistory;
+        
+        await db.updateListing(listingId, pendingUpdateData);
+        
+        console.log(`✅ Listing ${listingId} - changes accumulated in pendingUpdate (${changeHistory.length} fields changed)`);
+        
+        // TODO: Send notification to moderators about pending update
+        // This will be implemented when moderator notification system is ready
+        
+        return ResponseHandler.success({ 
+          message: 'Changes submitted for review. Your listing will remain visible with current details until approved.',
+          pendingReview: true,
+          changesCount: changeHistory.length
+        });
       }
-      
-      await db.updateListing(listingId, pendingUpdateData);
-      
-      console.log(`✅ Listing ${listingId} - changes accumulated in pendingUpdate (${changeHistory.length} fields changed)`);
-      
-      // TODO: Send notification to moderators about pending update
-      // This will be implemented when moderator notification system is ready
-      
-      return createResponse(200, { 
-        message: 'Changes submitted for review. Your listing will remain visible with current details until approved.',
-        pendingReview: true,
-        changesCount: changeHistory.length
+
+      // CASE 2: Listing with changes_requested - automatically resubmit for review
+      if (listingWithWorkflow.moderationWorkflow?.status === 'changes_requested' && 
+          existingListing.status === 'under_review') {
+        
+        console.log(`[RESUBMIT] Listing ${listingId} updated after changes requested - resubmitting for review`);
+        
+        // Add history entry for the resubmission
+        const existingHistory = listingWithWorkflow.moderationHistory || [];
+        const resubmitEntry = {
+          action: 'resubmit' as const,
+          reviewedBy: userId,
+          reviewedAt: currentTimestamp,
+          status: 'resubmitted',
+          publicNotes: 'Owner updated the listing and resubmitted for review',
+        };
+        
+        // Reset status to pending_review and update moderation workflow for resubmission
+        const previousReviewCount = (listingWithWorkflow.moderationWorkflow?.previousReviewCount || 0) + 1;
+        
+        updates.status = 'pending_review' as any;
+        (updates as any).moderationWorkflow = {
+          status: 'pending_review',
+          submittedAt: currentTimestamp,
+          submissionType: 'resubmission',
+          previousReviewCount,
+        };
+        (updates as any).moderationHistory = [...existingHistory, resubmitEntry];
+        
+        console.log(`✅ Listing ${listingId} resubmitted (review count: ${previousReviewCount}) - status changed to pending_review`);
+      }
+
+      // CASE 3: Other statuses - apply updates directly
+      await db.updateListing(listingId, updates);
+
+      return ResponseHandler.success({ 
+        message: 'Listing updated successfully',
+        resubmitted: listingWithWorkflow.moderationWorkflow?.status === 'changes_requested',
+        pendingReview: false,
+        changesCount: 0
       });
-    }
-
-    // CASE 2: Listing with changes_requested - automatically resubmit for review
-    if (listingWithWorkflow.moderationWorkflow?.status === 'changes_requested' && 
-        existingListing.status === 'under_review') {
-      
-      console.log(`[RESUBMIT] Listing ${listingId} updated after changes requested - resubmitting for review`);
-      
-      // Add history entry for the resubmission
-      const existingHistory = listingWithWorkflow.moderationHistory || [];
-      const resubmitEntry = {
-        action: 'resubmit' as const,
-        reviewedBy: userId,
-        reviewedAt: currentTimestamp,
-        status: 'resubmitted',
-        publicNotes: 'Owner updated the listing and resubmitted for review',
-      };
-      
-      // Reset status to pending_review and update moderation workflow for resubmission
-      const previousReviewCount = (listingWithWorkflow.moderationWorkflow?.previousReviewCount || 0) + 1;
-      
-      updates.status = 'pending_review' as any;
-      (updates as any).moderationWorkflow = {
-        status: 'pending_review',
-        submittedAt: currentTimestamp,
-        submissionType: 'resubmission',
-        previousReviewCount,
-      };
-      (updates as any).moderationHistory = [...existingHistory, resubmitEntry];
-      
-      console.log(`✅ Listing ${listingId} resubmitted (review count: ${previousReviewCount}) - status changed to pending_review`);
-    }
-
-    // CASE 3: Other statuses - apply updates directly
-    await db.updateListing(listingId, updates);
-
-    return createResponse(200, { 
-      message: 'Listing updated successfully',
-      resubmitted: listingWithWorkflow.moderationWorkflow?.status === 'changes_requested'
-    });
-  } catch (error) {
-    console.error('Error updating listing:', error);
-    
-    if (error instanceof Error && error.message.includes('User not authenticated')) {
-      return createErrorResponse(401, 'UNAUTHORIZED', error.message, requestId);
-    }
-
-    return createErrorResponse(500, 'DATABASE_ERROR', 'Failed to update listing', requestId);
-  }
+    },
+    { operation: 'Update Listing', requestId }
+  );
 }
 
 async function deleteListing(listingId: string, event: APIGatewayProxyEvent, requestId: string): Promise<APIGatewayProxyResult> {
