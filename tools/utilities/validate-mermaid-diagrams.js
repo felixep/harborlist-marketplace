@@ -30,7 +30,7 @@ const colors = {
 
 class MermaidValidator {
   constructor(options = {}) {
-    this.docsDir = path.join(process.cwd(), 'docs');
+    this.docsDir = options.dir || path.join(process.cwd(), 'docs');
     this.tempDir = path.join(process.cwd(), '.mermaid-temp');
     this.shouldFix = options.fix || false;
     this.results = {
@@ -382,8 +382,14 @@ class MermaidValidator {
 // Main execution
 const args = process.argv.slice(2);
 const options = {
-  fix: args.includes('--fix')
+  fix: args.includes('--fix'),
+  dir: args.find(arg => !arg.startsWith('--')) || null
 };
+
+// If a directory or file is provided, resolve it
+if (options.dir) {
+  options.dir = path.resolve(process.cwd(), options.dir);
+}
 
 const validator = new MermaidValidator(options);
 validator.run().catch(error => {
