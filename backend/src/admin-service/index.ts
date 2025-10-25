@@ -27,6 +27,8 @@ import {
 import * as crypto from 'crypto';
 import { createResponse, createErrorResponse } from '../shared/utils';
 import { db } from '../shared/database';
+import { ResponseHandler } from '../shared/response-handler';
+import { ValidationFramework, CommonRules } from '../shared/validators';
 
 // Import the existing secure middleware system
 import { 
@@ -449,7 +451,7 @@ export const handler = async (event: APIGatewayProxyEvent, context: any): Promis
  * Handle dashboard metrics request - Core functionality for admin dashboard
  */
 async function handleGetDashboardMetrics(event: AuthenticatedEvent): Promise<APIGatewayProxyResult> {
-  try {
+  return ResponseHandler.wrapHandler(async () => {
     const now = new Date();
 
     // Get real data from database
@@ -487,20 +489,18 @@ async function handleGetDashboardMetrics(event: AuthenticatedEvent): Promise<API
       lastUpdated: now.toISOString()
     };
 
-    return createResponse(200, { metrics });
-
-  } catch (error: unknown) {
-    console.error('Error fetching dashboard metrics:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    return createErrorResponse(500, 'DASHBOARD_METRICS_ERROR', 'Failed to fetch dashboard metrics', event.requestContext.requestId, [{ error: errorMessage }]);
-  }
+    return ResponseHandler.success({ metrics });
+  }, {
+    operation: 'getDashboardMetrics',
+    requestId: event.requestContext.requestId
+  });
 }
 
 /**
  * Handle system health request
  */
 async function handleGetSystemHealth(event: AuthenticatedEvent): Promise<APIGatewayProxyResult> {
-  try {
+  return ResponseHandler.wrapHandler(async () => {
     const now = new Date();
 
     // Get deployment context
@@ -562,20 +562,18 @@ async function handleGetSystemHealth(event: AuthenticatedEvent): Promise<APIGate
       isDocker: deploymentContext.isDocker
     };
 
-    return createResponse(200, systemHealth);
-
-  } catch (error: unknown) {
-    console.error('Error checking system health:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    return createErrorResponse(500, 'HEALTH_CHECK_ERROR', 'Failed to check system health', event.requestContext.requestId, [{ error: errorMessage }]);
-  }
+    return ResponseHandler.success(systemHealth);
+  }, {
+    operation: 'getSystemHealth',
+    requestId: event.requestContext.requestId
+  });
 }
 
 /**
  * Handle system metrics request
  */
 async function handleGetSystemMetrics(event: AuthenticatedEvent): Promise<APIGatewayProxyResult> {
-  try {
+  return ResponseHandler.wrapHandler(async () => {
     const { getDeploymentContext } = await import('../shared/auth');
     const deploymentContext = getDeploymentContext();
     const isLocal = deploymentContext.environment === 'local';
@@ -638,20 +636,18 @@ async function handleGetSystemMetrics(event: AuthenticatedEvent): Promise<APIGat
       }
     };
 
-    return createResponse(200, systemMetrics);
-
-  } catch (error: unknown) {
-    console.error('Error fetching system metrics:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    return createErrorResponse(500, 'SYSTEM_METRICS_ERROR', 'Failed to fetch system metrics', event.requestContext.requestId, [{ error: errorMessage }]);
-  }
+    return ResponseHandler.success(systemMetrics);
+  }, {
+    operation: 'getSystemMetrics',
+    requestId: event.requestContext.requestId
+  });
 }
 
 /**
  * Handle system alerts request
  */
 async function handleGetSystemAlerts(event: AuthenticatedEvent): Promise<APIGatewayProxyResult> {
-  try {
+  return ResponseHandler.wrapHandler(async () => {
     const status = event.queryStringParameters?.status || 'active';
     const limit = parseInt(event.queryStringParameters?.limit || '50');
 
@@ -662,7 +658,7 @@ async function handleGetSystemAlerts(event: AuthenticatedEvent): Promise<APIGate
     // Get real system alerts from various sources
     const realAlerts = await getRealSystemAlerts(status, limit, deploymentContext);
 
-    return createResponse(200, {
+    return ResponseHandler.success({
       alerts: realAlerts,
       count: realAlerts.length,
       totalCount: realAlerts.length,
@@ -675,19 +671,17 @@ async function handleGetSystemAlerts(event: AuthenticatedEvent): Promise<APIGate
         info: realAlerts.filter(a => a.severity === 'info').length
       }
     });
-
-  } catch (error: unknown) {
-    console.error('Error fetching system alerts:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    return createErrorResponse(500, 'SYSTEM_ALERTS_ERROR', 'Failed to fetch system alerts', event.requestContext.requestId, [{ error: errorMessage }]);
-  }
+  }, {
+    operation: 'getSystemAlerts',
+    requestId: event.requestContext.requestId
+  });
 }
 
 /**
  * Handle system errors request
  */
 async function handleGetSystemErrors(event: AuthenticatedEvent): Promise<APIGatewayProxyResult> {
-  try {
+  return ResponseHandler.wrapHandler(async () => {
     const timeRange = event.queryStringParameters?.timeRange || '1h';
     const limit = parseInt(event.queryStringParameters?.limit || '10');
 
@@ -715,13 +709,11 @@ async function handleGetSystemErrors(event: AuthenticatedEvent): Promise<APIGate
       errorsByService
     };
 
-    return createResponse(200, errorStats);
-
-  } catch (error: unknown) {
-    console.error('Error fetching system errors:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    return createErrorResponse(500, 'SYSTEM_ERRORS_ERROR', 'Failed to fetch system errors', event.requestContext.requestId, [{ error: errorMessage }]);
-  }
+    return ResponseHandler.success(errorStats);
+  }, {
+    operation: 'getSystemErrors',
+    requestId: event.requestContext.requestId
+  });
 }
 
 /**
@@ -731,7 +723,7 @@ async function handleGetSystemErrors(event: AuthenticatedEvent): Promise<APIGate
  * Supports filtering by status
  */
 async function handleListUsers(event: AuthenticatedEvent): Promise<APIGatewayProxyResult> {
-  try {
+  return ResponseHandler.wrapHandler(async () => {
     const limit = parseInt(event.queryStringParameters?.limit || '50');
     const lastKey = event.queryStringParameters?.lastKey;
     const userType = event.queryStringParameters?.type || 'all'; // 'customer', 'staff', or 'all'
@@ -801,13 +793,11 @@ async function handleListUsers(event: AuthenticatedEvent): Promise<APIGatewayPro
       stats: stats
     };
 
-    return createResponse(200, response);
-
-  } catch (error: unknown) {
-    console.error('Error listing users:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    return createErrorResponse(500, 'LIST_USERS_ERROR', 'Failed to list users', event.requestContext.requestId, [{ error: errorMessage }]);
-  }
+    return ResponseHandler.success(response);
+  }, {
+    operation: 'listUsers',
+    requestId: event.requestContext.requestId
+  });
 }
 
 /**
@@ -815,7 +805,7 @@ async function handleListUsers(event: AuthenticatedEvent): Promise<APIGatewayPro
  * Returns only non-staff users (customers)
  */
 async function handleListCustomers(event: AuthenticatedEvent): Promise<APIGatewayProxyResult> {
-  try {
+  return ResponseHandler.wrapHandler(async () => {
     const limit = parseInt(event.queryStringParameters?.limit || '50');
     const lastKey = event.queryStringParameters?.lastKey;
     const searchTerm = event.queryStringParameters?.search;
@@ -870,13 +860,11 @@ async function handleListCustomers(event: AuthenticatedEvent): Promise<APIGatewa
       stats: stats
     };
 
-    return createResponse(200, response);
-
-  } catch (error: unknown) {
-    console.error('Error listing customers:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    return createErrorResponse(500, 'LIST_CUSTOMERS_ERROR', 'Failed to list customers', event.requestContext.requestId, [{ error: errorMessage }]);
-  }
+    return ResponseHandler.success(response);
+  }, {
+    operation: 'listCustomers',
+    requestId: event.requestContext.requestId
+  });
 }
 
 /**
@@ -884,7 +872,7 @@ async function handleListCustomers(event: AuthenticatedEvent): Promise<APIGatewa
  * Returns only staff members (admin, super_admin, moderator, support)
  */
 async function handleListStaff(event: AuthenticatedEvent): Promise<APIGatewayProxyResult> {
-  try {
+  return ResponseHandler.wrapHandler(async () => {
     const limit = parseInt(event.queryStringParameters?.limit || '50');
     const lastKey = event.queryStringParameters?.lastKey;
     const searchTerm = event.queryStringParameters?.search;
@@ -940,20 +928,18 @@ async function handleListStaff(event: AuthenticatedEvent): Promise<APIGatewayPro
       stats: stats
     };
 
-    return createResponse(200, response);
-
-  } catch (error: unknown) {
-    console.error('Error listing staff:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    return createErrorResponse(500, 'LIST_STAFF_ERROR', 'Failed to list staff', event.requestContext.requestId, [{ error: errorMessage }]);
-  }
+    return ResponseHandler.success(response);
+  }, {
+    operation: 'listStaff',
+    requestId: event.requestContext.requestId
+  });
 }
 
 /**
  * Handle create staff member request
  */
 async function handleCreateStaff(event: AuthenticatedEvent): Promise<APIGatewayProxyResult> {
-  try {
+  return ResponseHandler.wrapHandler(async () => {
     const body = JSON.parse(event.body || '{}');
     const { 
       email, 
@@ -969,13 +955,19 @@ async function handleCreateStaff(event: AuthenticatedEvent): Promise<APIGatewayP
 
     // Validate required fields
     if (!email || !name || !role) {
-      return createErrorResponse(400, 'VALIDATION_ERROR', 'Missing required fields: email, name, role', event.requestContext.requestId);
+      return ResponseHandler.error('Missing required fields: email, name, role', 'VALIDATION_ERROR', 400);
     }
 
     // Validate role
     const validRoles = ['super_admin', 'admin', 'moderator', 'support'];
     if (!validRoles.includes(role)) {
-      return createErrorResponse(400, 'INVALID_ROLE', `Invalid role. Must be one of: ${validRoles.join(', ')}`, event.requestContext.requestId);
+      return ResponseHandler.error(`Invalid role. Must be one of: ${validRoles.join(', ')}`, 'INVALID_ROLE', 400);
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return ResponseHandler.error('Invalid email format', 'INVALID_EMAIL', 400);
     }
 
     // Phase 3: Validate team assignments if provided
@@ -983,19 +975,13 @@ async function handleCreateStaff(event: AuthenticatedEvent): Promise<APIGatewayP
       for (const teamAssignment of teams) {
         // Validate team ID
         if (!Object.values(TeamId).includes(teamAssignment.teamId)) {
-          return createErrorResponse(400, 'INVALID_TEAM', `Invalid team ID: ${teamAssignment.teamId}`, event.requestContext.requestId);
+          return ResponseHandler.error(`Invalid team ID: ${teamAssignment.teamId}`, 'INVALID_TEAM', 400);
         }
         // Validate role
         if (!Object.values(TeamRole).includes(teamAssignment.role)) {
-          return createErrorResponse(400, 'INVALID_TEAM_ROLE', `Invalid team role: ${teamAssignment.role}. Must be "manager" or "member"`, event.requestContext.requestId);
+          return ResponseHandler.error(`Invalid team role: ${teamAssignment.role}. Must be "manager" or "member"`, 'INVALID_TEAM_ROLE', 400);
         }
       }
-    }
-
-    // Validate email format
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      return createErrorResponse(400, 'INVALID_EMAIL', 'Invalid email format', event.requestContext.requestId);
     }
 
     // Check if user already exists in DynamoDB
@@ -1008,158 +994,159 @@ async function handleCreateStaff(event: AuthenticatedEvent): Promise<APIGatewayP
     }));
 
     if (existingUserCheck.Items && existingUserCheck.Items.length > 0) {
-      return createErrorResponse(409, 'USER_EXISTS', 'A user with this email already exists', event.requestContext.requestId);
+      return ResponseHandler.error('A user with this email already exists', 'USER_EXISTS', 409);
     }
 
-    // Create user in Cognito Staff Pool
-    const createUserCommand = new AdminCreateUserCommand({
-      UserPoolId: STAFF_USER_POOL_ID,
-      Username: email,
-      UserAttributes: [
-        { Name: 'email', Value: email },
-        { Name: 'email_verified', Value: 'true' },
-        { Name: 'name', Value: name },
-        { Name: 'custom:role', Value: role }
-      ],
-      MessageAction: sendWelcomeEmail ? MessageActionType.RESEND : MessageActionType.SUPPRESS,
-      TemporaryPassword: password || generateTemporaryPassword()
-    });
-
-    const cognitoResponse = await cognitoClient.send(createUserCommand);
-    const cognitoUserId = cognitoResponse.User?.Username || email;
-
-    // If password provided, set it as permanent
-    if (password) {
-      await cognitoClient.send(new AdminSetUserPasswordCommand({
+    // Handle specific Cognito errors
+    try {
+      // Create user in Cognito Staff Pool
+      const createUserCommand = new AdminCreateUserCommand({
         UserPoolId: STAFF_USER_POOL_ID,
-        Username: cognitoUserId,
-        Password: password,
-        Permanent: true
-      }));
-    }
+        Username: email,
+        UserAttributes: [
+          { Name: 'email', Value: email },
+          { Name: 'email_verified', Value: 'true' },
+          { Name: 'name', Value: name },
+          { Name: 'custom:role', Value: role }
+        ],
+        MessageAction: sendWelcomeEmail ? MessageActionType.RESEND : MessageActionType.SUPPRESS,
+        TemporaryPassword: password || generateTemporaryPassword()
+      });
 
-    // Add user to appropriate Cognito group based on role
-    const cognitoGroupMap: Record<string, string> = {
-      'super_admin': 'SuperAdmins',
-      'admin': 'Admins',
-      'moderator': 'Moderators',
-      'support': 'Support'
-    };
+      const cognitoResponse = await cognitoClient.send(createUserCommand);
+      const cognitoUserId = cognitoResponse.User?.Username || email;
 
-    const cognitoGroup = cognitoGroupMap[role];
-    if (cognitoGroup) {
-      try {
-        await cognitoClient.send(new AdminAddUserToGroupCommand({
+      // If password provided, set it as permanent
+      if (password) {
+        await cognitoClient.send(new AdminSetUserPasswordCommand({
           UserPoolId: STAFF_USER_POOL_ID,
           Username: cognitoUserId,
-          GroupName: cognitoGroup
+          Password: password,
+          Permanent: true
         }));
-      } catch (groupError) {
-        console.warn(`Warning: Could not add user to group ${cognitoGroup}:`, groupError);
-        // Continue even if group doesn't exist in LocalStack
       }
-    }
 
-    // Create user record in DynamoDB
-    const userId = cognitoResponse.User?.Attributes?.find(attr => attr.Name === 'sub')?.Value || crypto.randomUUID();
-    const now = new Date().toISOString();
+      // Add user to appropriate Cognito group based on role
+      const cognitoGroupMap: Record<string, string> = {
+        'super_admin': 'SuperAdmins',
+        'admin': 'Admins',
+        'moderator': 'Moderators',
+        'support': 'Support'
+      };
 
-    // Phase 3: Prepare team assignments if provided
-    const teamAssignments: TeamAssignment[] = [];
-    if (teams && Array.isArray(teams)) {
-      for (const team of teams) {
-        teamAssignments.push({
-          teamId: team.teamId,
-          role: team.role,
-          assignedAt: now,
-          assignedBy: event.user.sub
-        });
+      const cognitoGroup = cognitoGroupMap[role];
+      if (cognitoGroup) {
+        try {
+          await cognitoClient.send(new AdminAddUserToGroupCommand({
+            UserPoolId: STAFF_USER_POOL_ID,
+            Username: cognitoUserId,
+            GroupName: cognitoGroup
+          }));
+        } catch (groupError) {
+          console.warn(`Warning: Could not add user to group ${cognitoGroup}:`, groupError);
+          // Continue even if group doesn't exist in LocalStack
+        }
       }
-    }
 
-    // Phase 3: Calculate effective permissions from base permissions and team assignments
-    const effectivePermissions = calculateEffectivePermissions(teamAssignments, permissions);
+      // Create user record in DynamoDB
+      const userId = cognitoResponse.User?.Attributes?.find(attr => attr.Name === 'sub')?.Value || crypto.randomUUID();
+      const now = new Date().toISOString();
 
-    const userRecord = {
-      id: userId,
-      email: email,
-      name: name,
-      role: role,
-      status: 'active',
-      userType: 'staff',
-      createdAt: now,
-      updatedAt: now,
-      lastLoginAt: null,
-      mfaEnabled: false,
-      emailVerified: true,
-      cognitoUsername: cognitoUserId,
-      groupId: groupId || null,
-      permissions: permissions, // Base permissions
-      // Phase 3: Team-based fields
-      teams: teamAssignments,
-      effectivePermissions: effectivePermissions,
-      metadata: {
-        createdBy: event.user.sub,
-        createdByEmail: event.user.email,
-        createdAt: now
+      // Phase 3: Prepare team assignments if provided
+      const teamAssignments: TeamAssignment[] = [];
+      if (teams && Array.isArray(teams)) {
+        for (const team of teams) {
+          teamAssignments.push({
+            teamId: team.teamId,
+            role: team.role,
+            assignedAt: now,
+            assignedBy: event.user.sub
+          });
+        }
       }
-    };
 
-    await docClient.send(new PutCommand({
-      TableName: USERS_TABLE,
-      Item: userRecord
-    }));
+      // Phase 3: Calculate effective permissions from base permissions and team assignments
+      const effectivePermissions = calculateEffectivePermissions(teamAssignments, permissions);
 
-    // Phase 3: Log team assignments for audit
-    if (teamAssignments.length > 0) {
-      console.log('Staff member created with team assignments', {
-        userId,
-        email,
-        teams: teamAssignments.map(t => ({ teamId: t.teamId, role: t.role })),
-        effectivePermissionCount: effectivePermissions.length,
-        createdBy: event.user.email
-      });
-    }
-
-    // Return success response
-    return createResponse(201, {
-      success: true,
-      message: 'Staff member created successfully',
-      staff: {
+      const userRecord = {
         id: userId,
         email: email,
         name: name,
         role: role,
         status: 'active',
+        userType: 'staff',
+        createdAt: now,
+        updatedAt: now,
+        lastLoginAt: null,
+        mfaEnabled: false,
+        emailVerified: true,
         cognitoUsername: cognitoUserId,
-        temporaryPassword: !password ? 'Sent via email' : undefined,
-        // Phase 3: Include team information in response
-        teams: teamAssignments.map(t => ({
-          teamId: t.teamId,
-          role: t.role,
-          assignedAt: t.assignedAt
-        })),
+        groupId: groupId || null,
+        permissions: permissions, // Base permissions
+        // Phase 3: Team-based fields
+        teams: teamAssignments,
         effectivePermissions: effectivePermissions,
-        permissionCount: effectivePermissions.length
-      }
-    });
+        metadata: {
+          createdBy: event.user.sub,
+          createdByEmail: event.user.email,
+          createdAt: now
+        }
+      };
 
-  } catch (error: unknown) {
-    console.error('Error creating staff member:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    
-    // Handle specific Cognito errors
-    if (error instanceof Error) {
-      if (error.name === 'UsernameExistsException') {
-        return createErrorResponse(409, 'USER_EXISTS', 'A user with this email already exists in Cognito', event.requestContext.requestId);
+      await docClient.send(new PutCommand({
+        TableName: USERS_TABLE,
+        Item: userRecord
+      }));
+
+      // Phase 3: Log team assignments for audit
+      if (teamAssignments.length > 0) {
+        console.log('Staff member created with team assignments', {
+          userId,
+          email,
+          teams: teamAssignments.map(t => ({ teamId: t.teamId, role: t.role })),
+          effectivePermissionCount: effectivePermissions.length,
+          createdBy: event.user.email
+        });
       }
-      if (error.name === 'InvalidPasswordException') {
-        return createErrorResponse(400, 'INVALID_PASSWORD', 'Password does not meet security requirements', event.requestContext.requestId);
+
+      // Return success response
+      return ResponseHandler.success({
+        success: true,
+        message: 'Staff member created successfully',
+        staff: {
+          id: userId,
+          email: email,
+          name: name,
+          role: role,
+          status: 'active',
+          cognitoUsername: cognitoUserId,
+          temporaryPassword: !password ? 'Sent via email' : undefined,
+          // Phase 3: Include team information in response
+          teams: teamAssignments.map(t => ({
+            teamId: t.teamId,
+            role: t.role,
+            assignedAt: t.assignedAt
+          })),
+          effectivePermissions: effectivePermissions,
+          permissionCount: effectivePermissions.length
+        }
+      });
+    } catch (cognitoError: unknown) {
+      // Handle specific Cognito errors
+      if (cognitoError instanceof Error) {
+        if (cognitoError.name === 'UsernameExistsException') {
+          return ResponseHandler.error('A user with this email already exists in Cognito', 'USER_EXISTS', 409);
+        }
+        if (cognitoError.name === 'InvalidPasswordException') {
+          return ResponseHandler.error('Password does not meet security requirements', 'INVALID_PASSWORD', 400);
+        }
       }
+      throw cognitoError; // Re-throw for wrapHandler to catch
     }
-    
-    return createErrorResponse(500, 'CREATE_STAFF_ERROR', 'Failed to create staff member', event.requestContext.requestId, [{ error: errorMessage }]);
-  }
+  }, {
+    operation: 'createStaff',
+    requestId: event.requestContext.requestId
+  });
 }
 
 /**
@@ -1184,13 +1171,13 @@ function generateTemporaryPassword(): string {
  * POST /api/admin/users/:userId/verify-email
  */
 async function handleVerifyUserEmail(event: AuthenticatedEvent): Promise<APIGatewayProxyResult> {
-  try {
+  return ResponseHandler.wrapHandler(async () => {
     // Extract user ID from path
     const pathParts = event.path.split('/');
     const userId = pathParts[pathParts.length - 2]; // Get userId from /users/:userId/verify-email
 
     if (!userId) {
-      return createErrorResponse(400, 'VALIDATION_ERROR', 'User ID is required', event.requestContext.requestId);
+      return ResponseHandler.error('User ID is required', 'VALIDATION_ERROR', 400);
     }
 
     console.log(`Manual email verification requested for user: ${userId} by admin: ${event.user.email}`);
@@ -1204,20 +1191,20 @@ async function handleVerifyUserEmail(event: AuthenticatedEvent): Promise<APIGate
     const getUserResult = await docClient.send(getUserCommand);
     
     if (!getUserResult.Item) {
-      return createErrorResponse(404, 'USER_NOT_FOUND', 'User not found in database', event.requestContext.requestId);
+      return ResponseHandler.error('User not found in database', 'USER_NOT_FOUND', 404);
     }
 
     const currentUser = getUserResult.Item;
 
     // Guard: Only verify customer accounts, not staff
     if (currentUser.userType === 'staff') {
-      return createErrorResponse(400, 'INVALID_OPERATION', 'Cannot manually verify staff accounts. Staff are auto-verified on creation.', event.requestContext.requestId);
+      return ResponseHandler.error('Cannot manually verify staff accounts. Staff are auto-verified on creation.', 'INVALID_OPERATION', 400);
     }
 
     // Check if already verified (idempotency)
     if (currentUser.emailVerified === true) {
       console.log(`User ${userId} (${currentUser.email}) is already verified`);
-      return createResponse(200, {
+      return ResponseHandler.success({
         success: true,
         message: 'User email is already verified',
         alreadyVerified: true,
@@ -1241,7 +1228,7 @@ async function handleVerifyUserEmail(event: AuthenticatedEvent): Promise<APIGate
     const dynamoResult = await docClient.send(updateDynamoCommand);
     
     if (!dynamoResult.Attributes) {
-      return createErrorResponse(500, 'UPDATE_FAILED', 'Failed to update user record', event.requestContext.requestId);
+      return ResponseHandler.error('Failed to update user record', 'UPDATE_FAILED', 500);
     }
 
     const updatedUser = dynamoResult.Attributes;
@@ -1318,44 +1305,33 @@ async function handleVerifyUserEmail(event: AuthenticatedEvent): Promise<APIGate
     }
 
     // Step 4: Return comprehensive response
-    const response = {
+    return ResponseHandler.success({
       success: true,
       message: cognitoUpdated 
         ? 'Email verified successfully in both DynamoDB and Cognito' 
         : 'Email verified in DynamoDB. Cognito update failed (user can still login if Cognito allows).',
+      alreadyVerified: false,
       cognitoUpdated,
       cognitoError: cognitoError || undefined,
-      user: updatedUser, // Return full user record for frontend to reflect true state
+      user: updatedUser,
       metadata: {
         verifiedBy: event.user.email,
         verifiedAt: updatedUser.updatedAt,
         dynamoDbUpdated: true,
         cognitoUpdated
       }
-    };
-
-    // If Cognito failed, return 200 but include warning
-    if (!cognitoUpdated) {
-      console.warn(`⚠️  DynamoDB updated but Cognito sync failed for user ${userId}. Admin should verify user can login.`);
-    }
-
-    return createResponse(200, response);
-
-  } catch (error: unknown) {
-    console.error('Error verifying user email:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    return createErrorResponse(500, 'VERIFY_EMAIL_ERROR', 'Failed to verify user email', event.requestContext.requestId, [{ 
-      error: errorMessage,
-      stack: error instanceof Error ? error.stack : undefined
-    }]);
-  }
+    });
+  }, {
+    operation: 'verifyUserEmail',
+    requestId: event.requestContext.requestId
+  });
 }
 
 /**
  * Handle list user groups request
  */
 async function handleListUserGroups(event: AuthenticatedEvent): Promise<APIGatewayProxyResult> {
-  try {
+  return ResponseHandler.wrapHandler(async () => {
     const limit = parseInt(event.queryStringParameters?.limit || '50');
     const lastKey = event.queryStringParameters?.lastKey;
 
@@ -1377,20 +1353,18 @@ async function handleListUserGroups(event: AuthenticatedEvent): Promise<APIGatew
       count: result.Items?.length || 0
     };
 
-    return createResponse(200, response);
-
-  } catch (error: unknown) {
-    console.error('Error listing user groups:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    return createErrorResponse(500, 'LIST_USER_GROUPS_ERROR', 'Failed to list user groups', event.requestContext.requestId, [{ error: errorMessage }]);
-  }
+    return ResponseHandler.success(response);
+  }, {
+    operation: 'listUserGroups',
+    requestId: event.requestContext.requestId
+  });
 }
 
 /**
  * Handle list user tiers request
  */
 async function handleListUserTiers(event: AuthenticatedEvent): Promise<APIGatewayProxyResult> {
-  try {
+  return ResponseHandler.wrapHandler(async () => {
     // Return predefined user tiers
     // In a real implementation, these might come from a database table or configuration
     const tiers = [
@@ -1444,13 +1418,11 @@ async function handleListUserTiers(event: AuthenticatedEvent): Promise<APIGatewa
       }
     ];
 
-    return createResponse(200, { tiers });
-
-  } catch (error: unknown) {
-    console.error('Error listing user tiers:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    return createErrorResponse(500, 'LIST_USER_TIERS_ERROR', 'Failed to list user tiers', event.requestContext.requestId, [{ error: errorMessage }]);
-  }
+    return ResponseHandler.success({ tiers });
+  }, {
+    operation: 'listUserTiers',
+    requestId: event.requestContext.requestId
+  });
 }
 
 // Helper Functions
@@ -2243,7 +2215,7 @@ async function calculateRealErrorRate(timeRange: string, deploymentContext: any)
  * ANALYTICS HANDLERS - Real data implementations
  */
 async function handleGetUserAnalytics(event: AuthenticatedEvent): Promise<APIGatewayProxyResult> {
-  try {
+  return ResponseHandler.wrapHandler(async () => {
     const { startDate, endDate } = event.queryStringParameters || {};
     const start = startDate ? new Date(startDate) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     const end = endDate ? new Date(endDate) : new Date();
@@ -2290,16 +2262,15 @@ async function handleGetUserAnalytics(event: AuthenticatedEvent): Promise<APIGat
       usersByRegion: regionsArray
     };
 
-    return createResponse(200, data);
-  } catch (error: unknown) {
-    console.error('Error fetching user analytics:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    return createErrorResponse(500, 'ANALYTICS_ERROR', 'Failed to fetch user analytics', event.requestContext.requestId, [{ error: errorMessage }]);
-  }
+    return ResponseHandler.success(data);
+  }, {
+    operation: 'getUserAnalytics',
+    requestId: event.requestContext.requestId
+  });
 }
 
 async function handleGetListingAnalytics(event: AuthenticatedEvent): Promise<APIGatewayProxyResult> {
-  try {
+  return ResponseHandler.wrapHandler(async () => {
     const { startDate, endDate } = event.queryStringParameters || {};
     const start = startDate ? new Date(startDate) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     const end = endDate ? new Date(endDate) : new Date();
@@ -2343,12 +2314,11 @@ async function handleGetListingAnalytics(event: AuthenticatedEvent): Promise<API
       listingsByCategory: categoryArray
     };
 
-    return createResponse(200, data);
-  } catch (error: unknown) {
-    console.error('Error fetching listing analytics:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    return createErrorResponse(500, 'ANALYTICS_ERROR', 'Failed to fetch listing analytics', event.requestContext.requestId, [{ error: errorMessage }]);
-  }
+    return ResponseHandler.success(data);
+  }, {
+    operation: 'getListingAnalytics',
+    requestId: event.requestContext.requestId
+  });
 }
 
 async function handleGetEngagementAnalytics(event: AuthenticatedEvent): Promise<APIGatewayProxyResult> {

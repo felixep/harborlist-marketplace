@@ -55,6 +55,8 @@ import {
   GroupType
 } from '@aws-sdk/client-cognito-identity-provider';
 import { createResponse, createErrorResponse } from '../shared/utils';
+import { ResponseHandler } from '../shared/response-handler';
+import { ValidationFramework, CommonRules } from '../shared/validators';
 import { getEnvironmentConfig, validateEnvironmentConfig } from './config';
 import {
   AuthService,
@@ -2087,308 +2089,307 @@ function getAuthService(): CognitoAuthService {
 
 // Handler functions - implementing actual dual authentication
 async function handleCustomerLogin(body: any, requestId: string, clientInfo: any): Promise<APIGatewayProxyResult> {
-  try {
-    const { email, password, deviceId } = body;
-    
-    if (!email || !password) {
-      return createErrorResponse(400, 'VALIDATION_ERROR', 'Email and password are required', requestId);
-    }
+  return ResponseHandler.wrapHandler(
+    async () => {
+      // Validate input using ValidationFramework
+      const validationResult = ValidationFramework.validate(body, [
+        CommonRules.required('email', 'Email'),
+        CommonRules.email('email'),
+        CommonRules.required('password', 'Password'),
+      ], requestId);
 
-    if (!validateEmail(email)) {
-      return createErrorResponse(400, 'VALIDATION_ERROR', 'Invalid email format', requestId);
-    }
+      if (validationResult) {
+        return ResponseHandler.error('Validation failed', 'VALIDATION_ERROR', 400);
+      }
 
-    const result = await getAuthService().customerLogin(email, password, clientInfo, deviceId);
-    
-    if (result.success) {
-      return createResponse(200, {
-        success: true,
-        tokens: result.tokens,
-        customer: result.customer,
-      });
-    } else {
-      return createErrorResponse(401, result.errorCode || 'AUTH_FAILED', result.error || 'Authentication failed', requestId);
-    }
-  } catch (error) {
-    console.error('Customer login handler error:', error);
-    return createErrorResponse(500, 'INTERNAL_ERROR', 'Internal server error', requestId);
-  }
+      const { email, password, deviceId } = body;
+      const result = await getAuthService().customerLogin(email, password, clientInfo, deviceId);
+      
+      if (result.success) {
+        return ResponseHandler.success({
+          tokens: result.tokens,
+          customer: result.customer,
+        });
+      } else {
+        return ResponseHandler.error(
+          result.error || 'Authentication failed',
+          result.errorCode || 'AUTH_FAILED',
+          401
+        );
+      }
+    },
+    { operation: 'Customer Login', requestId }
+  );
 }
 
 async function handleCustomerRegister(body: any, requestId: string, clientInfo: any): Promise<APIGatewayProxyResult> {
-  try {
-    const { email, password, name, customerType, phone } = body;
-    
-    if (!email || !password || !name || !customerType) {
-      return createErrorResponse(400, 'VALIDATION_ERROR', 'Email, password, name, and customer type are required', requestId);
-    }
+  return ResponseHandler.wrapHandler(
+    async () => {
+      // Validate input using ValidationFramework
+      const validationResult = ValidationFramework.validate(body, [
+        CommonRules.required('email', 'Email'),
+        CommonRules.email('email'),
+        CommonRules.required('password', 'Password'),
+        CommonRules.required('name', 'Name'),
+        CommonRules.required('customerType', 'Customer type'),
+        CommonRules.oneOf('customerType', ['individual', 'dealer', 'premium'], 'Customer type'),
+      ], requestId);
 
-    if (!validateEmail(email)) {
-      return createErrorResponse(400, 'VALIDATION_ERROR', 'Invalid email format', requestId);
-    }
+      if (validationResult) {
+        return ResponseHandler.error('Validation failed', 'VALIDATION_ERROR', 400);
+      }
 
-    if (!['individual', 'dealer', 'premium'].includes(customerType)) {
-      return createErrorResponse(400, 'VALIDATION_ERROR', 'Invalid customer type', requestId);
-    }
+      const { email, password, name, customerType, phone } = body;
 
-    const userData: CustomerRegistration = {
-      email,
-      password,
-      name,
-      customerType: customerType as CustomerTier,
-      phone,
-      agreeToTerms: body.agreeToTerms || true, // Default to true for testing
-      marketingOptIn: body.marketingOptIn || false,
-    };
+      const userData: CustomerRegistration = {
+        email,
+        password,
+        name,
+        customerType: customerType as CustomerTier,
+        phone,
+        agreeToTerms: body.agreeToTerms || true,
+        marketingOptIn: body.marketingOptIn || false,
+      };
 
-    const result = await getAuthService().customerRegister(userData);
-    
-    if (result.success) {
-      return createResponse(201, {
-        success: true,
-        message: result.message,
-        requiresVerification: result.requiresVerification,
-      });
-    } else {
-      return createErrorResponse(400, 'REGISTRATION_FAILED', result.message, requestId);
-    }
-  } catch (error) {
-    console.error('Customer register handler error:', error);
-    return createErrorResponse(500, 'INTERNAL_ERROR', 'Internal server error', requestId);
-  }
+      const result = await getAuthService().customerRegister(userData);
+      
+      if (result.success) {
+        return ResponseHandler.success(
+          {
+            message: result.message,
+            requiresVerification: result.requiresVerification,
+          },
+          { statusCode: 201 }
+        );
+      } else {
+        return ResponseHandler.error(result.message, 'REGISTRATION_FAILED', 400);
+      }
+    },
+    { operation: 'Customer Register', requestId, successCode: 201 }
+  );
 }
 
 async function handleCustomerRefresh(body: any, requestId: string, clientInfo: any): Promise<APIGatewayProxyResult> {
-  try {
-    const { refreshToken } = body;
-    
-    if (!refreshToken) {
-      return createErrorResponse(400, 'VALIDATION_ERROR', 'Refresh token is required', requestId);
-    }
+  return ResponseHandler.wrapHandler(
+    async () => {
+      // Validate input
+      const validationResult = ValidationFramework.validate(body, [
+        CommonRules.required('refreshToken', 'Refresh token'),
+      ], requestId);
 
-    const tokens = await getAuthService().customerRefreshToken(refreshToken);
-    
-    return createResponse(200, {
-      success: true,
-      tokens,
-    });
-  } catch (error) {
-    console.error('Customer refresh handler error:', error);
-    return createErrorResponse(401, 'TOKEN_REFRESH_FAILED', 'Token refresh failed', requestId);
-  }
+      if (validationResult) {
+        return ResponseHandler.error('Validation failed', 'VALIDATION_ERROR', 400);
+      }
+
+      const tokens = await getAuthService().customerRefreshToken(body.refreshToken);
+      return ResponseHandler.success({ tokens });
+    },
+    { operation: 'Customer Refresh Token', requestId }
+  );
 }
 
 async function handleCustomerLogout(event: any, requestId: string, clientInfo: any): Promise<APIGatewayProxyResult> {
-  try {
-    const authHeader = event.headers.Authorization || event.headers.authorization;
-    
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return createErrorResponse(400, 'VALIDATION_ERROR', 'Authorization header is required', requestId);
-    }
+  return ResponseHandler.wrapHandler(
+    async () => {
+      const authHeader = event.headers.Authorization || event.headers.authorization;
+      
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return ResponseHandler.error('Authorization header is required', 'VALIDATION_ERROR', 400);
+      }
 
-    const accessToken = authHeader.substring(7);
-    const sessionId = event.headers['X-Session-ID'] || event.headers['x-session-id'];
+      const accessToken = authHeader.substring(7);
+      const sessionId = event.headers['X-Session-ID'] || event.headers['x-session-id'];
 
-    const result = await getAuthService().logout(accessToken, 'customer', clientInfo, sessionId);
-    
-    if (result.success) {
-      return createResponse(200, {
-        success: true,
-        message: result.message,
-      });
-    } else {
-      return createErrorResponse(400, 'LOGOUT_FAILED', result.message, requestId);
-    }
-  } catch (error) {
-    console.error('Customer logout handler error:', error);
-    return createErrorResponse(500, 'INTERNAL_ERROR', 'Internal server error', requestId);
-  }
+      const result = await getAuthService().logout(accessToken, 'customer', clientInfo, sessionId);
+      
+      if (result.success) {
+        return ResponseHandler.success({ message: result.message });
+      } else {
+        return ResponseHandler.error(result.message, 'LOGOUT_FAILED', 400);
+      }
+    },
+    { operation: 'Customer Logout', requestId }
+  );
 }
 
 async function handleCustomerForgotPassword(body: any, requestId: string, clientInfo: any): Promise<APIGatewayProxyResult> {
-  try {
-    const { email } = body;
-    
-    if (!email) {
-      return createErrorResponse(400, 'VALIDATION_ERROR', 'Email is required', requestId);
-    }
+  return ResponseHandler.wrapHandler(
+    async () => {
+      // Validate input
+      const validationResult = ValidationFramework.validate(body, [
+        CommonRules.required('email', 'Email'),
+        CommonRules.email('email'),
+      ], requestId);
 
-    if (!validateEmail(email)) {
-      return createErrorResponse(400, 'VALIDATION_ERROR', 'Invalid email format', requestId);
-    }
+      if (validationResult) {
+        return ResponseHandler.error('Validation failed', 'VALIDATION_ERROR', 400);
+      }
 
-    const result = await getAuthService().customerForgotPassword(email);
-    
-    if (result.success) {
-      return createResponse(200, {
-        success: true,
-        message: result.message,
-      });
-    } else {
-      return createErrorResponse(400, 'FORGOT_PASSWORD_FAILED', result.message, requestId);
-    }
-  } catch (error) {
-    console.error('Customer forgot password handler error:', error);
-    return createErrorResponse(500, 'INTERNAL_ERROR', 'Internal server error', requestId);
-  }
+      const result = await getAuthService().customerForgotPassword(body.email);
+      
+      if (result.success) {
+        return ResponseHandler.success({ message: result.message });
+      } else {
+        return ResponseHandler.error(result.message, 'FORGOT_PASSWORD_FAILED', 400);
+      }
+    },
+    { operation: 'Customer Forgot Password', requestId }
+  );
 }
 
 async function handleCustomerConfirmForgotPassword(body: any, requestId: string, clientInfo: any): Promise<APIGatewayProxyResult> {
-  try {
-    const { email, confirmationCode, newPassword } = body;
-    
-    if (!email || !confirmationCode || !newPassword) {
-      return createErrorResponse(400, 'VALIDATION_ERROR', 'Email, confirmation code, and new password are required', requestId);
-    }
+  return ResponseHandler.wrapHandler(
+    async () => {
+      // Validate input
+      const validationResult = ValidationFramework.validate(body, [
+        CommonRules.required('email', 'Email'),
+        CommonRules.email('email'),
+        CommonRules.required('confirmationCode', 'Confirmation code'),
+        CommonRules.required('newPassword', 'New password'),
+      ], requestId);
 
-    if (!validateEmail(email)) {
-      return createErrorResponse(400, 'VALIDATION_ERROR', 'Invalid email format', requestId);
-    }
+      if (validationResult) {
+        return ResponseHandler.error('Validation failed', 'VALIDATION_ERROR', 400);
+      }
 
-    const result = await getAuthService().customerConfirmForgotPassword(email, confirmationCode, newPassword);
-    
-    if (result.success) {
-      return createResponse(200, {
-        success: true,
-        message: result.message,
-      });
-    } else {
-      return createErrorResponse(400, 'CONFIRM_FORGOT_PASSWORD_FAILED', result.message, requestId);
-    }
-  } catch (error) {
-    console.error('Customer confirm forgot password handler error:', error);
-    return createErrorResponse(500, 'INTERNAL_ERROR', 'Internal server error', requestId);
-  }
+      const { email, confirmationCode, newPassword } = body;
+      const result = await getAuthService().customerConfirmForgotPassword(email, confirmationCode, newPassword);
+      
+      if (result.success) {
+        return ResponseHandler.success({ message: result.message });
+      } else {
+        return ResponseHandler.error(result.message, 'CONFIRM_FORGOT_PASSWORD_FAILED', 400);
+      }
+    },
+    { operation: 'Customer Confirm Forgot Password', requestId }
+  );
 }
 
 async function handleCustomerConfirmSignUp(body: any, requestId: string, clientInfo: any): Promise<APIGatewayProxyResult> {
-  try {
-    const { email, confirmationCode } = body;
-    
-    if (!email || !confirmationCode) {
-      return createErrorResponse(400, 'VALIDATION_ERROR', 'Email and confirmation code are required', requestId);
-    }
+  return ResponseHandler.wrapHandler(
+    async () => {
+      // Validate input
+      const validationResult = ValidationFramework.validate(body, [
+        CommonRules.required('email', 'Email'),
+        CommonRules.email('email'),
+        CommonRules.required('confirmationCode', 'Confirmation code'),
+      ], requestId);
 
-    if (!validateEmail(email)) {
-      return createErrorResponse(400, 'VALIDATION_ERROR', 'Invalid email format', requestId);
-    }
+      if (validationResult) {
+        return ResponseHandler.error('Validation failed', 'VALIDATION_ERROR', 400);
+      }
 
-    const result = await getAuthService().customerConfirmSignUp(email, confirmationCode);
-    
-    if (result.success) {
-      return createResponse(200, {
-        success: true,
-        message: result.message,
-      });
-    } else {
-      return createErrorResponse(400, 'CONFIRM_SIGNUP_FAILED', result.message, requestId);
-    }
-  } catch (error) {
-    console.error('Customer confirm signup handler error:', error);
-    return createErrorResponse(500, 'INTERNAL_ERROR', 'Internal server error', requestId);
-  }
+      const { email, confirmationCode } = body;
+      const result = await getAuthService().customerConfirmSignUp(email, confirmationCode);
+      
+      if (result.success) {
+        return ResponseHandler.success({ message: result.message });
+      } else {
+        return ResponseHandler.error(result.message, 'CONFIRM_SIGNUP_FAILED', 400);
+      }
+    },
+    { operation: 'Customer Confirm Sign Up', requestId }
+  );
 }
 
 async function handleCustomerResendConfirmation(body: any, requestId: string, clientInfo: any): Promise<APIGatewayProxyResult> {
-  try {
-    const { email } = body;
-    
-    if (!email) {
-      return createErrorResponse(400, 'VALIDATION_ERROR', 'Email is required', requestId);
-    }
+  return ResponseHandler.wrapHandler(
+    async () => {
+      // Validate input
+      const validationResult = ValidationFramework.validate(body, [
+        CommonRules.required('email', 'Email'),
+        CommonRules.email('email'),
+      ], requestId);
 
-    if (!validateEmail(email)) {
-      return createErrorResponse(400, 'VALIDATION_ERROR', 'Invalid email format', requestId);
-    }
+      if (validationResult) {
+        return ResponseHandler.error('Validation failed', 'VALIDATION_ERROR', 400);
+      }
 
-    const result = await getAuthService().customerResendConfirmation(email);
-    
-    if (result.success) {
-      return createResponse(200, {
-        success: true,
-        message: result.message,
-      });
-    } else {
-      return createErrorResponse(400, 'RESEND_CONFIRMATION_FAILED', result.message, requestId);
-    }
-  } catch (error) {
-    console.error('Customer resend confirmation handler error:', error);
-    return createErrorResponse(500, 'INTERNAL_ERROR', 'Internal server error', requestId);
-  }
+      const result = await getAuthService().customerResendConfirmation(body.email);
+      
+      if (result.success) {
+        return ResponseHandler.success({ message: result.message });
+      } else {
+        return ResponseHandler.error(result.message, 'RESEND_CONFIRMATION_FAILED', 400);
+      }
+    },
+    { operation: 'Customer Resend Confirmation', requestId }
+  );
 }
 
 async function handleStaffLogin(body: any, requestId: string, clientInfo: any): Promise<APIGatewayProxyResult> {
-  try {
-    const { email, password, deviceId } = body;
-    
-    if (!email || !password) {
-      return createErrorResponse(400, 'VALIDATION_ERROR', 'Email and password are required', requestId);
-    }
+  return ResponseHandler.wrapHandler(
+    async () => {
+      // Validate input
+      const validationResult = ValidationFramework.validate(body, [
+        CommonRules.required('email', 'Email'),
+        CommonRules.email('email'),
+        CommonRules.required('password', 'Password'),
+      ], requestId);
 
-    if (!validateEmail(email)) {
-      return createErrorResponse(400, 'VALIDATION_ERROR', 'Invalid email format', requestId);
-    }
+      if (validationResult) {
+        return ResponseHandler.error('Validation failed', 'VALIDATION_ERROR', 400);
+      }
 
-    const result = await getAuthService().staffLogin(email, password, clientInfo, deviceId);
-    
-    if (result.success) {
-      return createResponse(200, {
-        success: true,
-        tokens: result.tokens,
-        staff: result.staff,
-      });
-    } else {
-      return createErrorResponse(401, result.errorCode || 'AUTH_FAILED', result.error || 'Authentication failed', requestId);
-    }
-  } catch (error) {
-    console.error('Staff login handler error:', error);
-    return createErrorResponse(500, 'INTERNAL_ERROR', 'Internal server error', requestId);
-  }
+      const { email, password, deviceId } = body;
+      const result = await getAuthService().staffLogin(email, password, clientInfo, deviceId);
+      
+      if (result.success) {
+        return ResponseHandler.success({
+          tokens: result.tokens,
+          staff: result.staff,
+        });
+      } else {
+        return ResponseHandler.error(
+          result.error || 'Authentication failed',
+          result.errorCode || 'AUTH_FAILED',
+          401
+        );
+      }
+    },
+    { operation: 'Staff Login', requestId }
+  );
 }
 
 async function handleStaffRefresh(body: any, requestId: string, clientInfo: any): Promise<APIGatewayProxyResult> {
-  try {
-    const { refreshToken } = body;
-    
-    if (!refreshToken) {
-      return createErrorResponse(400, 'VALIDATION_ERROR', 'Refresh token is required', requestId);
-    }
+  return ResponseHandler.wrapHandler(
+    async () => {
+      // Validate input
+      const validationResult = ValidationFramework.validate(body, [
+        CommonRules.required('refreshToken', 'Refresh token'),
+      ], requestId);
 
-    const tokens = await getAuthService().staffRefreshToken(refreshToken);
-    
-    return createResponse(200, {
-      success: true,
-      tokens,
-    });
-  } catch (error) {
-    console.error('Staff refresh handler error:', error);
-    return createErrorResponse(401, 'TOKEN_REFRESH_FAILED', 'Token refresh failed', requestId);
-  }
+      if (validationResult) {
+        return ResponseHandler.error('Validation failed', 'VALIDATION_ERROR', 400);
+      }
+
+      const tokens = await getAuthService().staffRefreshToken(body.refreshToken);
+      return ResponseHandler.success({ tokens });
+    },
+    { operation: 'Staff Refresh Token', requestId }
+  );
 }
 
 async function handleStaffLogout(event: any, requestId: string, clientInfo: any): Promise<APIGatewayProxyResult> {
-  try {
-    const authHeader = event.headers.Authorization || event.headers.authorization;
-    
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return createErrorResponse(400, 'VALIDATION_ERROR', 'Authorization header is required', requestId);
-    }
+  return ResponseHandler.wrapHandler(
+    async () => {
+      const authHeader = event.headers.Authorization || event.headers.authorization;
+      
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return ResponseHandler.error('Authorization header is required', 'VALIDATION_ERROR', 400);
+      }
 
-    const accessToken = authHeader.substring(7);
-    const sessionId = event.headers['X-Session-ID'] || event.headers['x-session-id'];
+      const accessToken = authHeader.substring(7);
+      const sessionId = event.headers['X-Session-ID'] || event.headers['x-session-id'];
 
-    const result = await getAuthService().logout(accessToken, 'staff', clientInfo, sessionId);
-    
-    if (result.success) {
-      return createResponse(200, {
-        success: true,
-        message: result.message,
-      });
-    } else {
-      return createErrorResponse(400, 'LOGOUT_FAILED', result.message, requestId);
-    }
-  } catch (error) {
-    console.error('Staff logout handler error:', error);
-    return createErrorResponse(500, 'INTERNAL_ERROR', 'Internal server error', requestId);
-  }
+      const result = await getAuthService().logout(accessToken, 'staff', clientInfo, sessionId);
+      
+      if (result.success) {
+        return ResponseHandler.success({ message: result.message });
+      } else {
+        return ResponseHandler.error(result.message, 'LOGOUT_FAILED', 400);
+      }
+    },
+    { operation: 'Staff Logout', requestId }
+  );
 }

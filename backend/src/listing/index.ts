@@ -31,6 +31,8 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { db } from '../shared/database';
 import { createResponse, createErrorResponse, parseBody, getUserId, generateId, validateRequired, sanitizeString, validatePrice, validateYear } from '../shared/utils';
+import { ResponseHandler } from '../shared/response-handler';
+import { ValidationFramework, CommonRules } from '../shared/validators';
 import { getUserFromEvent } from '../shared/auth';
 import { Listing, Engine, EnhancedListing } from '@harborlist/shared-types';
 import { filterContent, generateFlagReason, getViolationSummary } from '../shared/content-filter';
@@ -708,188 +710,215 @@ async function getListings(event: APIGatewayProxyEvent, requestId: string): Prom
  * 
  * @throws {Error} When validation fails or database operations fail
  */
+/**
+ * Creates a new boat listing with validation and content moderation
+ * 
+ * ✨ REFACTORED - Uses ResponseHandler & ValidationFramework
+ * 
+ * @param event - API Gateway event
+ * @param requestId - Request tracking identifier
+ * @returns Promise<APIGatewayProxyResult> - Creation response
+ * 
+ * @throws {Error} When validation fails or database operations fail
+ */
 async function createListing(event: APIGatewayProxyEvent, requestId: string): Promise<APIGatewayProxyResult> {
-  try {
-    const userId = getUserId(event);
-    const body = parseBody<Partial<EnhancedListing>>(event);
+  return ResponseHandler.wrapHandler(
+    async () => {
+      const userId = getUserId(event);
+      const body = parseBody<Partial<EnhancedListing>>(event);
 
-    // Validate required fields
-    validateRequired(body, ['title', 'description', 'price', 'location', 'boatDetails']);
-    validateRequired(body.location!, ['city', 'state']);
-    validateRequired(body.boatDetails!, ['type', 'year', 'length', 'condition']);
+      // Validate required fields using ValidationFramework
+      const validationResult = ValidationFramework.validate(body, [
+        CommonRules.required('title', 'Title'),
+        CommonRules.required('description', 'Description'),
+        CommonRules.required('price', 'Price'),
+        CommonRules.priceRange('price'),
+        CommonRules.required('location', 'Location'),
+        CommonRules.required('boatDetails', 'Boat details'),
+      ], requestId);
 
-    // Validate data
-    if (!validatePrice(body.price!)) {
-      return createErrorResponse(400, 'INVALID_PRICE', 'Price must be between $1 and $10,000,000', requestId);
-    }
-
-    if (!validateYear(body.boatDetails!.year)) {
-      return createErrorResponse(400, 'INVALID_YEAR', 'Year must be between 1900 and current year + 1', requestId);
-    }
-
-    // Validate engines if provided
-    let engines: Engine[] = [];
-    if (body.engines && body.engines.length > 0) {
-      const engineValidationError = validateEnginesArray(body.engines);
-      if (engineValidationError) {
-        return createErrorResponse(400, 'INVALID_ENGINES', engineValidationError, requestId);
+      if (validationResult) {
+        return ResponseHandler.error('Validation failed', 'VALIDATION_ERROR', 400);
       }
-      engines = body.engines.map(engine => ({
-        ...engine,
-        engineId: engine.engineId || generateId(),
-        manufacturer: engine.manufacturer ? sanitizeString(engine.manufacturer) : undefined,
-        model: engine.model ? sanitizeString(engine.model) : undefined,
-      }));
-    } else {
-      // Create default engine from legacy boatDetails.engine if provided
-      if (body.boatDetails!.engine) {
-        engines = [{
-          engineId: generateId(),
-          type: 'outboard', // Default type
-          horsepower: 100, // Default horsepower
-          fuelType: 'gasoline', // Default fuel type
-          condition: body.boatDetails!.condition as any,
-          position: 1,
+
+      // Validate nested location fields
+      const locationValidation = ValidationFramework.validate(body.location!, [
+        CommonRules.required('city', 'City'),
+        CommonRules.required('state', 'State'),
+      ], requestId);
+
+      if (locationValidation) {
+        return ResponseHandler.error('Location validation failed', 'VALIDATION_ERROR', 400);
+      }
+
+      // Validate nested boatDetails fields
+      const boatDetailsValidation = ValidationFramework.validate(body.boatDetails!, [
+        CommonRules.required('type', 'Boat type'),
+        CommonRules.required('year', 'Year'),
+        CommonRules.yearRange('year'),
+        CommonRules.required('length', 'Length'),
+        CommonRules.required('condition', 'Condition'),
+      ], requestId);
+
+      if (boatDetailsValidation) {
+        return ResponseHandler.error('Boat details validation failed', 'VALIDATION_ERROR', 400);
+      }
+
+      // Validate engines if provided
+      let engines: Engine[] = [];
+      if (body.engines && body.engines.length > 0) {
+        const engineValidationError = validateEnginesArray(body.engines);
+        if (engineValidationError) {
+          return ResponseHandler.error(engineValidationError, 'INVALID_ENGINES', 400);
+        }
+        engines = body.engines.map(engine => ({
+          ...engine,
+          engineId: engine.engineId || generateId(),
+          manufacturer: engine.manufacturer ? sanitizeString(engine.manufacturer) : undefined,
+          model: engine.model ? sanitizeString(engine.model) : undefined,
+        }));
+      } else {
+        // Create default engine from legacy boatDetails.engine if provided
+        if (body.boatDetails!.engine) {
+          engines = [{
+            engineId: generateId(),
+            type: 'outboard', // Default type
+            horsepower: 100, // Default horsepower
+            fuelType: 'gasoline', // Default fuel type
+            condition: body.boatDetails!.condition as any,
+            position: 1,
+            hours: body.boatDetails!.hours,
+          }];
+        }
+      }
+
+      const listingId = generateId();
+      const slug = await generateUniqueSlug(body.title!, listingId);
+      const totalHorsepower = calculateTotalHorsepower(engines);
+      const engineConfiguration = determineEngineConfiguration(engines.length);
+
+      const enhancedListing: EnhancedListing = {
+        listingId,
+        ownerId: userId,
+        title: sanitizeString(body.title!),
+        description: sanitizeString(body.description!),
+        slug,
+        price: body.price!,
+        location: {
+          city: sanitizeString(body.location!.city),
+          state: body.location!.state,
+          zipCode: body.location!.zipCode ? sanitizeString(body.location!.zipCode) : undefined,
+          coordinates: body.location!.coordinates,
+        },
+        boatDetails: {
+          type: body.boatDetails!.type,
+          manufacturer: body.boatDetails!.manufacturer ? sanitizeString(body.boatDetails!.manufacturer) : undefined,
+          model: body.boatDetails!.model ? sanitizeString(body.boatDetails!.model) : undefined,
+          year: body.boatDetails!.year,
+          length: body.boatDetails!.length,
+          beam: body.boatDetails!.beam,
+          draft: body.boatDetails!.draft,
+          engine: body.boatDetails!.engine ? sanitizeString(body.boatDetails!.engine) : undefined,
           hours: body.boatDetails!.hours,
-        }];
-      }
-    }
-
-    const listingId = generateId();
-    const slug = await generateUniqueSlug(body.title!, listingId);
-    const totalHorsepower = calculateTotalHorsepower(engines);
-    const engineConfiguration = determineEngineConfiguration(engines.length);
-
-    const enhancedListing: EnhancedListing = {
-      listingId,
-      ownerId: userId,
-      title: sanitizeString(body.title!),
-      description: sanitizeString(body.description!),
-      slug,
-      price: body.price!,
-      location: {
-        city: sanitizeString(body.location!.city),
-        state: body.location!.state,
-        zipCode: body.location!.zipCode ? sanitizeString(body.location!.zipCode) : undefined,
-        coordinates: body.location!.coordinates,
-      },
-      boatDetails: {
-        type: body.boatDetails!.type,
-        manufacturer: body.boatDetails!.manufacturer ? sanitizeString(body.boatDetails!.manufacturer) : undefined,
-        model: body.boatDetails!.model ? sanitizeString(body.boatDetails!.model) : undefined,
-        year: body.boatDetails!.year,
-        length: body.boatDetails!.length,
-        beam: body.boatDetails!.beam,
-        draft: body.boatDetails!.draft,
-        engine: body.boatDetails!.engine ? sanitizeString(body.boatDetails!.engine) : undefined,
-        hours: body.boatDetails!.hours,
-        condition: body.boatDetails!.condition,
+          condition: body.boatDetails!.condition,
+          engines,
+          totalHorsepower,
+          engineConfiguration,
+        },
         engines,
         totalHorsepower,
         engineConfiguration,
-      },
-      engines,
-      totalHorsepower,
-      engineConfiguration,
-      features: body.features?.map(f => sanitizeString(f)) || [],
-      images: body.images || [],
-      videos: body.videos || [],
-      thumbnails: body.thumbnails || [],
-      status: 'pending_review', // Set to pending review for content moderation
-      moderationWorkflow: {
-        status: 'pending_review',
-        reviewedBy: undefined,
-        reviewedAt: undefined,
-        rejectionReason: undefined,
-        moderatorNotes: undefined,
-        requiredChanges: undefined,
-        submissionType: 'initial', // First time submission
-        previousReviewCount: 0,
-      },
-      views: 0,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    };
-
-    // Run automated content filter (non-blocking - only flags, doesn't reject)
-    const filterResult = filterContent(enhancedListing.title, enhancedListing.description);
-    
-    // If content violations found, add flags for moderator review
-    const flags: any[] = [];
-    if (!filterResult.isClean) {
-      console.log(`[${requestId}] Content filter detected ${filterResult.violations.length} violations for listing ${listingId}`);
-      
-      // Create flag for each violation or one combined flag
-      const flagId = generateId();
-      const flag = {
-        id: flagId,
-        type: 'inappropriate_content',
-        reason: generateFlagReason(filterResult.violations),
-        reportedBy: 'system',
-        reportedAt: new Date().toISOString(),
-        severity: filterResult.severity,
-        status: 'pending' as const,
-        details: getViolationSummary(filterResult.violations)
+        features: body.features?.map(f => sanitizeString(f)) || [],
+        images: body.images || [],
+        videos: body.videos || [],
+        thumbnails: body.thumbnails || [],
+        status: 'pending_review', // Set to pending review for content moderation
+        moderationWorkflow: {
+          status: 'pending_review',
+          reviewedBy: undefined,
+          reviewedAt: undefined,
+          rejectionReason: undefined,
+          moderatorNotes: undefined,
+          requiredChanges: undefined,
+          submissionType: 'initial', // First time submission
+          previousReviewCount: 0,
+        },
+        views: 0,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
       };
+
+      // Run automated content filter (non-blocking - only flags, doesn't reject)
+      const filterResult = filterContent(enhancedListing.title, enhancedListing.description);
       
-      flags.push(flag);
-      
-      // Add violation details to moderator notes (for reference only)
-      if (enhancedListing.moderationWorkflow) {
-        enhancedListing.moderationWorkflow.moderatorNotes = 
-          `AUTO-DETECTED: Content filter flagged this listing\n\n${getViolationSummary(filterResult.violations)}`;
+      // If content violations found, add flags for moderator review
+      const flags: any[] = [];
+      if (!filterResult.isClean) {
+        console.log(`[${requestId}] Content filter detected ${filterResult.violations.length} violations for listing ${listingId}`);
+        
+        // Create flag for each violation or one combined flag
+        const flagId = generateId();
+        const flag = {
+          id: flagId,
+          type: 'inappropriate_content',
+          reason: generateFlagReason(filterResult.violations),
+          reportedBy: 'system',
+          reportedAt: new Date().toISOString(),
+          severity: filterResult.severity,
+          status: 'pending' as const,
+          details: getViolationSummary(filterResult.violations)
+        };
+        
+        flags.push(flag);
+        
+        // Add violation details to moderator notes (for reference only)
+        if (enhancedListing.moderationWorkflow) {
+          enhancedListing.moderationWorkflow.moderatorNotes = 
+            `AUTO-DETECTED: Content filter flagged this listing\n\n${getViolationSummary(filterResult.violations)}`;
+        }
       }
-    }
 
-    // Add flags to listing if any (but still save the listing)
-    if (flags.length > 0) {
-      (enhancedListing as any).flags = flags;
-    }
+      // Add flags to listing if any (but still save the listing)
+      if (flags.length > 0) {
+        (enhancedListing as any).flags = flags;
+      }
 
-    // Create listing in database (always save, regardless of content filter results)
-    await db.createListing(enhancedListing as any);
+      // Create listing in database (always save, regardless of content filter results)
+      await db.createListing(enhancedListing as any);
 
-    // Create engines in separate table if any
-    if (engines.length > 0) {
-      const enginesWithListingId = engines.map(engine => ({
-        ...engine,
+      // Create engines in separate table if any
+      if (engines.length > 0) {
+        const enginesWithListingId = engines.map(engine => ({
+          ...engine,
+          listingId,
+        }));
+        await db.batchCreateEngines(enginesWithListingId);
+      }
+
+      // Create moderation queue entry
+      await db.createModerationQueue({
+        queueId: generateId(),
         listingId,
-      }));
-      await db.batchCreateEngines(enginesWithListingId);
-    }
+        submittedBy: userId,
+        priority: 'medium',
+        flags: [],
+        status: 'pending',
+        submittedAt: Date.now(),
+        escalated: false,
+      });
 
-    // Create moderation queue entry
-    await db.createModerationQueue({
-      queueId: generateId(),
-      listingId,
-      submittedBy: userId,
-      priority: 'medium',
-      flags: [],
-      status: 'pending',
-      submittedAt: Date.now(),
-      escalated: false,
-    });
-
-    return createResponse(201, { 
-      listingId: enhancedListing.listingId,
-      slug: enhancedListing.slug,
-      status: 'pending_review',
-      message: 'Listing created successfully and submitted for review'
-    });
-  } catch (error) {
-    console.error('Error creating listing:', error);
-    
-    if (error instanceof Error) {
-      if (error.message.includes('Missing required fields')) {
-        return createErrorResponse(400, 'VALIDATION_ERROR', error.message, requestId);
-      }
-      if (error.message.includes('User not authenticated')) {
-        return createErrorResponse(401, 'UNAUTHORIZED', error.message, requestId);
-      }
-    }
-
-    return createErrorResponse(500, 'DATABASE_ERROR', 'Failed to create listing', requestId);
-  }
+      return ResponseHandler.success(
+        {
+          listingId: enhancedListing.listingId,
+          slug: enhancedListing.slug,
+          status: 'pending_review',
+          message: 'Listing created successfully and submitted for review'
+        },
+        { statusCode: 201 }
+      );
+    },
+    { operation: 'Create Listing', requestId, successCode: 201 }
+  );
 }
 
 async function updateListing(listingId: string, event: APIGatewayProxyEvent, requestId: string): Promise<APIGatewayProxyResult> {
@@ -1065,35 +1094,32 @@ async function updateListing(listingId: string, event: APIGatewayProxyEvent, req
 }
 
 async function deleteListing(listingId: string, event: APIGatewayProxyEvent, requestId: string): Promise<APIGatewayProxyResult> {
-  try {
-    const userId = getUserId(event);
+  return ResponseHandler.wrapHandler(
+    async () => {
+      const userId = getUserId(event);
 
-    // Check if listing exists and user owns it
-    const existingListing = await db.getListing(listingId);
-    if (!existingListing) {
-      return createErrorResponse(404, 'NOT_FOUND', 'Listing not found', requestId);
-    }
+      // Check if listing exists and user owns it
+      const existingListing = await db.getListing(listingId);
+      if (!existingListing) {
+        return ResponseHandler.error('Listing not found', 'NOT_FOUND', 404);
+      }
 
-    if (existingListing.ownerId !== userId) {
-      return createErrorResponse(403, 'FORBIDDEN', 'You can only delete your own listings', requestId);
-    }
+      if (existingListing.ownerId !== userId) {
+        return ResponseHandler.error('You can only delete your own listings', 'FORBIDDEN', 403);
+      }
 
-    await db.deleteListing(listingId);
+      await db.deleteListing(listingId);
 
-    return createResponse(200, { message: 'Listing deleted successfully' });
-  } catch (error) {
-    console.error('Error deleting listing:', error);
-    
-    if (error instanceof Error && error.message.includes('User not authenticated')) {
-      return createErrorResponse(401, 'UNAUTHORIZED', error.message, requestId);
-    }
-
-    return createErrorResponse(500, 'DATABASE_ERROR', 'Failed to delete listing', requestId);
-  }
+      return ResponseHandler.success({ message: 'Listing deleted successfully' });
+    },
+    { operation: 'Delete Listing', requestId }
+  );
 }
 
 /**
  * Manages engines for a boat listing (add/update engines)
+ * 
+ * ✨ REFACTORED - Uses ResponseHandler & ValidationFramework
  * 
  * Handles adding new engines or updating existing engines for a listing.
  * Validates engine specifications and updates listing totals.
@@ -1104,76 +1130,79 @@ async function deleteListing(listingId: string, event: APIGatewayProxyEvent, req
  * @returns Promise<APIGatewayProxyResult> - Success response or error
  */
 async function manageListingEngines(listingId: string, event: APIGatewayProxyEvent, requestId: string): Promise<APIGatewayProxyResult> {
-  try {
-    const userId = getUserId(event);
-    const body = parseBody<{ engines: Engine[] }>(event);
+  return ResponseHandler.wrapHandler(
+    async () => {
+      const userId = getUserId(event);
+      const body = parseBody<{ engines: Engine[] }>(event);
 
-    // Check if listing exists and user owns it
-    const existingListing = await db.getListing(listingId);
-    if (!existingListing) {
-      return createErrorResponse(404, 'NOT_FOUND', 'Listing not found', requestId);
-    }
+      // Validate engines array exists
+      const validationResult = ValidationFramework.validate(body, [
+        CommonRules.required('engines', 'Engines array'),
+        CommonRules.arrayNotEmpty('engines', 'Engines'),
+      ], requestId);
 
-    if (existingListing.ownerId !== userId) {
-      return createErrorResponse(403, 'FORBIDDEN', 'You can only modify your own listings', requestId);
-    }
+      if (validationResult) {
+        return ResponseHandler.error('Validation failed', 'VALIDATION_ERROR', 400);
+      }
 
-    // Validate engines array
-    if (!body.engines || !Array.isArray(body.engines)) {
-      return createErrorResponse(400, 'INVALID_REQUEST', 'Engines array is required', requestId);
-    }
+      // Check if listing exists and user owns it
+      const existingListing = await db.getListing(listingId);
+      if (!existingListing) {
+        return ResponseHandler.error('Listing not found', 'NOT_FOUND', 404);
+      }
 
-    const engineValidationError = validateEnginesArray(body.engines);
-    if (engineValidationError) {
-      return createErrorResponse(400, 'INVALID_ENGINES', engineValidationError, requestId);
-    }
+      if (existingListing.ownerId !== userId) {
+        return ResponseHandler.error('You can only modify your own listings', 'FORBIDDEN', 403);
+      }
 
-    // Sanitize engine data
-    const engines = body.engines.map(engine => ({
-      ...engine,
-      engineId: engine.engineId || generateId(),
-      manufacturer: engine.manufacturer ? sanitizeString(engine.manufacturer) : undefined,
-      model: engine.model ? sanitizeString(engine.model) : undefined,
-    }));
+      // Validate individual engines
+      const engineValidationError = validateEnginesArray(body.engines);
+      if (engineValidationError) {
+        return ResponseHandler.error(engineValidationError, 'INVALID_ENGINES', 400);
+      }
 
-    // Get existing engines to determine what to delete
-    const existingEngines = await db.getEnginesByListing(listingId);
-    const existingEngineIds = existingEngines.map(e => e.engineId);
+      // Sanitize engine data
+      const engines = body.engines.map(engine => ({
+        ...engine,
+        engineId: engine.engineId || generateId(),
+        manufacturer: engine.manufacturer ? sanitizeString(engine.manufacturer) : undefined,
+        model: engine.model ? sanitizeString(engine.model) : undefined,
+      }));
 
-    // Delete existing engines
-    if (existingEngineIds.length > 0) {
-      await db.batchDeleteEngines(existingEngineIds);
-    }
+      // Get existing engines to determine what to delete
+      const existingEngines = await db.getEnginesByListing(listingId);
+      const existingEngineIds = existingEngines.map(e => e.engineId);
 
-    // Create new engines
-    const enginesWithListingId = engines.map(engine => ({
-      ...engine,
-      listingId,
-    }));
-    await db.batchCreateEngines(enginesWithListingId);
+      // Delete existing engines
+      if (existingEngineIds.length > 0) {
+        await db.batchDeleteEngines(existingEngineIds);
+      }
 
-    // Update listing with engine information
-    await db.updateListingWithEngines(listingId, engines);
+      // Create new engines
+      const enginesWithListingId = engines.map(engine => ({
+        ...engine,
+        listingId,
+      }));
+      await db.batchCreateEngines(enginesWithListingId);
 
-    return createResponse(200, { 
-      message: 'Engines updated successfully',
-      engines: engines.length,
-      totalHorsepower: calculateTotalHorsepower(engines),
-      engineConfiguration: determineEngineConfiguration(engines.length)
-    });
-  } catch (error) {
-    console.error('Error managing listing engines:', error);
-    
-    if (error instanceof Error && error.message.includes('User not authenticated')) {
-      return createErrorResponse(401, 'UNAUTHORIZED', error.message, requestId);
-    }
+      // Update listing with engine information
+      await db.updateListingWithEngines(listingId, engines);
 
-    return createErrorResponse(500, 'DATABASE_ERROR', 'Failed to update engines', requestId);
-  }
+      return ResponseHandler.success({
+        message: 'Engines updated successfully',
+        engines: engines.length,
+        totalHorsepower: calculateTotalHorsepower(engines),
+        engineConfiguration: determineEngineConfiguration(engines.length)
+      });
+    },
+    { operation: 'Manage Listing Engines', requestId }
+  );
 }
 
 /**
  * Deletes a specific engine from a boat listing
+ * 
+ * ✨ REFACTORED - Uses ResponseHandler
  * 
  * Removes an individual engine and updates the listing's engine configuration
  * and total horsepower calculations.
@@ -1185,58 +1214,55 @@ async function manageListingEngines(listingId: string, event: APIGatewayProxyEve
  * @returns Promise<APIGatewayProxyResult> - Success response or error
  */
 async function deleteListingEngine(listingId: string, engineId: string, event: APIGatewayProxyEvent, requestId: string): Promise<APIGatewayProxyResult> {
-  try {
-    const userId = getUserId(event);
+  return ResponseHandler.wrapHandler(
+    async () => {
+      const userId = getUserId(event);
 
-    // Check if listing exists and user owns it
-    const existingListing = await db.getListing(listingId);
-    if (!existingListing) {
-      return createErrorResponse(404, 'NOT_FOUND', 'Listing not found', requestId);
-    }
+      // Check if listing exists and user owns it
+      const existingListing = await db.getListing(listingId);
+      if (!existingListing) {
+        return ResponseHandler.error('Listing not found', 'NOT_FOUND', 404);
+      }
 
-    if (existingListing.ownerId !== userId) {
-      return createErrorResponse(403, 'FORBIDDEN', 'You can only modify your own listings', requestId);
-    }
+      if (existingListing.ownerId !== userId) {
+        return ResponseHandler.error('You can only modify your own listings', 'FORBIDDEN', 403);
+      }
 
-    // Get current engines
-    const engines = await db.getEnginesByListing(listingId);
-    const engineToDelete = engines.find(e => e.engineId === engineId);
-    
-    if (!engineToDelete) {
-      return createErrorResponse(404, 'NOT_FOUND', 'Engine not found', requestId);
-    }
+      // Get current engines
+      const engines = await db.getEnginesByListing(listingId);
+      const engineToDelete = engines.find(e => e.engineId === engineId);
+      
+      if (!engineToDelete) {
+        return ResponseHandler.error('Engine not found', 'NOT_FOUND', 404);
+      }
 
-    // Prevent deletion if it's the only engine
-    if (engines.length === 1) {
-      return createErrorResponse(400, 'INVALID_OPERATION', 'Cannot delete the only engine. At least one engine is required.', requestId);
-    }
+      // Prevent deletion if it's the only engine
+      if (engines.length === 1) {
+        return ResponseHandler.error('Cannot delete the only engine. At least one engine is required.', 'INVALID_OPERATION', 400);
+      }
 
-    // Delete the engine
-    await db.deleteEngine(engineId);
+      // Delete the engine
+      await db.deleteEngine(engineId);
 
-    // Update listing with remaining engines
-    const remainingEngines = engines.filter(e => e.engineId !== engineId);
-    await db.updateListingWithEngines(listingId, remainingEngines);
+      // Update listing with remaining engines
+      const remainingEngines = engines.filter(e => e.engineId !== engineId);
+      await db.updateListingWithEngines(listingId, remainingEngines);
 
-    return createResponse(200, { 
-      message: 'Engine deleted successfully',
-      remainingEngines: remainingEngines.length,
-      totalHorsepower: calculateTotalHorsepower(remainingEngines),
-      engineConfiguration: determineEngineConfiguration(remainingEngines.length)
-    });
-  } catch (error) {
-    console.error('Error deleting listing engine:', error);
-    
-    if (error instanceof Error && error.message.includes('User not authenticated')) {
-      return createErrorResponse(401, 'UNAUTHORIZED', error.message, requestId);
-    }
-
-    return createErrorResponse(500, 'DATABASE_ERROR', 'Failed to delete engine', requestId);
-  }
+      return ResponseHandler.success({
+        message: 'Engine deleted successfully',
+        remainingEngines: remainingEngines.length,
+        totalHorsepower: calculateTotalHorsepower(remainingEngines),
+        engineConfiguration: determineEngineConfiguration(remainingEngines.length)
+      });
+    },
+    { operation: 'Delete Listing Engine', requestId }
+  );
 }
 
 /**
  * Processes moderation decisions for listings
+ * 
+ * ✨ REFACTORED - Uses ResponseHandler & ValidationFramework
  * 
  * Handles approve, reject, and request changes actions from moderators.
  * Updates listing status and sends notifications to listing owners.
@@ -1247,127 +1273,123 @@ async function deleteListingEngine(listingId: string, engineId: string, event: A
  * @returns Promise<APIGatewayProxyResult> - Success response or error
  */
 async function processModerationDecision(listingId: string, event: APIGatewayProxyEvent, requestId: string): Promise<APIGatewayProxyResult> {
-  try {
-    const userId = getUserId(event);
-    const body = parseBody<{
-      action: 'approve' | 'reject' | 'request_changes';
-      reason: string;
-      publicNotes?: string;
-      internalNotes?: string;
-      requiredChanges?: string[];
-    }>(event);
+  return ResponseHandler.wrapHandler(
+    async () => {
+      const userId = getUserId(event);
+      const body = parseBody<{
+        action: 'approve' | 'reject' | 'request_changes';
+        reason: string;
+        publicNotes?: string;
+        internalNotes?: string;
+        requiredChanges?: string[];
+      }>(event);
 
-    // Validate required fields
-    validateRequired(body, ['action', 'reason']);
+      // Validate required fields
+      const validationResult = ValidationFramework.validate(body, [
+        CommonRules.required('action', 'Action'),
+        CommonRules.oneOf('action', ['approve', 'reject', 'request_changes'], 'Action'),
+        CommonRules.required('reason', 'Reason'),
+      ], requestId);
 
-    // Check if listing exists
-    const existingListing = await db.getListing(listingId);
-    if (!existingListing) {
-      return createErrorResponse(404, 'NOT_FOUND', 'Listing not found', requestId);
-    }
+      if (validationResult) {
+        return ResponseHandler.error('Validation failed', 'VALIDATION_ERROR', 400);
+      }
 
-    // Verify user has moderation permissions (this would be checked via user role/permissions)
-    // For now, we'll assume the user is authorized if they reach this endpoint
+      // Check if listing exists
+      const existingListing = await db.getListing(listingId);
+      if (!existingListing) {
+        return ResponseHandler.error('Listing not found', 'NOT_FOUND', 404);
+      }
 
-    const moderationNotes = {
-      reviewerId: userId,
-      reviewerName: 'Moderator', // This would come from user data
-      decision: body.action,
-      reason: sanitizeString(body.reason),
-      publicNotes: body.publicNotes ? sanitizeString(body.publicNotes) : undefined,
-      internalNotes: body.internalNotes ? sanitizeString(body.internalNotes) : undefined,
-      requiredChanges: body.requiredChanges?.map(change => sanitizeString(change)),
-      reviewDuration: 0, // This would be calculated based on assignment time
-      confidence: 'high' as const,
-    };
+      // Verify user has moderation permissions (this would be checked via user role/permissions)
+      // For now, we'll assume the user is authorized if they reach this endpoint
 
-    let newStatus: string;
-    let moderationWorkflowStatus: string;
+      const moderationNotes = {
+        reviewerId: userId,
+        reviewerName: 'Moderator', // This would come from user data
+        decision: body.action,
+        reason: sanitizeString(body.reason),
+        publicNotes: body.publicNotes ? sanitizeString(body.publicNotes) : undefined,
+        internalNotes: body.internalNotes ? sanitizeString(body.internalNotes) : undefined,
+        requiredChanges: body.requiredChanges?.map(change => sanitizeString(change)),
+        reviewDuration: 0, // This would be calculated based on assignment time
+        confidence: 'high' as const,
+      };
 
-    switch (body.action) {
-      case 'approve':
-        newStatus = 'active';
-        moderationWorkflowStatus = 'approved';
-        break;
-      case 'reject':
-        newStatus = 'rejected';
-        moderationWorkflowStatus = 'rejected';
-        break;
-      case 'request_changes':
-        newStatus = 'under_review';
-        moderationWorkflowStatus = 'changes_requested';
-        break;
-      default:
-        return createErrorResponse(400, 'INVALID_ACTION', 'Invalid moderation action', requestId);
-    }
+      let newStatus: string;
+      let moderationWorkflowStatus: string;
 
-    // Get existing moderation history
-    const existingHistory = (existingListing as any).moderationHistory || [];
-    
-    console.log(`[MODERATION] Existing history length: ${existingHistory.length}`);
-    console.log(`[MODERATION] Existing history:`, JSON.stringify(existingHistory, null, 2));
-    
-    // Create history entry for this action
-    const historyEntry = {
-      action: body.action,
-      reviewedBy: userId,
-      reviewedAt: Date.now(),
-      status: moderationWorkflowStatus,
-      rejectionReason: body.action === 'reject' ? body.reason : undefined,
-      publicNotes: body.publicNotes,
-      internalNotes: body.internalNotes,
-      requiredChanges: body.requiredChanges,
-    };
+      switch (body.action) {
+        case 'approve':
+          newStatus = 'active';
+          moderationWorkflowStatus = 'approved';
+          break;
+        case 'reject':
+          newStatus = 'rejected';
+          moderationWorkflowStatus = 'rejected';
+          break;
+        case 'request_changes':
+          newStatus = 'under_review';
+          moderationWorkflowStatus = 'changes_requested';
+          break;
+      }
 
-    console.log(`[MODERATION] New history entry:`, JSON.stringify(historyEntry, null, 2));
-    
-    const newHistory = [...existingHistory, historyEntry];
-    console.log(`[MODERATION] New history array length: ${newHistory.length}`);
-    console.log(`[MODERATION] New history array:`, JSON.stringify(newHistory, null, 2));
-
-    // Update listing with moderation decision
-    await db.updateListing(listingId, {
-      status: newStatus as any,
-      moderationWorkflow: {
-        status: moderationWorkflowStatus as any,
+      // Get existing moderation history
+      const existingHistory = (existingListing as any).moderationHistory || [];
+      
+      console.log(`[MODERATION] Existing history length: ${existingHistory.length}`);
+      console.log(`[MODERATION] Existing history:`, JSON.stringify(existingHistory, null, 2));
+      
+      // Create history entry for this action
+      const historyEntry = {
+        action: body.action,
         reviewedBy: userId,
         reviewedAt: Date.now(),
+        status: moderationWorkflowStatus,
         rejectionReason: body.action === 'reject' ? body.reason : undefined,
-        moderatorNotes: body.internalNotes,
+        publicNotes: body.publicNotes,
+        internalNotes: body.internalNotes,
         requiredChanges: body.requiredChanges,
-      },
-      moderationHistory: newHistory,
-      updatedAt: Date.now(),
-    } as any);
+      };
 
-    // Update moderation queue status
-    await db.updateModerationStatus(listingId, body.action === 'approve' ? 'approved' : 
-                                   body.action === 'reject' ? 'rejected' : 'changes_requested', 
-                                   moderationNotes);
+      console.log(`[MODERATION] New history entry:`, JSON.stringify(historyEntry, null, 2));
+      
+      const newHistory = [...existingHistory, historyEntry];
+      console.log(`[MODERATION] New history array length: ${newHistory.length}`);
+      console.log(`[MODERATION] New history array:`, JSON.stringify(newHistory, null, 2));
 
-    // Send notification to listing owner (this would integrate with notification service)
-    await sendModerationNotification(existingListing.ownerId, listingId, body.action, body.publicNotes || body.reason);
+      // Update listing with moderation decision
+      await db.updateListing(listingId, {
+        status: newStatus as any,
+        moderationWorkflow: {
+          status: moderationWorkflowStatus as any,
+          reviewedBy: userId,
+          reviewedAt: Date.now(),
+          rejectionReason: body.action === 'reject' ? body.reason : undefined,
+          moderatorNotes: body.internalNotes,
+          requiredChanges: body.requiredChanges,
+        },
+        moderationHistory: newHistory,
+        updatedAt: Date.now(),
+      } as any);
 
-    return createResponse(200, {
-      message: `Listing ${body.action === 'approve' ? 'approved' : body.action === 'reject' ? 'rejected' : 'returned for changes'}`,
-      listingId,
-      status: newStatus,
-      moderationAction: body.action,
-    });
-  } catch (error) {
-    console.error('Error processing moderation decision:', error);
-    
-    if (error instanceof Error) {
-      if (error.message.includes('Missing required fields')) {
-        return createErrorResponse(400, 'VALIDATION_ERROR', error.message, requestId);
-      }
-      if (error.message.includes('User not authenticated')) {
-        return createErrorResponse(401, 'UNAUTHORIZED', error.message, requestId);
-      }
-    }
+      // Update moderation queue status
+      await db.updateModerationStatus(listingId, body.action === 'approve' ? 'approved' : 
+                                     body.action === 'reject' ? 'rejected' : 'changes_requested', 
+                                     moderationNotes);
 
-    return createErrorResponse(500, 'DATABASE_ERROR', 'Failed to process moderation decision', requestId);
-  }
+      // Send notification to listing owner (this would integrate with notification service)
+      await sendModerationNotification(existingListing.ownerId, listingId, body.action, body.publicNotes || body.reason);
+
+      return ResponseHandler.success({
+        message: `Listing ${body.action === 'approve' ? 'approved' : body.action === 'reject' ? 'rejected' : 'returned for changes'}`,
+        listingId,
+        status: newStatus,
+        moderationAction: body.action,
+      });
+    },
+    { operation: 'Process Moderation Decision', requestId }
+  );
 }
 
 /**
@@ -1446,63 +1468,58 @@ async function sendModerationNotification(ownerId: string, listingId: string, ac
  * @returns Promise<APIGatewayProxyResult> - Success response or error
  */
 async function resubmitForModeration(listingId: string, event: APIGatewayProxyEvent, requestId: string): Promise<APIGatewayProxyResult> {
-  try {
-    const userId = getUserId(event);
+  return ResponseHandler.wrapHandler(
+    async () => {
+      const userId = getUserId(event);
 
-    // Check if listing exists and user owns it
-    const existingListing = await db.getListing(listingId);
-    if (!existingListing) {
-      return createErrorResponse(404, 'NOT_FOUND', 'Listing not found', requestId);
-    }
+      // Check if listing exists and user owns it
+      const existingListing = await db.getListing(listingId);
+      if (!existingListing) {
+        return ResponseHandler.error('Listing not found', 'NOT_FOUND', 404);
+      }
 
-    if (existingListing.ownerId !== userId) {
-      return createErrorResponse(403, 'FORBIDDEN', 'You can only resubmit your own listings', requestId);
-    }
+      if (existingListing.ownerId !== userId) {
+        return ResponseHandler.error('You can only resubmit your own listings', 'FORBIDDEN', 403);
+      }
 
-    // Check if listing is in a state that allows resubmission
-    const currentStatus = (existingListing as any).moderationWorkflow?.status;
-    if (currentStatus !== 'changes_requested' && currentStatus !== 'rejected') {
-      return createErrorResponse(400, 'INVALID_STATE', 'Listing is not in a state that allows resubmission', requestId);
-    }
+      // Check if listing is in a state that allows resubmission
+      const currentStatus = (existingListing as any).moderationWorkflow?.status;
+      if (currentStatus !== 'changes_requested' && currentStatus !== 'rejected') {
+        return ResponseHandler.error('Listing is not in a state that allows resubmission', 'INVALID_STATE', 400);
+      }
 
-    // Update listing status to pending review
-    await db.updateListing(listingId, {
-      status: 'pending_review' as any,
-      moderationWorkflow: {
+      // Update listing status to pending review
+      await db.updateListing(listingId, {
+        status: 'pending_review' as any,
+        moderationWorkflow: {
+          status: 'pending_review',
+          reviewedBy: undefined,
+          reviewedAt: undefined,
+          rejectionReason: undefined,
+          moderatorNotes: undefined,
+          requiredChanges: undefined,
+        },
+        updatedAt: Date.now(),
+      } as any);
+
+      // Create new moderation queue entry
+      await db.createModerationQueue({
+        queueId: generateId(),
+        listingId,
+        submittedBy: userId,
+        priority: 'medium',
+        flags: [],
+        status: 'pending',
+        submittedAt: Date.now(),
+        escalated: false,
+      });
+
+      return ResponseHandler.success({
+        message: 'Listing resubmitted for moderation successfully',
+        listingId,
         status: 'pending_review',
-        reviewedBy: undefined,
-        reviewedAt: undefined,
-        rejectionReason: undefined,
-        moderatorNotes: undefined,
-        requiredChanges: undefined,
-      },
-      updatedAt: Date.now(),
-    } as any);
-
-    // Create new moderation queue entry
-    await db.createModerationQueue({
-      queueId: generateId(),
-      listingId,
-      submittedBy: userId,
-      priority: 'medium',
-      flags: [],
-      status: 'pending',
-      submittedAt: Date.now(),
-      escalated: false,
-    });
-
-    return createResponse(200, {
-      message: 'Listing resubmitted for moderation successfully',
-      listingId,
-      status: 'pending_review',
-    });
-  } catch (error) {
-    console.error('Error resubmitting listing for moderation:', error);
-    
-    if (error instanceof Error && error.message.includes('User not authenticated')) {
-      return createErrorResponse(401, 'UNAUTHORIZED', error.message, requestId);
-    }
-
-    return createErrorResponse(500, 'DATABASE_ERROR', 'Failed to resubmit listing', requestId);
-  }
+      });
+    },
+    { operation: 'Resubmit For Moderation', requestId }
+  );
 }
